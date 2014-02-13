@@ -1,0 +1,29 @@
+Functions: 
+
+ImportMolecule(filename, *molnum, *objtype, *bonds)
+AnimateMolecule(filename, *objtype, *bonds)
+
+
+Subroutines: 
+
+ImportPDB(filename)  - returns list of atoms with positions for plotting
+ImportXYZ(filename)
+GetBaseSet(atom_list) - return set of atoms with which originals of linked duplicates will be created
+MakeMaterials(atom_base_set) - finds which blender materials need to be created, make them (diffuse)
+PlotAtoms(atom_list, *objtype) - create linked duplicate sphere objects at locations with correct materials
+UpdateAtomPosition(new_atom_list, mesh_list) - moves the mesh atoms to  new positions
+CalculateBonds(atom_list) - returns list of bonds to create (list of atom pairs)
+PlotBonds(bond_list) - create linked cylinders at appropriate places
+
+
+Dictionaries (global): 
+
+PeriodicTable - atom info with radii, material color (format?)
+
+
+Classes/Objects:
+
+Atom - coordinate, element
+Bond - Atom1, Atom2
+
+
