@@ -123,12 +123,18 @@ def PlotAtoms(atom_list, objtype="mesh"):
                     "release_confirm":False}\
                 )
             bpy.context.object.name = atom_name
-            bpy.context.object.data.name = base_atom
+            bpy.context.object.data.name = atom_name
         else:   #Create the base atom from which all other of same element will be copied
             atom.name = base_atom
+            print("%s %s" % (base_atom,atom.name))
             bpy.ops.mesh.primitive_uv_sphere_add(location=atom.position, size=atom.el.vdw)
             bpy.context.object.name = base_atom
             bpy.context.object.data.name = base_atom
             bpy.context.object.data.materials.append(bpy.data.materials[atom.el.symbol])
             bpy.ops.object.shade_smooth()
     return
+
+Atoms = ImportXYZ("/Users/joshuaszekely/Desktop/O3.xyz")
+Base = FormBaseSet(Atoms)
+MakeMaterials(Base)
+PlotAtoms(Atoms)
