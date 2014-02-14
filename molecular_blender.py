@@ -50,7 +50,7 @@ def BabelImport(filename, filetype):
 
     out = []
     for atom in mol:
-        out.append(Atom(pt.symbols[atom.atomicnum], atom.coord))
+        out.append(Atom(pt.symbols[atom.atomicnum].lower(), atom.coord))
 
     return out
 
