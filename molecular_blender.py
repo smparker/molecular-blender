@@ -22,14 +22,14 @@ def MakeMaterials(atom_base_set):
 def PlotAtoms(atom_list, objtype="mesh"):
 	#Check to see if original atom already exists, if yes, create translated linked duplicate, if no, create new object
 	for atom in atom_list:
-		base_atom = atom.el.symbol + "0" 
+		base_atom = "0".join(atom.el.symbol) 
 		if base_atom in bpy.data.objects.keys():
 			#create name of new object
 			sufx = 0
-			atom_name = atom.el.symbol + "%s" % str(sufx)
+			atom_name = str(atom.el.symbol).join(str(sufx))
 			while atom_name in bpy.data.objects.keys()
 				sufx += 1
-				atom_name = atom.el.symbol + "%s" % str(sufx)
+				atom_name = str(atom.el.symbol).join(str(sufx))
 			atom.name = atom_name
 			#Create the linked duplicate object
 			bpy.context.scene.objects.active = bpy.data.objects[base_atom] #Set active object to base
