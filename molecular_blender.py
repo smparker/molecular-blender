@@ -4,6 +4,7 @@ import periodictable as pt
 try: import pybel
 except ImportError: pass
 import sys
+import math
 
 
 class Atom():
@@ -49,7 +50,7 @@ def BabelImport(filename, filetype):
 
     out = []
     for atom in mol:
-        out.append(Atom(pt.symbols[atom.atomicnum], atom.coord))
+        out.append(Atom(pt.symbols[atom.atomicnum].lower(), atom.coord))
 
     return out
 
@@ -58,6 +59,23 @@ def FormBaseSet(atoms):
     out = set()
     for i in atoms:
         out.add(i.el.symbol)
+    return out
+
+#Given an array of atoms, returns list of atom pairs that are bonded
+# Uses the average of the two vdw radii as a bond cutoff. This may not be ideal
+def ComputeBonds(atoms):
+    out = []
+
+    natoms = len(atoms)
+    for i in range(natoms):
+        for j in range(i):
+            ixyz = i.position
+            jxyz = j.position
+            vec = (ixyz[0] - jxyz[0], ixyz[1] - jxyz[1], ixyz[2] - jxyz[2])
+            distance = math.sqrt(vec[0]*vec[0] + vec[1]*vec[1] + vec[2]*vec[2])
+            if (distance <= (0.5*(atoms[i].el.vdw + atoms[j].el.vdw))):
+                out.append( (i,j) )
+
     return out
 
 #Given a set of strings containing all elements in the molecule, creates required materials
