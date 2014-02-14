@@ -53,6 +53,13 @@ def BabelImport(filename, filetype):
 
     return out
 
+#Given an array of atoms, returns set of unique elements
+def FormBaseSet(atoms):
+    out = set()
+    for i in atoms:
+        out.add(i.el.symbol)
+    return out
+
 #Given a set of strings containing all elements in the molecule, creates required materials
 def MakeMaterials(atom_base_set):
 	for atom in atom_base_set:
