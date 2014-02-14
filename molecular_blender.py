@@ -57,7 +57,7 @@ def BabelImport(filename, filetype):
 
 #Given a set of strings containing all elements in the molecule, creates required materials
 def MakeMaterials(atom_base_set):
-	for atom in atom_base_set: 
+	for atom in atom_base_set:
 		bpy.data.materials.new(atom)				#Creates new material
 		bpy.data.materials[atom].diffuse_color = Color(pt.elements[atom].color)	#Sets color from atom dictionary
 	return
@@ -66,7 +66,7 @@ def MakeMaterials(atom_base_set):
 def PlotAtoms(atom_list, objtype="mesh"):
 	#Check to see if original atom already exists, if yes, create translated linked duplicate, if no, create new object
 	for atom in atom_list:
-		base_atom = "0".join(atom.el.symbol) 
+		base_atom = "0".join(atom.el.symbol)
 		if base_atom in bpy.data.objects.keys():
 			#create name of new object
 			sufx = 0
