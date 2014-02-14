@@ -7,7 +7,7 @@ import sys
 
 
 class Atom():
-    el = pt.element()
+    el = pt.element(1.0,(1.0,1.0,1.0),1.0,"","")
     position = (0.0, 0.0, 0.0)
     name = "Name"	#I think this will be useful in determining which atom corredsponds to which object for animations, it will be set in the PlotAtoms subroutine
 
