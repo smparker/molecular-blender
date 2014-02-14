@@ -6,6 +6,8 @@ except ImportError: pass
 import sys
 import math
 
+import bpy
+
 class Atom():
     el = pt.element(1.0,(1.0,1.0,1.0),1.0,"","")
     position = (0.0, 0.0, 0.0)
