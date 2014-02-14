@@ -8,6 +8,8 @@ import math
 import bpy
 import mathutils
 
+import bpy
+
 class Atom():
     el = pt.element(1.0,(1.0,1.0,1.0),1.0,"","")
     position = (0.0, 0.0, 0.0)
