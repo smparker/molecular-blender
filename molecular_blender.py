@@ -1,12 +1,10 @@
-import sys
-
 import periodictable as pt
 
 # import pybel if it is available
 try: import pybel
 except ImportError: pass
-
 import sys
+
 
 class Atom():
     el = pt.element()
