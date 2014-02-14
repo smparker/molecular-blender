@@ -1,4 +1,10 @@
+import sys
+
 import periodictable as pt
+
+# import pybel if it is available
+try: import pybel
+except ImportError: pass
 
 import sys
 
@@ -10,6 +16,44 @@ class Atom():
     def __init__(self, symbol, position):
         self.el = pt.elements[symbol]
         self.position = position
+
+#Read in xyz file and return array of atoms
+def ImportXYZ(filename):
+    out = []
+    fh = open(filename)
+    raw = fh.readlines()
+    fh.close()
+
+    natoms = int(raw[0])
+    raw.pop(0) # first line contains number of atoms
+    raw.pop(1) # second line is a comment
+    if (natoms != len(raw)):
+        raise Exception("Improperly formatted xyz file!")
+
+    for line in raw:
+        tmp = line.split()
+        symb = str(tmp[0]).lower()
+        position = ( float(tmp[1]), float(tmp[2]), float(tmp[3]) )
+        out.append(Atom(symb, position))
+
+    return out
+
+#Read in pdb file
+def ImportPDB(filename):
+    return BabelImport(filename, "pdb")
+
+#Use openbabel to import
+def BabelImport(filename, filetype):
+    if ('pybel' not in sys.modules.keys()):
+        raise Exception("Importing files in " + filetype + " format requires PyBel")
+
+    mol = pybel.readfile(filetype, filename).next()
+
+    out = []
+    for atom in mol:
+        out.append(Atom(pt.symbols[atom.atomicnum], atom.coord))
+
+    return out
 
 #Given a set of strings containing all elements in the molecule, creates required materials
 def MakeMaterials(atom_base_set):
