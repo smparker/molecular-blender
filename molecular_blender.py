@@ -5,6 +5,8 @@ try: import pybel
 except ImportError: pass
 import sys
 import math
+import bpy
+import mathutils
 
 class Atom():
     el = pt.element(1.0,(1.0,1.0,1.0),1.0,"","")
@@ -80,7 +82,7 @@ def ComputeBonds(atoms):
 def MakeMaterials(atom_base_set):
     for atom in atom_base_set:
         bpy.data.materials.new(atom)                #Creates new material
-        bpy.data.materials[atom].diffuse_color = Color(pt.elements[atom].color) #Sets color from atom dictionary
+        bpy.data.materials[atom].diffuse_color = mathutils.Color(pt.elements[atom].color) #Sets color from atom dictionary
     return
 
 #Given list of types Atom(), plots in scene
