@@ -89,20 +89,26 @@ def MakeMaterials(atom_base_set):
 
 #Given list of types Atom(), plots in scene
 def PlotAtoms(atom_list, objtype="mesh"):
+
     #Check to see if original atom already exists, if yes, create translated linked duplicate, if no, create new object
     for atom in atom_list:
-        base_atom = "0".join(atom.el.symbol)
+        #Unselect Everything
+        for item in bpy.context.selectable_objects:  
+            item.select = False
+        base_atom = ''.join([atom.el.symbol, "0"])
         if base_atom in bpy.data.objects.keys():
             #create name of new object
-            sufx = 0
-            atom_name = str(atom.el.symbol).join(str(sufx))
-            while atom_name in bpy.data.objects.keys():
+            sufx = 1
+            while 1:
+                atom_name = ''.join([atom.el.symbol, str(sufx)])
+                if atom_name not in bpy.data.objects.keys():
+                    break
                 sufx += 1
-                atom_name = str(atom.el.symbol).join(str(sufx))
             atom.name = atom_name
             #Create the linked duplicate object
-            bpy.context.scene.objects.active = bpy.data.objects[base_atom] #Set active object to base
-            translation_vector = tuple([y-x for x,y in zip(atom.position,tuple(bpy.context.object.location))])
+            bpy.data.objects[base_atom].select = True #Set active object to base
+            bpy.context.scene.objects.active = bpy.data.objects[base_atom]
+            translation_vector = tuple([x-y for x,y in zip(atom.position,tuple(bpy.context.object.location))])
             bpy.ops.object.duplicate_move_linked(\
                 OBJECT_OT_duplicate={"linked":False, "mode":'TRANSLATION'},\
                 TRANSFORM_OT_translate={\
@@ -122,19 +128,21 @@ def PlotAtoms(atom_list, objtype="mesh"):
                     "remove_on_cancel":False, \
                     "release_confirm":False}\
                 )
+
             bpy.context.object.name = atom_name
             bpy.context.object.data.name = atom_name
         else:   #Create the base atom from which all other of same element will be copied
             atom.name = base_atom
-            print("%s %s" % (base_atom,atom.name))
-            bpy.ops.mesh.primitive_uv_sphere_add(location=atom.position, size=atom.el.vdw)
+            for item in bpy.context.selectable_objects:  
+                item.select = False
+            if objtype.lower() == "nurbs":
+                bpy.ops.surface.primitive_nurbs_surface_sphere_add(radius=atom.el.vdw,location=atom.position)
+            elif objtype.lower() == "metaballs":
+                bpy.ops.object.metaball_add(type='BALL',radius=atom.el.vdw,location=atom.position)
+            else:
+                bpy.ops.mesh.primitive_uv_sphere_add(location=atom.position, size=atom.el.vdw)
             bpy.context.object.name = base_atom
             bpy.context.object.data.name = base_atom
             bpy.context.object.data.materials.append(bpy.data.materials[atom.el.symbol])
             bpy.ops.object.shade_smooth()
     return
-
-Atoms = ImportXYZ("/Users/joshuaszekely/Desktop/O3.xyz")
-Base = FormBaseSet(Atoms)
-MakeMaterials(Base)
-PlotAtoms(Atoms)
