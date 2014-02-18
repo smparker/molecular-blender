@@ -68,12 +68,11 @@ def FormBaseSet(atoms):
 # Uses the average of the two vdw radii as a bond cutoff. This may not be ideal
 def ComputeBonds(atoms):
     out = []
-
     natoms = len(atoms)
     for i in range(natoms):
         for j in range(i):
-            ixyz = i.position
-            jxyz = j.position
+            ixyz = atoms[i].position
+            jxyz = atoms[j].position
             vec = (ixyz[0] - jxyz[0], ixyz[1] - jxyz[1], ixyz[2] - jxyz[2])
             distance = math.sqrt(vec[0]*vec[0] + vec[1]*vec[1] + vec[2]*vec[2])
             if (distance <= (0.5*(atoms[i].el.vdw + atoms[j].el.vdw))):
@@ -146,3 +145,22 @@ def PlotAtoms(atom_list, objtype="mesh"):
             bpy.context.object.data.materials.append(bpy.data.materials[atom.el.symbol])
             bpy.ops.object.shade_smooth()
     return
+
+def PlotSingleBond(Atom1, Atom2):
+    #Unselect everything first to be safe
+    for item in bpy.context.selectable_objects:  
+        item.select = False
+    bond_vector = tuple([x-y for x,y in zip(Atom2.position,Atom1.position)])
+    bond_length = math.sqrt(math.pow(bond_vector[0],2)+math.pow(bond_vector[1],2)+math.pow(bond_vector[2],2))
+    bond_center = tuple([0.5*(x+y) for x,y in zip(Atom2.position,Atom1.position)])
+    bond_radius = 0.1*min([Atom1.el.vdw,Atom2.el.vdw])
+    theta = math.acos(bond_vector[2]/bond_length)
+    phi = math.atan2(bond_vector[1],bond_vector[0])
+    bpy.ops.mesh.primitive_cylinder_add(radius=bond_radius,depth=bond_length,location=bond_center,rotation=(0,theta,phi))
+    bond_name = '-'.join([Atom1.name, Atom2.name])
+    bpy.context.object.name = bond_name
+    bpy.context.object.data.name = bond_name
+
+def PlotBonds(atoms, bond_list):
+    for (x,y) in bond_list:
+        PlotSingleBond(atoms[x],atoms[y])
