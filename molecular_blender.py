@@ -88,11 +88,10 @@ def MakeMaterials(atom_base_set):
 
 #Given list of types Atom(), plots in scene
 def PlotAtoms(atom_list, objtype="mesh"):
-
     #Check to see if original atom already exists, if yes, create translated linked duplicate, if no, create new object
     for atom in atom_list:
         #Unselect Everything
-        for item in bpy.context.selectable_objects:  
+        for item in bpy.context.selectable_objects:
             item.select = False
         base_atom = ''.join([atom.el.symbol, "0"])
         if base_atom in bpy.data.objects.keys():
@@ -132,7 +131,7 @@ def PlotAtoms(atom_list, objtype="mesh"):
             bpy.context.object.data.name = atom_name
         else:   #Create the base atom from which all other of same element will be copied
             atom.name = base_atom
-            for item in bpy.context.selectable_objects:  
+            for item in bpy.context.selectable_objects:
                 item.select = False
             if objtype.lower() == "nurbs":
                 bpy.ops.surface.primitive_nurbs_surface_sphere_add(radius=atom.el.vdw,location=atom.position)
@@ -146,9 +145,136 @@ def PlotAtoms(atom_list, objtype="mesh"):
             bpy.ops.object.shade_smooth()
     return
 
+#Given list of types Atom(), plots as a single molecule, all atoms as parent to an empty, with bonds
+def PlotMolecule(atom_list, objtype="mesh", name="molecule", bonds=[]):  
+    #Make parent
+    global pt
+    bpy.ops.object.empty_add(type='PLAIN_AXES',location=(0,0,0))
+    bpy.context.object.name = name
+    #Check to see if original atom already exists, if yes, create translated linked duplicate, if no, create new object
+    for atom in atom_list:
+        if len(bonds) > 0:
+            scale_factor = 0.2
+        else: 
+            scale_factor = 1.0
+        #Unselect Everything
+        for item in bpy.context.selectable_objects:
+            item.select = False
+        base_atom = ''.join([atom.el.symbol, "0"])
+        if base_atom in bpy.data.objects.keys():
+            #create name of new object
+            sufx = 1
+            while 1:
+                atom_name = ''.join([atom.el.symbol, str(sufx)])
+                if atom_name not in bpy.data.objects.keys():
+                    break
+                sufx += 1
+            atom.name = atom_name
+            #Create the linked duplicate object
+            bpy.data.objects[base_atom].select = True #Set active object to base
+            bpy.context.scene.objects.active = bpy.data.objects[base_atom]
+            translation_vector = tuple([x-y for x,y in zip(atom.position,tuple(bpy.context.object.location))])
+            bpy.ops.object.duplicate_move_linked(\
+                OBJECT_OT_duplicate={"linked":False, "mode":'TRANSLATION'},\
+                TRANSFORM_OT_translate={\
+                    "value":translation_vector, \
+                    "constraint_axis":(False, False, False), \
+                    "constraint_orientation":'GLOBAL', \
+                    "mirror":False, \
+                    "proportional":'DISABLED', \
+                    "proportional_edit_falloff":'SMOOTH', \
+                    "proportional_size":1, \
+                    "snap":False, \
+                    "snap_target":'CLOSEST', \
+                    "snap_point":(0, 0, 0), \
+                    "snap_align":False, \
+                    "snap_normal":(0, 0, 0), \
+                    "texture_space":False, \
+                    "remove_on_cancel":False, \
+                    "release_confirm":False}\
+                )
+
+            bpy.context.object.name = atom_name
+            bpy.context.object.data.name = atom_name
+        else:   #Create the base atom from which all other of same element will be copied
+            atom.name = base_atom
+            for item in bpy.context.selectable_objects:
+                item.select = False
+            if objtype.lower() == "nurbs":
+                bpy.ops.surface.primitive_nurbs_surface_sphere_add(radius=scale_factor*atom.el.vdw,location=atom.position)
+            elif objtype.lower() == "metaballs":
+                bpy.ops.object.metaball_add(type='BALL',radius=scale_factor*atom.el.vdw,location=atom.position)
+            else:
+                bpy.ops.mesh.primitive_uv_sphere_add(location=atom.position, size=scale_factor*atom.el.vdw)
+            bpy.context.object.name = base_atom
+            bpy.context.object.data.name = base_atom
+            bpy.context.object.data.materials.append(bpy.data.materials[atom.el.symbol])
+            bpy.ops.object.shade_smooth()
+            #make parent active
+            bpy.context.scene.objects.active=bpy.data.objects[name]
+            bpy.ops.object.parent_set(type='OBJECT',keep_transform=False)
+    #Add the bonds if able
+    if len(bonds) > 0:
+        #Make circles the correct size for the bonds
+        bond_bevels = set()
+        for i in atom_list: 
+            bond_bevels.add(i.el.symbol)
+        for i in bond_bevels:
+            rad = 0.1*pt.elements[i].vdw
+            bpy.ops.curve.primitive_bezier_circle_add(radius=rad,location=(0,0,0))
+            bpy.context.object.name = i + "_bond"
+            bpy.context.scene.objects.active=bpy.data.objects[name]
+            bpy.ops.object.parent_set(type='OBJECT',keep_transform=False)
+        #make curves for bonds
+        for (x,y) in bonds:
+            #deselect all
+            for item in bpy.context.selectable_objects:
+                item.select = False
+            A1 = atom_list[x]
+            A2 = atom_list[y]
+            if A1.el.vdw > A2.el.vdw: 
+                bond_size = A2.el.symbol
+            else:
+                bond_size = A1.el.symbol
+            bond_name = '-'.join([A1.name, A2.name])
+            #create curve object
+            coords = [A1.position,A2.position]
+            curve = bpy.data.curves.new(bond_name,type='CURVE')
+            curve.dimensions = '3D'
+            curve.resolution_u = 2
+            bondline = curve.splines.new('BEZIER')
+            bondline.bezier_points.add(len(coords)-1)
+            for i, pnt in enumerate(coords):
+                p = bondline.bezier_points[i]
+                p.co = pnt
+                p.handle_right_type = p.handle_left_type = 'AUTO'
+            curveOB = bpy.data.objects.new(bond_name, curve)
+            curveOB.data.bevel_object = bpy.data.objects[bond_size + "_bond"]
+            curveOB.data.use_fill_caps = True
+            scn = bpy.context.scene
+            scn.objects.link(curveOB)
+            scn.objects.active = curveOB
+            curveOB.select = True
+            bpy.context.scene.objects.active=bpy.data.objects[name]
+            bpy.ops.object.parent_set(type='OBJECT',keep_transform=False)
+
+    return
+
+'''
+import sys
+sys.path.append("/Users/joshuaszekely/Desktop/Codes/Molecular-Blender")
+import molecular_blender as mb
+Atoms = mb.ImportXYZ("/Users/joshuaszekely/Desktop/Benzenes.xyz")
+Base = mb.FormBaseSet(Atoms)
+mb.MakeMaterials(Base)
+Bonds=mb.ComputeBonds(Atoms)
+mb.PlotMolecule(Atoms,name="Benzenes",bonds=Bonds)
+'''
+
+
 def PlotSingleBond(Atom1, Atom2):
     #Unselect everything first to be safe
-    for item in bpy.context.selectable_objects:  
+    for item in bpy.context.selectable_objects:
         item.select = False
     bond_vector = tuple([x-y for x,y in zip(Atom2.position,Atom1.position)])
     bond_length = math.sqrt(math.pow(bond_vector[0],2)+math.pow(bond_vector[1],2)+math.pow(bond_vector[2],2))
