@@ -257,7 +257,27 @@ def PlotMolecule(atom_list, objtype="mesh", name="molecule", bonds=[]):
             curveOB.select = True
             bpy.context.scene.objects.active=bpy.data.objects[name]
             bpy.ops.object.parent_set(type='OBJECT',keep_transform=False)
-
+            #Hook to atom1
+            for item in bpy.context.selectable_objects:
+                item.select = False
+            bpy.data.objects[A1.name].select=True
+            bpy.data.objects[bond_name].select=True
+            bpy.context.scene.objects.active = bpy.data.objects[bond_name]
+            bpy.ops.object.mode_set(mode='EDIT')
+            bpy.ops.curve.de_select_first()
+            bpy.ops.object.hook_add_selob()
+            bpy.ops.object.mode_set(mode='OBJECT')
+            #Hook to atom2
+            for item in bpy.context.selectable_objects:
+                item.select = False
+            bpy.data.objects[A2.name].select=True
+            bpy.data.objects[bond_name].select=True
+            bpy.context.scene.objects.active = bpy.data.objects[bond_name]
+            bpy.ops.object.mode_set(mode='EDIT')
+            bpy.ops.curve.de_select_first()
+            bpy.ops.curve.de_select_last()
+            bpy.ops.object.hook_add_selob()
+            bpy.ops.object.mode_set(mode='OBJECT')
     return
 
 '''
@@ -270,7 +290,6 @@ mb.MakeMaterials(Base)
 Bonds=mb.ComputeBonds(Atoms)
 mb.PlotMolecule(Atoms,name="Benzenes",bonds=Bonds)
 '''
-
 
 def PlotSingleBond(Atom1, Atom2):
     #Unselect everything first to be safe
