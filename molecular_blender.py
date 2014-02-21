@@ -5,19 +5,18 @@ try: import pybel
 except ImportError: pass
 import sys
 import math
+
 import bpy
 import mathutils
 
-import bpy
-
 class Atom():
     el = pt.element(1.0,(1.0,1.0,1.0),1.0,"","")
-    position = (0.0, 0.0, 0.0)
+    position = mathutils.Vector((0.0, 0.0, 0.0))
     name = "Name"   #I think this will be useful in determining which atom corredsponds to which object for animations, it will be set in the PlotAtoms subroutine
 
     def __init__(self, symbol, position):
         self.el = pt.elements[symbol]
-        self.position = position
+        self.position = mathutils.Vector(position)
 
 #Read in xyz file and return array of atoms
 def ImportXYZ(filename):
@@ -64,6 +63,17 @@ def FormBaseSet(atoms):
         out.add(i.el.symbol)
     return out
 
+#Compute center of mass
+# returns tuple
+def ComputeCOM(atoms):
+    total_mass = float(0.0)
+    out = mathutils.Vector((0.0, 0.0, 0.0))
+    for i in atoms:
+        out += i.position * i.el.mass
+        total_mass += i.el.mass
+    out /= total_mass
+    return out
+
 #Given an array of atoms, returns list of atom pairs that are bonded
 # Uses the average of the two vdw radii as a bond cutoff. This may not be ideal
 def ComputeBonds(atoms):
@@ -80,7 +90,8 @@ def ComputeBonds(atoms):
     return out
 
 #Given a set of strings containing all elements in the molecule, creates required materials
-def MakeMaterials(atom_base_set):
+def MakeMaterials(atoms):
+    atom_base_set = FormBaseSet(atoms)
     for atom in atom_base_set:
         bpy.data.materials.new(atom)                #Creates new material
         bpy.data.materials[atom].diffuse_color = mathutils.Color(pt.elements[atom].color) #Sets color from atom dictionary
@@ -146,16 +157,17 @@ def PlotAtoms(atom_list, objtype="mesh"):
     return
 
 #Given list of types Atom(), plots as a single molecule, all atoms as parent to an empty, with bonds
-def PlotMolecule(atom_list, objtype="mesh", name="molecule", bonds=[]):  
+def PlotMolecule(atom_list, objtype="mesh", name="molecule", bonds=[]):
     #Make parent
     global pt
-    bpy.ops.object.empty_add(type='PLAIN_AXES',location=(0,0,0))
+    center_of_mass = ComputeCOM(atom_list)
+    bpy.ops.object.empty_add(type='PLAIN_AXES',location=center_of_mass)
     bpy.context.object.name = name
     #Check to see if original atom already exists, if yes, create translated linked duplicate, if no, create new object
     for atom in atom_list:
         if len(bonds) > 0:
             scale_factor = 0.2
-        else: 
+        else:
             scale_factor = 1.0
         #Unselect Everything
         for item in bpy.context.selectable_objects:
@@ -217,7 +229,7 @@ def PlotMolecule(atom_list, objtype="mesh", name="molecule", bonds=[]):
     if len(bonds) > 0:
         #Make circles the correct size for the bonds
         bond_bevels = set()
-        for i in atom_list: 
+        for i in atom_list:
             bond_bevels.add(i.el.symbol)
         for i in bond_bevels:
             rad = 0.1*pt.elements[i].vdw
@@ -232,7 +244,7 @@ def PlotMolecule(atom_list, objtype="mesh", name="molecule", bonds=[]):
                 item.select = False
             A1 = atom_list[x]
             A2 = atom_list[y]
-            if A1.el.vdw > A2.el.vdw: 
+            if A1.el.vdw > A2.el.vdw:
                 bond_size = A2.el.symbol
             else:
                 bond_size = A1.el.symbol
@@ -309,3 +321,10 @@ def PlotSingleBond(Atom1, Atom2):
 def PlotBonds(atoms, bond_list):
     for (x,y) in bond_list:
         PlotSingleBond(atoms[x],atoms[y])
+
+def MoleculeFromFile(filename):
+    atoms = ImportXYZ(filename)
+    MakeMaterials(atoms)
+    bonds = ComputeBonds(atoms)
+    name = filename.rsplit('.', 1)[0].rsplit('/')[-1]
+    PlotMolecule(atoms, name=name, bonds=bonds)
