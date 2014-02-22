@@ -148,12 +148,12 @@ def PlotAtoms(atom_list, objtype="mesh"):
         #Unselect Everything
         for item in bpy.context.selectable_objects:
             item.select = False
-        base_atom = ''.join([atom.el.symbol, "0"])
+        base_atom = ''.join([atom.el.name, "0"])
         if base_atom in bpy.data.objects.keys():
             #create name of new object
             sufx = 1
             while 1:
-                atom_name = ''.join([atom.el.symbol, str(sufx)])
+                atom_name = ''.join([atom.el.name, str(sufx)])
                 if atom_name not in bpy.data.objects.keys():
                     break
                 sufx += 1
@@ -216,12 +216,12 @@ def PlotMolecule(atom_list, objtype="mesh", name="molecule", bonds=[]):
         #Unselect Everything
         for item in bpy.context.selectable_objects:
             item.select = False
-        base_atom = ''.join([atom.el.symbol, "0"])
+        base_atom = ''.join([atom.el.name, "0"])
         if base_atom in bpy.data.objects.keys():
             #create name of new object
             sufx = 1
             while 1:
-                atom_name = ''.join([atom.el.symbol, str(sufx)])
+                atom_name = ''.join([atom.el.name, str(sufx)])
                 if atom_name not in bpy.data.objects.keys():
                     break
                 sufx += 1
