@@ -18,6 +18,8 @@ class Atom():
     def __init__(self, symbol, position):
         self.el = pt.elements[symbol]
         self.position = mathutils.Vector(position)
+        self.name = ""
+        self.trajectory = []
 
 #Read in xyz file and return array of atoms
 def ImportXYZ(filename):
@@ -53,7 +55,7 @@ def ImportXYZTrajectory(filename):
     natoms = int(raw[0])
     if (len(raw) % (natoms+2) != 0):
         raise Exception("Trajectory file has the wrong number of lines. Should be a multiple of natoms+2.")
-    nframes = len(raw)/(natoms+2)
+    nframes = int(len(raw)/(natoms+2))
 
     raw.pop(0)
     raw.pop(0)
@@ -79,7 +81,7 @@ def ImportXYZTrajectory(filename):
             if (symb != atom_list[i].el.symbol):
                 raise Exception("The order of the atoms must be the same for each frame in the animation.")
             position = ( float(tmp[1]), float(tmp[2]), float(tmp[3]) )
-            atom_list[i].trajectory.append(Vector(position))
+            atom_list[i].trajectory.append(mathutils.Vector(position))
             raw.pop(0)
 
     return atom_list
@@ -337,6 +339,27 @@ def PlotMolecule(atom_list, objtype="mesh", name="molecule", bonds=[]):
             bpy.ops.object.mode_set(mode='OBJECT')
     return
 
+def AnimateMolecule(atom_list, kstride = 5):
+    # check to make sure trajectory information is stored for at least the first atom
+    if (len(atom_list[0].trajectory) == 0):
+        raise Exception("Trajectory must be read before calling AnimateMolecule")
+    for atom in atom_list:
+        if (atom.name == ''):
+            raise Exception("No name found for an atom. Was PlotMolecule or PlotAtoms called properly?")
+        if atom.name not in bpy.data.objects.keys():
+            raise Exception("Atom " + atom.name + " not found. Was PlotMolecule or PlotAtoms called properly?")
+
+        # deselect everything for good measure
+        for item in bpy.context.selectable_objects:
+            item.select = False
+
+        atom_obj = bpy.data.objects[atom.name]
+
+        for (iframe, position) in enumerate(atom.trajectory):
+            atom_obj.location = position
+            atom_obj.keyframe_insert(data_path='location', frame = iframe*kstride + 1)
+    return
+
 '''
 import sys
 sys.path.append("/Users/joshuaszekely/Desktop/Codes/Molecular-Blender")
@@ -373,3 +396,11 @@ def MoleculeFromFile(filename):
     bonds = ComputeBonds(atoms)
     name = filename.rsplit('.', 1)[0].rsplit('/')[-1]
     PlotMolecule(atoms, name=name, bonds=bonds)
+
+def AnimateFromFile(filename):
+    atoms = ImportXYZTrajectory(filename)
+    MakeMaterials(atoms)
+    bonds = ComputeBonds(atoms)
+    name = filename.rsplit('.', 1)[0].rsplit('/')[-1]
+    PlotMolecule(atoms, name=name, bonds=bonds)
+    AnimateMolecule(atoms, kstride=1)
