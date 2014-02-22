@@ -10,7 +10,7 @@ import bpy
 import mathutils
 
 class Atom():
-    el = pt.element(1.0,(1.0,1.0,1.0),1.0,"","")
+    el = pt.element(1.0,1.0,(1.0,1.0,1.0),1.0,"","")
     position = mathutils.Vector((0.0, 0.0, 0.0))
     name = "Name"   #I think this will be useful in determining which atom corredsponds to which object for animations, it will be set in the PlotAtoms subroutine
     trajectory = []
@@ -128,11 +128,8 @@ def ComputeBonds(atoms):
     natoms = len(atoms)
     for i in range(natoms):
         for j in range(i):
-            ixyz = atoms[i].position
-            jxyz = atoms[j].position
-            vec = (ixyz[0] - jxyz[0], ixyz[1] - jxyz[1], ixyz[2] - jxyz[2])
-            distance = math.sqrt(vec[0]*vec[0] + vec[1]*vec[1] + vec[2]*vec[2])
-            if (distance <= (0.5*(atoms[i].el.vdw + atoms[j].el.vdw))):
+            vec = atoms[i].position - atoms[j].position
+            if (vec.length <= 1.2*(atoms[i].el.covalent + atoms[j].el.covalent)):
                 out.append( (i,j) )
     return out
 
@@ -403,4 +400,4 @@ def AnimateFromFile(filename):
     bonds = ComputeBonds(atoms)
     name = filename.rsplit('.', 1)[0].rsplit('/')[-1]
     PlotMolecule(atoms, name=name, bonds=bonds)
-    AnimateMolecule(atoms, kstride=1)
+    AnimateMolecule(atoms, kstride=5)
