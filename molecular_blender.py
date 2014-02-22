@@ -59,7 +59,7 @@ def ImportXYZTrajectory(filename):
     raw.pop(0)
     for line in range(natoms):
         tmp = raw[0].split()
-        symb = str(tmp[0]).lower())
+        symb = str(tmp[0]).lower()
         position = ( float(tmp[1]), float(tmp[2]), float(tmp[3]) )
         new_atom = Atom(symb, position)
         new_atom.trajectory.append(mathutils.Vector(position))
@@ -69,13 +69,15 @@ def ImportXYZTrajectory(filename):
     for ifrm in range(nframes-1):
         frame_atoms = int(raw[0])
         if (frame_atoms != natoms):
-            raise Exception("All frames in trajectory must have the same number of atoms")
+            raise Exception("All frames in trajectory must have the same number of atoms.")
 
         raw.pop(0)
         raw.pop(0)
         for i in range(natoms):
             tmp = raw[0].split()
-            symb = str(tmp[0]).lower())
+            symb = str(tmp[0]).lower()
+            if (symb != atom_list[i].el.symbol):
+                raise Exception("The order of the atoms must be the same for each frame in the animation.")
             position = ( float(tmp[1]), float(tmp[2]), float(tmp[3]) )
             atom_list[i].trajectory.append(Vector(position))
             raw.pop(0)
