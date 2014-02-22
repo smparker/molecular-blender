@@ -13,6 +13,7 @@ class Atom():
     el = pt.element(1.0,(1.0,1.0,1.0),1.0,"","")
     position = mathutils.Vector((0.0, 0.0, 0.0))
     name = "Name"   #I think this will be useful in determining which atom corredsponds to which object for animations, it will be set in the PlotAtoms subroutine
+    trajectory = []
 
     def __init__(self, symbol, position):
         self.el = pt.elements[symbol]
@@ -38,6 +39,48 @@ def ImportXYZ(filename):
         out.append(Atom(symb, position))
 
     return out
+
+# Reads a concatenated list of XYZ files into a trajectory
+#   requires the same number of atoms in the same order for the entire trajectory
+#   returns an atom list with the trajectory field filled
+def ImportXYZTrajectory(filename):
+    atom_list = []
+    fh = open(filename, "r")
+    raw = fh.readlines()
+    fh.close()
+
+    # number of lines in fh should be a multiple of (natoms+2)
+    natoms = int(raw[0])
+    if (len(raw) % (natoms+2) != 0):
+        raise Exception("Trajectory file has the wrong number of lines. Should be a multiple of natoms+2.")
+    nframes = len(raw)/(natoms+2)
+
+    raw.pop(0)
+    raw.pop(0)
+    for line in range(natoms):
+        tmp = raw[0].split()
+        symb = str(tmp[0]).lower())
+        position = ( float(tmp[1]), float(tmp[2]), float(tmp[3]) )
+        new_atom = Atom(symb, position)
+        new_atom.trajectory.append(mathutils.Vector(position))
+        atom_list.append(new_atom)
+        raw.pop(0)
+
+    for ifrm in range(nframes-1):
+        frame_atoms = int(raw[0])
+        if (frame_atoms != natoms):
+            raise Exception("All frames in trajectory must have the same number of atoms")
+
+        raw.pop(0)
+        raw.pop(0)
+        for i in range(natoms):
+            tmp = raw[0].split()
+            symb = str(tmp[0]).lower())
+            position = ( float(tmp[1]), float(tmp[2]), float(tmp[3]) )
+            atom_list[i].trajectory.append(Vector(position))
+            raw.pop(0)
+
+    return atom_list
 
 #Read in pdb file
 def ImportPDB(filename):
