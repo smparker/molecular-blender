@@ -423,3 +423,26 @@ def AnimateFromFile(filename):
     name = filename.rsplit('.', 1)[0].rsplit('/')[-1]
     PlotMolecule(atoms, name=name, bonds=bonds)
     AnimateMolecule(atoms, kstride=5)
+
+def PlotWireFrame(filename,name="Molecule"):
+    atom_list = ImportXYZTrajectory(filename)
+    bonds = ComputeBonds(atom_list)
+    for item in bpy.context.selectable_objects:
+                item.select = False
+    verts = []
+    for atom in atom_list:
+        verts.append(atom.position)
+    molec_mesh = bpy.data.meshes.new(name)
+    molec_mesh.from_pydata(verts,bonds,[])
+    molec_mesh.update()
+    molec_obj = bpy.data.objects.new(name,molec_mesh)
+    molec_obj.data = molec_mesh
+    bpy.context.scene.objects.link(molec_obj)
+    molec_obj.select = True
+    bpy.context.scene.objects.active = bpy.data.objects[name]
+    bpy.ops.object.convert(target='CURVE')
+    bpy.context.object.data.fill_mode = 'FULL'
+    bpy.context.object.data.render_resolution_u = 12
+    bpy.context.object.data.bevel_depth = 0.1
+    bpy.context.object.data.bevel_resolution = 4
+    bpy.ops.objects.shade_smooth()
