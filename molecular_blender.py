@@ -236,8 +236,7 @@ def PlotMolecule(atom_list, objtype="mesh", name="molecule", bonds=[]):
         else:
             scale_factor = 1.0
         #Unselect Everything
-        for item in bpy.context.selectable_objects:
-            item.select = False
+        bpy.ops.object.select_all(action='DESELECT')
         base_atom = ''.join([atom.el.name, "0"])
         if base_atom in bpy.data.objects.keys():
             #create name of new object
@@ -276,8 +275,7 @@ def PlotMolecule(atom_list, objtype="mesh", name="molecule", bonds=[]):
             bpy.context.object.data.name = atom_name
         else:   #Create the base atom from which all other of same element will be copied
             atom.name = base_atom
-            for item in bpy.context.selectable_objects:
-                item.select = False
+            bpy.ops.object.select_all(action='DESELECT')
             if objtype.lower() == "nurbs":
                 bpy.ops.surface.primitive_nurbs_surface_sphere_add(radius=scale_factor*atom.el.vdw,location=atom.position)
             elif objtype.lower() == "metaballs":
@@ -306,8 +304,7 @@ def PlotMolecule(atom_list, objtype="mesh", name="molecule", bonds=[]):
         #make curves for bonds
         for (x,y) in bonds:
             #deselect all
-            for item in bpy.context.selectable_objects:
-                item.select = False
+            bpy.ops.object.select_all(action='DESELECT')
             A1 = atom_list[x]
             A2 = atom_list[y]
             if A1.el.vdw > A2.el.vdw:
@@ -336,8 +333,7 @@ def PlotMolecule(atom_list, objtype="mesh", name="molecule", bonds=[]):
             bpy.context.scene.objects.active=bpy.data.objects[name]
             bpy.ops.object.parent_set(type='OBJECT',keep_transform=False)
             #Hook to atom1
-            for item in bpy.context.selectable_objects:
-                item.select = False
+            bpy.ops.object.select_all(action='DESELECT')
             bpy.data.objects[A1.name].select=True
             bpy.data.objects[bond_name].select=True
             bpy.context.scene.objects.active = bpy.data.objects[bond_name]
@@ -346,8 +342,7 @@ def PlotMolecule(atom_list, objtype="mesh", name="molecule", bonds=[]):
             bpy.ops.object.hook_add_selob()
             bpy.ops.object.mode_set(mode='OBJECT')
             #Hook to atom2
-            for item in bpy.context.selectable_objects:
-                item.select = False
+            bpy.ops.object.select_all(action='DESELECT')
             bpy.data.objects[A2.name].select=True
             bpy.data.objects[bond_name].select=True
             bpy.context.scene.objects.active = bpy.data.objects[bond_name]
@@ -378,17 +373,6 @@ def AnimateMolecule(atom_list, kstride = 5):
             atom_obj.location = position
             atom_obj.keyframe_insert(data_path='location', frame = iframe*kstride + 1)
     return
-
-'''
-import sys
-sys.path.append("/Users/joshuaszekely/Desktop/Codes/Molecular-Blender")
-import molecular_blender as mb
-Atoms = mb.ImportXYZ("/Users/joshuaszekely/Desktop/Benzenes.xyz")
-Base = mb.FormBaseSet(Atoms)
-mb.MakeMaterials(Base)
-Bonds=mb.ComputeBonds(Atoms)
-mb.PlotMolecule(Atoms,name="Benzenes",bonds=Bonds)
-'''
 
 def PlotSingleBond(Atom1, Atom2):
     #Unselect everything first to be safe
@@ -445,4 +429,4 @@ def PlotWireFrame(filename,name="Molecule"):
     bpy.context.object.data.render_resolution_u = 12
     bpy.context.object.data.bevel_depth = 0.1
     bpy.context.object.data.bevel_resolution = 4
-    bpy.ops.objects.shade_smooth()
+    bpy.ops.object.shade_smooth()
