@@ -20,13 +20,15 @@
 #  If not, see <http://www.gnu.org/licenses/>.
 #
 
-import periodictable as pt
+import molecular_blender.periodictable as pt
 
 # import pybel if it is available
 try: import pybel
 except ImportError: pass
 import sys
 import math
+
+from collections import namedtuple
 
 import bpy
 import mathutils
@@ -211,16 +213,23 @@ def PlotAtoms(context, atom_list, objtype="mesh"):
 def PlotMolecule(context, atom_list, name, bonds, options):
     #Make parent
     global pt
+    global namedtuple
     object_type = options["object_type"]
     center_of_mass = ComputeCOM(atom_list)
     bpy.ops.object.empty_add(type='PLAIN_AXES',location=center_of_mass)
     context.object.name = name
+
+    Style = namedtuple('Style', ['atom_size', 'bond_size', 'atom_scaling', 'bond_scaling'])
+    style_dict = { 'vdw'       : Style( atom_size="scaled", bond_size="none", atom_scaling=1.0, bond_scaling=0.0 ),
+                   'bs'        : Style( atom_size="scaled", bond_size="vdw", atom_scaling=0.25, bond_scaling=0.1 ),
+                   'fixedbs'   : Style( atom_size="scaled", bond_size="fixed", atom_scaling=0.25, bond_scaling=1.0 ),
+                   'sticks'     : Style( atom_size="bond", bond_size="fixed", atom_scaling=0.2, bond_scaling=1.0 ) }
+    plot_style = style_dict[options["plot_style"]]
+
+    bond_thickness = options["bond_thickness"]
+
     #Check to see if original atom already exists, if yes, create translated linked duplicate, if no, create new object
     for atom in atom_list:
-        if len(bonds) > 0:
-            scale_factor = 0.2
-        else:
-            scale_factor = 1.0
         #Unselect Everything
         bpy.ops.object.select_all(action='DESELECT')
         base_atom = ''.join([atom.el.name, "0"])
@@ -262,12 +271,15 @@ def PlotMolecule(context, atom_list, name, bonds, options):
         else:   #Create the base atom from which all other of same element will be copied
             atom.name = base_atom
             bpy.ops.object.select_all(action='DESELECT')
+
+            radius = plot_style.atom_scaling * atom.el.vdw if (plot_style.atom_size != "bond") else bond_thickness
+
             if object_type == "nurbs":
-                bpy.ops.surface.primitive_nurbs_surface_sphere_add(radius=scale_factor*atom.el.vdw,location=atom.position)
+                bpy.ops.surface.primitive_nurbs_surface_sphere_add(radius=radius,location=atom.position)
             elif object_type == "meta":
-                bpy.ops.object.metaball_add(type='BALL',radius=scale_factor*atom.el.vdw,location=atom.position)
+                bpy.ops.object.metaball_add(type='BALL',radius=radius,location=atom.position)
             else:
-                bpy.ops.mesh.primitive_uv_sphere_add(location=atom.position, size=scale_factor*atom.el.vdw)
+                bpy.ops.mesh.primitive_uv_sphere_add(location=atom.position, size=radius)
             context.object.name = base_atom
             context.object.data.name = base_atom
             context.object.data.materials.append(bpy.data.materials[atom.el.symbol])
@@ -282,7 +294,8 @@ def PlotMolecule(context, atom_list, name, bonds, options):
         for i in atom_list:
             bond_bevels.add(i.el.symbol)
         for i in bond_bevels:
-            rad = 0.1*pt.elements[i].vdw
+            rad = pt.elements[i].vdw if (plot_style.bond_size == "vdw") else bond_thickness
+            rad *= plot_style.bond_scaling
             bpy.ops.curve.primitive_bezier_circle_add(radius=rad,location=(0,0,0))
             context.object.name = i + "_bond"
             context.scene.objects.active=bpy.data.objects[name]
@@ -293,10 +306,7 @@ def PlotMolecule(context, atom_list, name, bonds, options):
             bpy.ops.object.select_all(action='DESELECT')
             A1 = atom_list[x]
             A2 = atom_list[y]
-            if A1.el.vdw > A2.el.vdw:
-                bond_size = A2.el.symbol
-            else:
-                bond_size = A1.el.symbol
+            bond_size = A2.el.symbol if (A1.el.vdw > A2.el.vdw) else A1.el.symbol
             bond_name = '-'.join([A1.name, A2.name])
             #create curve object
             coords = [A1.position,A2.position]

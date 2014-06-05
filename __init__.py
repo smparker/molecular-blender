@@ -22,15 +22,21 @@
 
 bl_info = {
     "name" : "Molecular Blender",
+    "author" : "Shane Parker and Josh Szekely",
+    "version" : (0,1,0),
+    "location": "File > Import",
+    "description" : "Import XYZ files",
     "category" : "Import-Export"
 }
+
 import bpy
 
 from bpy_extras.io_utils import ImportHelper
-from bpy.props import StringProperty, BoolProperty, EnumProperty, IntProperty
+from bpy.props import StringProperty, BoolProperty, EnumProperty, IntProperty, FloatProperty
 from bpy.types import Operator
 
-from . import molecular_blender
+import molecular_blender.molecule_importer
+#from . import molecule_importer
 
 class MolecularBlender(Operator, ImportHelper):
     """A class designed to conveniently import molecules to blender"""
@@ -62,10 +68,24 @@ class MolecularBlender(Operator, ImportHelper):
                     default = 'frame',
                    )
 
-    draw_bonds = BoolProperty(
-                  name = "Draw bonds",
-                  description = "Toggles whether bonds are drawn",
-                  default = True,
+    style_of_plot = EnumProperty(
+                     name = "Style",
+                     description = "Plot style",
+                     items = (('vdw', "Van der Waals", "Plot using VDW radii"),
+                              ('bs', "Ball-and-stick", "Ball and stick with bond radii determined automaticaly"),
+                              ('fixedbs', "Fixed ball-and-stick", "Ball and stick with a fixed bond radius"),
+                              ('sticks', "Stick model", "Just sticks")),
+                     default = 'bs'
+                    )
+
+    bond_thickness = FloatProperty(
+                  name = "Thickness of bonds",
+                  description = "Determine overall thickness of bonds (0.0 turns bonds off)",
+                  default = 0.2,
+                  min=0.0,
+                  max=50.0,
+                  step=0.05,
+                  precision=4
                  )
 
     keystride = IntProperty(
@@ -75,8 +95,10 @@ class MolecularBlender(Operator, ImportHelper):
                 )
 
     def execute(self, context):
-        molecular_blender.BlendMolecule(context, self.filepath,
-                                              bonds=self.draw_bonds,
+        molecule_importer.BlendMolecule(context, self.filepath,
+                                              bonds=(self.bond_thickness!=0.0),
+                                              bond_thickness=self.bond_thickness,
+                                              plot_style=self.style_of_plot,
                                               plot_type=self.type_of_plot,
                                               object_type=self.type_of_object,
                                               keystride=self.keystride)
