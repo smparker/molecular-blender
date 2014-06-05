@@ -44,69 +44,58 @@ class Atom():
         self.trajectory = []
 
 #Read in xyz file and return array of atoms
-def ImportXYZ(filename):
+def ImportXYZ(filename, options):
     out = []
     fh = open(filename,"r")
     raw = fh.readlines()
     fh.close()
 
-    natoms = int(raw[0])
-    raw.pop(0) # first line contains number of atoms
-    raw.pop(0) # second line is a comment
-    if (natoms != len(raw)):
-        raise Exception("Improperly formatted xyz file!")
+    if (options["plot_type"] == "frame"):
+        natoms = int(raw[0])
+        raw.pop(0) # first line contains number of atoms
+        raw.pop(0) # second line is a comment
+        if (natoms != len(raw)):
+            raise Exception("Improperly formatted xyz file!")
 
-    for line in raw:
-        tmp = line.split()
-        symb = str(tmp[0]).lower()
-        position = ( float(tmp[1]), float(tmp[2]), float(tmp[3]) )
-        out.append(Atom(symb, position))
-
-    return out
-
-# Reads a concatenated list of XYZ files into a trajectory
-#   requires the same number of atoms in the same order for the entire trajectory
-#   returns an atom list with the trajectory field filled
-def ImportXYZTrajectory(filename):
-    atom_list = []
-    fh = open(filename, "r")
-    raw = fh.readlines()
-    fh.close()
-
-    # number of lines in fh should be a multiple of (natoms+2)
-    natoms = int(raw[0])
-    if (len(raw) % (natoms+2) != 0):
-        raise Exception("Trajectory file has the wrong number of lines. Should be a multiple of natoms+2.")
-    nframes = int(len(raw)/(natoms+2))
-
-    raw.pop(0)
-    raw.pop(0)
-    for line in range(natoms):
-        tmp = raw[0].split()
-        symb = str(tmp[0]).lower()
-        position = ( float(tmp[1]), float(tmp[2]), float(tmp[3]) )
-        new_atom = Atom(symb, position)
-        new_atom.trajectory.append(mathutils.Vector(position))
-        atom_list.append(new_atom)
-        raw.pop(0)
-
-    for ifrm in range(nframes-1):
-        frame_atoms = int(raw[0])
-        if (frame_atoms != natoms):
-            raise Exception("All frames in trajectory must have the same number of atoms.")
+        for line in raw:
+            tmp = line.split()
+            symb = str(tmp[0]).lower()
+            position = ( float(tmp[1]), float(tmp[2]), float(tmp[3]) )
+            out.append(Atom(symb, position))
+    elif (options["plot_type"] == "animate"):
+        natoms = int(raw[0])
+        if (len(raw) % (natoms+2) != 0):
+            raise Exception("Trajectory file has the wrong number of lines. Should be a multiple of natoms+2.")
+        nframes = int(len(raw)/(natoms+2))
 
         raw.pop(0)
         raw.pop(0)
-        for i in range(natoms):
+        for line in range(natoms):
             tmp = raw[0].split()
             symb = str(tmp[0]).lower()
-            if (symb != atom_list[i].el.symbol):
-                raise Exception("The order of the atoms must be the same for each frame in the animation.")
             position = ( float(tmp[1]), float(tmp[2]), float(tmp[3]) )
-            atom_list[i].trajectory.append(mathutils.Vector(position))
+            new_atom = Atom(symb, position)
+            new_atom.trajectory.append(mathutils.Vector(position))
+            out.append(new_atom)
             raw.pop(0)
 
-    return atom_list
+        for ifrm in range(nframes-1):
+            frame_atoms = int(raw[0])
+            if (frame_atoms != natoms):
+                raise Exception("All frames in trajectory must have the same number of atoms.")
+
+            raw.pop(0)
+            raw.pop(0)
+            for i in range(natoms):
+                tmp = raw[0].split()
+                symb = str(tmp[0]).lower()
+                if (symb != out[i].el.symbol):
+                    raise Exception("The order of the atoms must be the same for each frame in the animation.")
+                position = ( float(tmp[1]), float(tmp[2]), float(tmp[3]) )
+                out[i].trajectory.append(mathutils.Vector(position))
+                raw.pop(0)
+
+    return out
 
 #Read in pdb file
 def ImportPDB(filename):
@@ -123,13 +112,6 @@ def BabelImport(filename, filetype):
     for atom in mol:
         out.append(Atom(pt.symbols[atom.atomicnum].lower(), atom.coord))
 
-    return out
-
-#Given an array of atoms, returns set of unique elements
-def FormBaseSet(atoms):
-    out = set()
-    for i in atoms:
-        out.add(i.el.symbol)
     return out
 
 #Compute center of mass
@@ -157,18 +139,21 @@ def ComputeBonds(atoms):
 
 #Given a set of strings containing all elements in the molecule, creates required materials
 def MakeMaterials(atoms):
-    atom_base_set = FormBaseSet(atoms)
+    atom_base_set = set()
+    for i in atoms:
+        atom_base_set.add(i.el.symbol)
+
     for atom in atom_base_set:
         bpy.data.materials.new(atom)                #Creates new material
         bpy.data.materials[atom].diffuse_color = mathutils.Color(pt.elements[atom].color) #Sets color from atom dictionary
     return
 
 #Given list of types Atom(), plots in scene
-def PlotAtoms(atom_list, objtype="mesh"):
+def PlotAtoms(context, atom_list, objtype="mesh"):
     #Check to see if original atom already exists, if yes, create translated linked duplicate, if no, create new object
     for atom in atom_list:
         #Unselect Everything
-        for item in bpy.context.selectable_objects:
+        for item in context.selectable_objects:
             item.select = False
         base_atom = ''.join([atom.el.name, "0"])
         if base_atom in bpy.data.objects.keys():
@@ -182,8 +167,8 @@ def PlotAtoms(atom_list, objtype="mesh"):
             atom.name = atom_name
             #Create the linked duplicate object
             bpy.data.objects[base_atom].select = True #Set active object to base
-            bpy.context.scene.objects.active = bpy.data.objects[base_atom]
-            translation_vector = tuple([x-y for x,y in zip(atom.position,tuple(bpy.context.object.location))])
+            context.scene.objects.active = bpy.data.objects[base_atom]
+            translation_vector = tuple([x-y for x,y in zip(atom.position,tuple(context.object.location))])
             bpy.ops.object.duplicate_move_linked(\
                 OBJECT_OT_duplicate={"linked":False, "mode":'TRANSLATION'},\
                 TRANSFORM_OT_translate={\
@@ -204,31 +189,32 @@ def PlotAtoms(atom_list, objtype="mesh"):
                     "release_confirm":False}\
                 )
 
-            bpy.context.object.name = atom_name
-            bpy.context.object.data.name = atom_name
+            context.object.name = atom_name
+            context.object.data.name = atom_name
         else:   #Create the base atom from which all other of same element will be copied
             atom.name = base_atom
-            for item in bpy.context.selectable_objects:
+            for item in context.selectable_objects:
                 item.select = False
             if objtype.lower() == "nurbs":
                 bpy.ops.surface.primitive_nurbs_surface_sphere_add(radius=atom.el.vdw,location=atom.position)
-            elif objtype.lower() == "metaballs":
+            elif objtype.lower() == "meta":
                 bpy.ops.object.metaball_add(type='BALL',radius=atom.el.vdw,location=atom.position)
             else:
                 bpy.ops.mesh.primitive_uv_sphere_add(location=atom.position, size=atom.el.vdw)
-            bpy.context.object.name = base_atom
-            bpy.context.object.data.name = base_atom
-            bpy.context.object.data.materials.append(bpy.data.materials[atom.el.symbol])
+            context.object.name = base_atom
+            context.object.data.name = base_atom
+            context.object.data.materials.append(bpy.data.materials[atom.el.symbol])
             bpy.ops.object.shade_smooth()
     return
 
 #Given list of types Atom(), plots as a single molecule, all atoms as parent to an empty, with bonds
-def PlotMolecule(atom_list, objtype="mesh", name="molecule", bonds=[]):
+def PlotMolecule(context, atom_list, name, bonds, options):
     #Make parent
     global pt
+    object_type = options["object_type"]
     center_of_mass = ComputeCOM(atom_list)
     bpy.ops.object.empty_add(type='PLAIN_AXES',location=center_of_mass)
-    bpy.context.object.name = name
+    context.object.name = name
     #Check to see if original atom already exists, if yes, create translated linked duplicate, if no, create new object
     for atom in atom_list:
         if len(bonds) > 0:
@@ -249,8 +235,8 @@ def PlotMolecule(atom_list, objtype="mesh", name="molecule", bonds=[]):
             atom.name = atom_name
             #Create the linked duplicate object
             bpy.data.objects[base_atom].select = True #Set active object to base
-            bpy.context.scene.objects.active = bpy.data.objects[base_atom]
-            translation_vector = tuple([x-y for x,y in zip(atom.position,tuple(bpy.context.object.location))])
+            context.scene.objects.active = bpy.data.objects[base_atom]
+            translation_vector = tuple([x-y for x,y in zip(atom.position,tuple(context.object.location))])
             bpy.ops.object.duplicate_move_linked(\
                 OBJECT_OT_duplicate={"linked":False, "mode":'TRANSLATION'},\
                 TRANSFORM_OT_translate={\
@@ -271,23 +257,23 @@ def PlotMolecule(atom_list, objtype="mesh", name="molecule", bonds=[]):
                     "release_confirm":False}\
                 )
 
-            bpy.context.object.name = atom_name
-            bpy.context.object.data.name = atom_name
+            context.object.name = atom_name
+            context.object.data.name = atom_name
         else:   #Create the base atom from which all other of same element will be copied
             atom.name = base_atom
             bpy.ops.object.select_all(action='DESELECT')
-            if objtype.lower() == "nurbs":
+            if object_type == "nurbs":
                 bpy.ops.surface.primitive_nurbs_surface_sphere_add(radius=scale_factor*atom.el.vdw,location=atom.position)
-            elif objtype.lower() == "metaballs":
+            elif object_type == "meta":
                 bpy.ops.object.metaball_add(type='BALL',radius=scale_factor*atom.el.vdw,location=atom.position)
             else:
                 bpy.ops.mesh.primitive_uv_sphere_add(location=atom.position, size=scale_factor*atom.el.vdw)
-            bpy.context.object.name = base_atom
-            bpy.context.object.data.name = base_atom
-            bpy.context.object.data.materials.append(bpy.data.materials[atom.el.symbol])
+            context.object.name = base_atom
+            context.object.data.name = base_atom
+            context.object.data.materials.append(bpy.data.materials[atom.el.symbol])
             bpy.ops.object.shade_smooth()
             #make parent active
-            bpy.context.scene.objects.active=bpy.data.objects[name]
+            context.scene.objects.active=bpy.data.objects[name]
             bpy.ops.object.parent_set(type='OBJECT',keep_transform=False)
     #Add the bonds if able
     if len(bonds) > 0:
@@ -298,8 +284,8 @@ def PlotMolecule(atom_list, objtype="mesh", name="molecule", bonds=[]):
         for i in bond_bevels:
             rad = 0.1*pt.elements[i].vdw
             bpy.ops.curve.primitive_bezier_circle_add(radius=rad,location=(0,0,0))
-            bpy.context.object.name = i + "_bond"
-            bpy.context.scene.objects.active=bpy.data.objects[name]
+            context.object.name = i + "_bond"
+            context.scene.objects.active=bpy.data.objects[name]
             bpy.ops.object.parent_set(type='OBJECT',keep_transform=False)
         #make curves for bonds
         for (x,y) in bonds:
@@ -326,17 +312,17 @@ def PlotMolecule(atom_list, objtype="mesh", name="molecule", bonds=[]):
             curveOB = bpy.data.objects.new(bond_name, curve)
             curveOB.data.bevel_object = bpy.data.objects[bond_size + "_bond"]
             curveOB.data.use_fill_caps = True
-            scn = bpy.context.scene
+            scn = context.scene
             scn.objects.link(curveOB)
             scn.objects.active = curveOB
             curveOB.select = True
-            bpy.context.scene.objects.active=bpy.data.objects[name]
+            context.scene.objects.active=bpy.data.objects[name]
             bpy.ops.object.parent_set(type='OBJECT',keep_transform=False)
             #Hook to atom1
             bpy.ops.object.select_all(action='DESELECT')
             bpy.data.objects[A1.name].select=True
             bpy.data.objects[bond_name].select=True
-            bpy.context.scene.objects.active = bpy.data.objects[bond_name]
+            context.scene.objects.active = bpy.data.objects[bond_name]
             bpy.ops.object.mode_set(mode='EDIT')
             bpy.ops.curve.de_select_first()
             bpy.ops.object.hook_add_selob()
@@ -345,7 +331,7 @@ def PlotMolecule(atom_list, objtype="mesh", name="molecule", bonds=[]):
             bpy.ops.object.select_all(action='DESELECT')
             bpy.data.objects[A2.name].select=True
             bpy.data.objects[bond_name].select=True
-            bpy.context.scene.objects.active = bpy.data.objects[bond_name]
+            context.scene.objects.active = bpy.data.objects[bond_name]
             bpy.ops.object.mode_set(mode='EDIT')
             bpy.ops.curve.de_select_first()
             bpy.ops.curve.de_select_last()
@@ -353,7 +339,8 @@ def PlotMolecule(atom_list, objtype="mesh", name="molecule", bonds=[]):
             bpy.ops.object.mode_set(mode='OBJECT')
     return
 
-def AnimateMolecule(atom_list, kstride = 5):
+def AnimateMolecule(context, atom_list, options):
+    kstride = options["keystride"]
     # check to make sure trajectory information is stored for at least the first atom
     if (len(atom_list[0].trajectory) == 0):
         raise Exception("Trajectory must be read before calling AnimateMolecule")
@@ -364,7 +351,7 @@ def AnimateMolecule(atom_list, kstride = 5):
             raise Exception("Atom " + atom.name + " not found. Was PlotMolecule or PlotAtoms called properly?")
 
         # deselect everything for good measure
-        for item in bpy.context.selectable_objects:
+        for item in context.selectable_objects:
             item.select = False
 
         atom_obj = bpy.data.objects[atom.name]
@@ -374,44 +361,36 @@ def AnimateMolecule(atom_list, kstride = 5):
             atom_obj.keyframe_insert(data_path='location', frame = iframe*kstride + 1)
     return
 
-def PlotSingleBond(Atom1, Atom2):
-    #Unselect everything first to be safe
-    for item in bpy.context.selectable_objects:
-        item.select = False
-    bond_vector = tuple([x-y for x,y in zip(Atom2.position,Atom1.position)])
-    bond_length = math.sqrt(math.pow(bond_vector[0],2)+math.pow(bond_vector[1],2)+math.pow(bond_vector[2],2))
-    bond_center = tuple([0.5*(x+y) for x,y in zip(Atom2.position,Atom1.position)])
-    bond_radius = 0.1*min([Atom1.el.vdw,Atom2.el.vdw])
-    theta = math.acos(bond_vector[2]/bond_length)
-    phi = math.atan2(bond_vector[1],bond_vector[0])
-    bpy.ops.mesh.primitive_cylinder_add(radius=bond_radius,depth=bond_length,location=bond_center,rotation=(0,theta,phi))
-    bond_name = '-'.join([Atom1.name, Atom2.name])
-    bpy.context.object.name = bond_name
-    bpy.context.object.data.name = bond_name
+def PlotBonds(context, bond_list):
+    for (Atom1, Atom2) in bond_list:
+        #Unselect everything first to be safe
+        for item in context.selectable_objects:
+            item.select = False
+        bond_vector = tuple([x-y for x,y in zip(Atom2.position,Atom1.position)])
+        bond_length = math.sqrt(math.pow(bond_vector[0],2)+math.pow(bond_vector[1],2)+math.pow(bond_vector[2],2))
+        bond_center = tuple([0.5*(x+y) for x,y in zip(Atom2.position,Atom1.position)])
+        bond_radius = 0.1*min([Atom1.el.vdw,Atom2.el.vdw])
+        theta = math.acos(bond_vector[2]/bond_length)
+        phi = math.atan2(bond_vector[1],bond_vector[0])
+        bpy.ops.mesh.primitive_cylinder_add(radius=bond_radius,depth=bond_length,location=bond_center,rotation=(0,theta,phi))
+        bond_name = '-'.join([Atom1.name, Atom2.name])
+        context.object.name = bond_name
+        context.object.data.name = bond_name
 
-def PlotBonds(atoms, bond_list):
-    for (x,y) in bond_list:
-        PlotSingleBond(atoms[x],atoms[y])
-
-def MoleculeFromFile(filename):
-    atoms = ImportXYZ(filename)
-    MakeMaterials(atoms)
-    bonds = ComputeBonds(atoms)
+def BlendMolecule(context, filename, **options):
     name = filename.rsplit('.', 1)[0].rsplit('/')[-1]
-    PlotMolecule(atoms, name=name, bonds=bonds)
-
-def AnimateFromFile(filename):
-    atoms = ImportXYZTrajectory(filename)
+    atoms = ImportXYZ(filename, options)
     MakeMaterials(atoms)
-    bonds = ComputeBonds(atoms)
-    name = filename.rsplit('.', 1)[0].rsplit('/')[-1]
-    PlotMolecule(atoms, name=name, bonds=bonds)
-    AnimateMolecule(atoms, kstride=5)
+    bonds = ComputeBonds(atoms) if options["bonds"] else []
+    if (options["object_type"] == "wireframe"):
+        PlotWireFrame(context, atoms, name, bonds, options)
+    else:
+        PlotMolecule(context, atoms, name, bonds, options)
+    if (options["plot_type"] == "animate"):
+        AnimateMolecule(context, atoms, options)
 
-def PlotWireFrame(filename,name="Molecule"):
-    atom_list = ImportXYZTrajectory(filename)
-    bonds = ComputeBonds(atom_list)
-    for item in bpy.context.selectable_objects:
+def PlotWireFrame(context, atom_list, name, bonds, options):
+    for item in context.selectable_objects:
                 item.select = False
     verts = []
     for atom in atom_list:
@@ -421,12 +400,12 @@ def PlotWireFrame(filename,name="Molecule"):
     molec_mesh.update()
     molec_obj = bpy.data.objects.new(name,molec_mesh)
     molec_obj.data = molec_mesh
-    bpy.context.scene.objects.link(molec_obj)
+    context.scene.objects.link(molec_obj)
     molec_obj.select = True
-    bpy.context.scene.objects.active = bpy.data.objects[name]
+    context.scene.objects.active = bpy.data.objects[name]
     bpy.ops.object.convert(target='CURVE')
-    bpy.context.object.data.fill_mode = 'FULL'
-    bpy.context.object.data.render_resolution_u = 12
-    bpy.context.object.data.bevel_depth = 0.1
-    bpy.context.object.data.bevel_resolution = 4
+    context.object.data.fill_mode = 'FULL'
+    context.object.data.render_resolution_u = 12
+    context.object.data.bevel_depth = 0.1
+    context.object.data.bevel_resolution = 4
     bpy.ops.object.shade_smooth()
