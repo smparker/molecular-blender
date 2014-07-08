@@ -35,73 +35,80 @@ from bpy_extras.io_utils import ImportHelper
 from bpy.props import StringProperty, BoolProperty, EnumProperty, IntProperty, FloatProperty
 from bpy.types import Operator
 
-import molecular_blender.molecule_importer
+from .molecule_importer import BlendMolecule
+#import molecular_blender.molecule_importer
 #from . import molecule_importer
 
 class MolecularBlender(Operator, ImportHelper):
     """A class designed to conveniently import molecules to blender"""
     bl_idname = "import.molecular_blender"
-    bl_label = "Molecular Blender"
+    bl_label  = "Molecular Blender"
 
     # in the template, we'll figure it out later
     filename_ext = ".xyz"
-    filter_glob = StringProperty(
-            default="*.xyz",
-            options={'HIDDEN'},
+    filter_glob  = StringProperty(
+            default = "*.xyz",
+            options = {'HIDDEN'},
           )
 
     type_of_object = EnumProperty(
-                         name = "Object type",
+                         name        = "Object type",
                          description = "Object type to use to draw atoms",
-                         items = (('meta', "Metaballs", "Metaballs"),
+                         items       = (('meta', "Metaballs", "Metaballs"),
                                   ('nurbs', "NURBS", "NURBS"),
                                   ('mesh', "Mesh", "Mesh"),
                                   ('wireframe', "Wireframe", "Wireframe")),
-                         default = 'mesh'
+                         default     = 'mesh'
                         )
 
     type_of_plot = EnumProperty(
-                    name = "Type",
+                    name        = "Type",
                     description = "What to draw",
-                    items = (('frame', "Single Frame", "Plot a single frame from an XYZ"),
+                    items       = (('frame', "Single Frame", "Plot a single frame from an XYZ"),
                              ('animate', "Animation", "Animate from an XYZ")),
-                    default = 'frame',
+                    default     = 'frame',
                    )
 
     style_of_plot = EnumProperty(
-                     name = "Style",
+                     name        = "Style",
                      description = "Plot style",
-                     items = (('vdw', "Van der Waals", "Plot using VDW radii"),
+                     items       = (('vdw', "Van der Waals", "Plot using VDW radii"),
                               ('bs', "Ball-and-stick", "Ball and stick with bond radii determined automaticaly"),
                               ('fixedbs', "Fixed ball-and-stick", "Ball and stick with a fixed bond radius"),
                               ('sticks', "Stick model", "Just sticks")),
-                     default = 'bs'
+                     default     = 'bs'
                     )
 
     bond_thickness = FloatProperty(
-                  name = "Thickness of bonds",
+                  name        = "Thickness of bonds",
                   description = "Determine overall thickness of bonds (0.0 turns bonds off)",
-                  default = 0.2,
-                  min=0.0,
-                  max=50.0,
-                  step=0.05,
-                  precision=4
+                  default     = 0.2,
+                  min         = 0.0,
+                  max         = 50.0,
+                  step        = 0.05,
+                  precision   = 4
                  )
 
     keystride = IntProperty(
-                  name = "Keystride",
+                  name        = "Keystride",
                   description = "Striding between keyframes in animation",
-                  default = 2,
+                  default     = 2
                 )
 
+    find_aromatic = BoolProperty(
+                  name        ="Plot Aromatics",
+                  description ="Find closed rings and if planar, fill in with object",
+                  default     = False)
+
     def execute(self, context):
-        molecule_importer.BlendMolecule(context, self.filepath,
-                                              bonds=(self.bond_thickness!=0.0),
-                                              bond_thickness=self.bond_thickness,
-                                              plot_style=self.style_of_plot,
-                                              plot_type=self.type_of_plot,
-                                              object_type=self.type_of_object,
-                                              keystride=self.keystride)
+        BlendMolecule(context, self.filepath,
+                      bonds          = (self.bond_thickness!=0.0),
+                      bond_thickness = self.bond_thickness,
+                      plot_style     = self.style_of_plot,
+                      plot_type      = self.type_of_plot,
+                      object_type    = self.type_of_object,
+                      keystride      = self.keystride,
+                      find_aromatic  = self.find_aromatic)
 
         return {'FINISHED'}
 

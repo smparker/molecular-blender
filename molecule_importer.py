@@ -20,7 +20,9 @@
 #  If not, see <http://www.gnu.org/licenses/>.
 #
 
-import molecular_blender.periodictable as pt
+
+from .periodictable import elements,element,symbols
+from .find_planar_rings import plotRings
 
 # import pybel if it is available
 try: import pybel
@@ -34,13 +36,13 @@ import bpy
 import mathutils
 
 class Atom():
-    el = pt.element(1.0,1.0,(1.0,1.0,1.0),1.0,"","")
+    el = element(1.0,1.0,(1.0,1.0,1.0),1.0,"","")
     position = mathutils.Vector((0.0, 0.0, 0.0))
     name = "Name"   #I think this will be useful in determining which atom corredsponds to which object for animations, it will be set in the PlotAtoms subroutine
     trajectory = []
 
     def __init__(self, symbol, position):
-        self.el = pt.elements[symbol]
+        self.el = elements[symbol]
         self.position = mathutils.Vector(position)
         self.name = ""
         self.trajectory = []
@@ -112,7 +114,7 @@ def BabelImport(filename, filetype):
 
     out = []
     for atom in mol:
-        out.append(Atom(pt.symbols[atom.atomicnum].lower(), atom.coord))
+        out.append(Atom(symbols[atom.atomicnum].lower(), atom.coord))
 
     return out
 
@@ -147,7 +149,7 @@ def MakeMaterials(atoms):
 
     for atom in atom_base_set:
         bpy.data.materials.new(atom)                #Creates new material
-        bpy.data.materials[atom].diffuse_color = mathutils.Color(pt.elements[atom].color) #Sets color from atom dictionary
+        bpy.data.materials[atom].diffuse_color = mathutils.Color(elements[atom].color) #Sets color from atom dictionary
     return
 
 #Given list of types Atom(), plots in scene
@@ -294,7 +296,7 @@ def PlotMolecule(context, atom_list, name, bonds, options):
         for i in atom_list:
             bond_bevels.add(i.el.symbol)
         for i in bond_bevels:
-            rad = pt.elements[i].vdw if (plot_style.bond_size == "vdw") else bond_thickness
+            rad = elements[i].vdw if (plot_style.bond_size == "vdw") else bond_thickness
             rad *= plot_style.bond_scaling
             bpy.ops.curve.primitive_bezier_circle_add(radius=rad,location=(0,0,0))
             context.object.name = i + "_bond"
@@ -398,6 +400,8 @@ def BlendMolecule(context, filename, **options):
         PlotMolecule(context, atoms, name, bonds, options)
     if (options["plot_type"] == "animate"):
         AnimateMolecule(context, atoms, options)
+    if (options["find_aromatic"]):
+        plotRings(context,atoms,bonds,options)
 
 def PlotWireFrame(context, atom_list, name, bonds, options):
     for item in context.selectable_objects:
