@@ -51,11 +51,11 @@ def DFS(graph,start,goal):
     stack = [(start,[start])]
     while stack:
         (vertex,path) = stack.pop()
-        for next in graph[vertex] - set(path):
-            if next == goal:
-                yield path + [next]
+        for nextpath in graph[vertex] - set(path):
+            if nextpath == goal:
+                yield path + [nextpath]
             else:
-                stack.append((next,path + [next]))
+                stack.append((nextpath,path + [nextpath]))
 
 # Finds all unique paths of a vertex back to itself
 def findSpecificCycles(graph,vertex):
