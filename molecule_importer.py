@@ -152,65 +152,6 @@ def MakeMaterials(atoms):
         bpy.data.materials[atom].diffuse_color = mathutils.Color(elements[atom].color) #Sets color from atom dictionary
     return
 
-#Given list of types Atom(), plots in scene
-def PlotAtoms(context, atom_list, objtype="mesh"):
-    #Check to see if original atom already exists, if yes, create translated linked duplicate, if no, create new object
-    for atom in atom_list:
-        #Unselect Everything
-        for item in context.selectable_objects:
-            item.select = False
-        base_atom = ''.join([atom.el.name, "0"])
-        if base_atom in bpy.data.objects.keys():
-            #create name of new object
-            sufx = 1
-            while 1:
-                atom_name = ''.join([atom.el.name, str(sufx)])
-                if atom_name not in bpy.data.objects.keys():
-                    break
-                sufx += 1
-            atom.name = atom_name
-            #Create the linked duplicate object
-            bpy.data.objects[base_atom].select = True #Set active object to base
-            context.scene.objects.active = bpy.data.objects[base_atom]
-            translation_vector = tuple([x-y for x,y in zip(atom.position,tuple(context.object.location))])
-            bpy.ops.object.duplicate_move_linked(\
-                OBJECT_OT_duplicate={"linked":False, "mode":'TRANSLATION'},\
-                TRANSFORM_OT_translate={\
-                    "value":translation_vector, \
-                    "constraint_axis":(False, False, False), \
-                    "constraint_orientation":'GLOBAL', \
-                    "mirror":False, \
-                    "proportional":'DISABLED', \
-                    "proportional_edit_falloff":'SMOOTH', \
-                    "proportional_size":1, \
-                    "snap":False, \
-                    "snap_target":'CLOSEST', \
-                    "snap_point":(0, 0, 0), \
-                    "snap_align":False, \
-                    "snap_normal":(0, 0, 0), \
-                    "texture_space":False, \
-                    "remove_on_cancel":False, \
-                    "release_confirm":False}\
-                )
-
-            context.object.name = atom_name
-            context.object.data.name = atom_name
-        else:   #Create the base atom from which all other of same element will be copied
-            atom.name = base_atom
-            for item in context.selectable_objects:
-                item.select = False
-            if objtype.lower() == "nurbs":
-                bpy.ops.surface.primitive_nurbs_surface_sphere_add(radius=atom.el.vdw,location=atom.position)
-            elif objtype.lower() == "meta":
-                bpy.ops.object.metaball_add(type='BALL',radius=atom.el.vdw,location=atom.position)
-            else:
-                bpy.ops.mesh.primitive_uv_sphere_add(location=atom.position, size=atom.el.vdw)
-            context.object.name = base_atom
-            context.object.data.name = base_atom
-            context.object.data.materials.append(bpy.data.materials[atom.el.symbol])
-            bpy.ops.object.shade_smooth()
-    return
-
 #Given list of types Atom(), plots as a single molecule, all atoms as parent to an empty, with bonds
 def PlotMolecule(context, atom_list, name, bonds, options):
     #Make parent
@@ -372,22 +313,6 @@ def AnimateMolecule(context, atom_list, options):
             atom_obj.location = position
             atom_obj.keyframe_insert(data_path='location', frame = iframe*kstride + 1)
     return
-
-def PlotBonds(context, bond_list):
-    for (Atom1, Atom2) in bond_list:
-        #Unselect everything first to be safe
-        for item in context.selectable_objects:
-            item.select = False
-        bond_vector = tuple([x-y for x,y in zip(Atom2.position,Atom1.position)])
-        bond_length = math.sqrt(math.pow(bond_vector[0],2)+math.pow(bond_vector[1],2)+math.pow(bond_vector[2],2))
-        bond_center = tuple([0.5*(x+y) for x,y in zip(Atom2.position,Atom1.position)])
-        bond_radius = 0.1*min([Atom1.el.vdw,Atom2.el.vdw])
-        theta = math.acos(bond_vector[2]/bond_length)
-        phi = math.atan2(bond_vector[1],bond_vector[0])
-        bpy.ops.mesh.primitive_cylinder_add(radius=bond_radius,depth=bond_length,location=bond_center,rotation=(0,theta,phi))
-        bond_name = '-'.join([Atom1.name, Atom2.name])
-        context.object.name = bond_name
-        context.object.data.name = bond_name
 
 def BlendMolecule(context, filename, **options):
     name = filename.rsplit('.', 1)[0].rsplit('/')[-1]
