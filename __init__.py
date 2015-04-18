@@ -95,6 +95,16 @@ class MolecularBlender(Operator, ImportHelper):
                   default     = 2
                 )
 
+    animate_bonds = EnumProperty(
+                        name = "Animate bonds",
+                        description = "Determine how the bonds are handled for an animation",
+                        items = (   ('staticfirst', "Static: first frame", "Use bonds determined from only the first frame"),
+                                    ('staticall', "Static: all frames", "Draw all bonds that are formed during any frame"),
+                                    ('dynamic', "Dynamically draw frames", "Dynamically form and break bonds during animation")
+                                ),
+                        default = 'staticfirst'
+                    )
+
     find_aromatic = BoolProperty(
                   name        ="Plot Aromatics",
                   description ="Find closed rings and if planar, fill in with object",
@@ -108,6 +118,7 @@ class MolecularBlender(Operator, ImportHelper):
                       plot_type      = self.type_of_plot,
                       object_type    = self.type_of_object,
                       keystride      = self.keystride,
+                      animate_bonds  = self.animate_bonds,
                       find_aromatic  = self.find_aromatic)
 
         return {'FINISHED'}

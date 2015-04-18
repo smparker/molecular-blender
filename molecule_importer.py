@@ -129,19 +129,55 @@ def ComputeCOM(atoms):
     out /= total_mass
     return out
 
-#Given an array of atoms, returns list of atom pairs that are bonded
-# Uses the average of the two vdw radii as a bond cutoff. This may not be ideal
-def ComputeBonds(atoms):
+# Outsourced test of whether two atoms are bonded.
+# Uses the average of the two vdw radii as a bond cutoff.
+# All bond checks use this function, so there is only one place we need to go to alter behavior.
+def are_bonded(distance, el1, el2):
+    return distance <= (1.2*(el1.covalent + el2.covalent))
+
+# Given an array of atoms, returns list of atom pairs that are bonded
+def ComputeBonds(atoms, options):
     out = []
     natoms = len(atoms)
-    for i in range(natoms):
-        for j in range(i):
-            vec = atoms[i].position - atoms[j].position
-            if (vec.length <= 1.2*(atoms[i].el.covalent + atoms[j].el.covalent)):
-                out.append( (i,j) )
+    if (options["bonds"]):
+        if (options["plot_type"] == "frame" or options["animate_bonds"] == "staticfirst"):
+            # only use the first frame to look for bonded pairs
+            for i in range(natoms):
+                for j in range(i):
+                    vec = atoms[i].position - atoms[j].position
+                    if (are_bonded(vec.length, atoms[i].el, atoms[j].el)):
+                        out.append( (i, j) )
+        elif (options["animate_bonds"] in [ "staticall", "dynamic" ]):
+            # figure out a list of all bonded pairs throughout whole trajectory
+            for i in range(natoms):
+                for j in range(i):
+                    iel = atoms[i].el
+                    jel = atoms[j].el
+                    for va, vb in zip(atoms[i].trajectory, atoms[j].trajectory):
+                        vec = va - vb
+                        if (are_bonded(vec.length, iel, jel)):
+                            out.append( (i, j) )
+                            break
     return out
 
-#Given a set of strings containing all elements in the molecule, creates required materials
+# Given an array of atoms with trajectories and a list of bonds, constructs
+# masks of whether a bond should be drawn at each frame
+def ComputeBondMask(atoms, bonds, options):
+    outmask = { }
+    natoms = len(atoms)
+    for bonded_pair in bonds:
+        iatom, jatom = atoms[bonded_pair[0]], atoms[bonded_pair[1]]
+        iel, jel = iatom.el, jatom.el
+
+        pairmask = []
+        for va, vb in zip(iatom.trajectory, jatom.trajectory):
+            vec = va - vb
+            pairmask.append(are_bonded(vec.length, iel, jel))
+
+        outmask[bonded_pair] = pairmask
+    return outmask
+
+# Given a set of strings containing all elements in the molecule, creates required materials
 def MakeMaterials(atoms):
     atom_base_set = set()
     for i in atoms:
@@ -292,7 +328,7 @@ def PlotMolecule(context, atom_list, name, bonds, options):
             bpy.ops.object.mode_set(mode='OBJECT')
     return
 
-def AnimateMolecule(context, atom_list, options):
+def AnimateMolecule(context, atom_list, bonds, options):
     kstride = options["keystride"]
     # check to make sure trajectory information is stored for at least the first atom
     if (len(atom_list[0].trajectory) == 0):
@@ -312,19 +348,31 @@ def AnimateMolecule(context, atom_list, options):
         for (iframe, position) in enumerate(atom.trajectory):
             atom_obj.location = position
             atom_obj.keyframe_insert(data_path='location', frame = iframe*kstride + 1)
+
+    if options["animate_bonds"] == "dynamic":
+        bondmask = ComputeBondMask(atom_list, bonds, options)
+        for (i, j) in bonds:
+            iatom, jatom = atom_list[i], atom_list[j]
+            bond_name = "-".join([iatom.name, jatom.name])
+            bond_obj = bpy.data.objects[bond_name]
+            for (iframe, mask) in enumerate(bondmask[(i,j)]):
+                bond_obj.hide = not mask
+                bond_obj.keyframe_insert(data_path="hide", frame=iframe*kstride+1)
+                bond_obj.hide_render = not mask
+                bond_obj.keyframe_insert(data_path="hide_render", frame=iframe*kstride+1)
     return
 
 def BlendMolecule(context, filename, **options):
     name = filename.rsplit('.', 1)[0].rsplit('/')[-1]
     atoms = ImportXYZ(filename, options)
     MakeMaterials(atoms)
-    bonds = ComputeBonds(atoms) if options["bonds"] else []
+    bonds = ComputeBonds(atoms, options)
     if (options["object_type"] == "wireframe"):
         PlotWireFrame(context, atoms, name, bonds, options)
     else:
         PlotMolecule(context, atoms, name, bonds, options)
     if (options["plot_type"] == "animate"):
-        AnimateMolecule(context, atoms, options)
+        AnimateMolecule(context, atoms, bonds, options)
     if (options["find_aromatic"]):
         plotRings(context,atoms,bonds,options)
 
