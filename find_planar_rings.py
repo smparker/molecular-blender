@@ -80,7 +80,9 @@ def findAllUniqueCycles(graph):
     return cycles
 
 # Given a list of atoms and bonds, determine where aromatic rings are and plot them
-def plotRings(context,atomlist,bondlist,options):
+def plotRings(context, molecule, options):
+    atomlist = molecule.atoms
+    bondlist = [(b.iatom.index, b.jatom.index) for b in molecule.bonds]
     graph = createGraph(atomlist,bondlist)
     cycles = findAllUniqueCycles(graph)
     planarCycles = [x for x in cycles if isPlanar(atomlist,x)]
