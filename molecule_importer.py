@@ -46,11 +46,15 @@ class Atom():
 
 class Bond():
     """Join two atoms in a bond"""
-    def __init__(self, iatom, jatom, name = "", bevel = ""):
+    def __init__(self, iatom, jatom, style = "", name = ""):
         self.iatom = iatom
         self.jatom = jatom
         self.name = name
-        self.bevel = bevel
+        self.bevelname = ""
+        if style == "":
+            self.style = (jatom if iatom.el.vdw > jatom.el.vdw else iatom).el.symbol
+        else:
+            self.style = style
         self.threshold = 1.2*(iatom.el.covalent + jatom.el.covalent)
 
     def is_bonded(self, distance = None):
@@ -70,6 +74,7 @@ class Molecule():
         self.atoms = atoms
         self.bonds = []
         self.materials = {}
+        self.bond_materials = {}
 
     def COM(self):
         """Computes center of mass from atoms list"""
@@ -85,11 +90,12 @@ class Molecule():
         """builds list of bonded pairs"""
         atoms = self.atoms
         natoms = len(atoms)
+        bondstyle = "universal" if options["universal_bonds"] else ""
         if (options["bonds"]):
             for i in range(natoms):
                 for j in range(i):
                     # make a Bond object no matter what, then use it to check whether to keep
-                    bond = Bond(atoms[i], atoms[j])
+                    bond = Bond(atoms[i], atoms[j], bondstyle)
                     if (options["plot_type"] == "frame" or options["animate_bonds"] == "staticfirst"):
                         # only use the first frame to look for bonded pairs
                         vec = atoms[i].position - atoms[j].position
@@ -210,7 +216,7 @@ def unique_name(name, existing_names, starting_suffix = None):
     else:
         return testname
 
-def MakeMaterials(molecule, options):
+def make_atom_materials(molecule, options):
     """Given a molecule object, creates required materials and populates materials dictionary in molecule"""
 
     # set of new atoms to make materials for
@@ -228,6 +234,26 @@ def MakeMaterials(molecule, options):
 
         bpy.data.materials.new(atom) # Creates new material
         bpy.data.materials[atom].diffuse_color = mathutils.Color(elements[a].color) # Sets color from atom dictionary
+    return
+
+def make_bond_materials(molecule, options):
+    """Given a molecule object, creates the corresponding materials for the bonds"""
+
+    # set of unique bond types
+    bond_base_set = set([i.style for i in molecule.bonds])
+
+    for b in bond_base_set:
+        bond = b + "_bond_mat"
+        if (options["recycle_materials"]):
+            if bond in bpy.data.materials.keys():
+                molecule.bond_materials[b] = bond
+                continue
+
+        bond = unique_name(bond, bpy.data.materials.keys()) # unique name for bond material
+        molecule.bond_materials[b] = bond
+
+        bpy.data.materials.new(bond)
+        bpy.data.materials[bond].diffuse_color = mathutils.Color((0.9,0.9,0.9))
     return
 
 def PlotMolecule(context, molecule, options):
@@ -315,17 +341,24 @@ def PlotMolecule(context, molecule, options):
 
     if len(molecule.bonds) > 0: # Add the bonds
         # Make circles the correct size for the bonds
-        bond_bevels = set([i.el.symbol for i in molecule.atoms])
         bevnames = {}
+
+        bond_bevels = set([i.style for i in molecule.bonds])
+        # set up bevel types
         for i in bond_bevels:
-            rad = elements[i].vdw if (plot_style.bond_size == "vdw") else bond_thickness
-            rad *= plot_style.bond_scaling
+            rad = bond_thickness
+            if (not options['universal_bonds'] and plot_style.bond_size == "vdw"):
+                rad = elements[i].vdw * bond_scaling
+
             bpy.ops.curve.primitive_bezier_circle_add(radius=rad,location=(0,0,0))
             bevelname = unique_name(molecule.name + "_" + i + "_bond", bpy.data.objects.keys())
             bevnames[i] = bevelname
             context.object.name = bevelname
+
             context.scene.objects.active=bpy.data.objects[molecule.name]
             bpy.ops.object.parent_set(type='OBJECT',keep_transform=False)
+
+        make_bond_materials(molecule, options)
 
         for bond in molecule.bonds: # make curves for bonds
             #deselect all
@@ -335,12 +368,13 @@ def PlotMolecule(context, molecule, options):
             jatom = bond.jatom
 
             bevtype = (iatom if iatom.el.vdw > jatom.el.vdw else jatom).el.symbol
-            bond.bevel = bevnames[bevtype]
+            bond.bevelname = bevnames[bond.style]
             bond.name = unique_name(bond.make_name(molecule.name), bpy.data.objects.keys())
 
             #create curve object
             coords = [iatom.position, jatom.position]
             curve = bpy.data.curves.new(bond.name,type='CURVE')
+            curve.materials.append(bpy.data.materials[molecule.bond_materials[bond.style]])
 
             curve.dimensions = '3D'
             curve.resolution_u = 2
@@ -351,7 +385,7 @@ def PlotMolecule(context, molecule, options):
                 p.co = pnt
                 p.handle_right_type = p.handle_left_type = 'AUTO'
             curveOB = bpy.data.objects.new(bond.name, curve)
-            curveOB.data.bevel_object = bpy.data.objects[bond.bevel]
+            curveOB.data.bevel_object = bpy.data.objects[bond.bevelname]
             curveOB.data.use_fill_caps = True
             scn = context.scene
             scn.objects.link(curveOB)
@@ -447,7 +481,7 @@ def BlendMolecule(context, filename, **options):
     molecule = Molecule(name, atoms)
     molecule.determine_bonding(options)
 
-    MakeMaterials(molecule, options)
+    make_atom_materials(molecule, options)
     if (options["object_type"] == "wireframe"):
         PlotWireFrame(context, molecule, options)
         if (options["plot_type"] == "animate"):

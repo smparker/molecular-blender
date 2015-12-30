@@ -74,13 +74,13 @@ class MolecularBlender(Operator, ImportHelper):
                               ('bs', "Ball-and-stick", "Ball and stick with bond radii determined automaticaly"),
                               ('fixedbs', "Fixed ball-and-stick", "Ball and stick with a fixed bond radius"),
                               ('sticks', "Stick model", "Just sticks")),
-                     default     = 'bs'
+                     default     = 'fixedbs'
                     )
 
     bond_thickness = FloatProperty(
                   name        = "Thickness of bonds",
                   description = "Determine overall thickness of bonds (0.0 turns bonds off)",
-                  default     = 0.2,
+                  default     = 0.15,
                   min         = 0.0,
                   max         = 50.0,
                   step        = 0.05,
@@ -103,6 +103,11 @@ class MolecularBlender(Operator, ImportHelper):
                         default = 'staticfirst'
                     )
 
+    universal_bonds = BoolProperty(
+                        name = "Universal bonds",
+                        description = "Use one bond type for whole plot",
+                        default = True)
+
     find_aromatic = BoolProperty(
                   name        ="Plot Aromatics",
                   description ="Find closed rings and if planar, fill in with object",
@@ -122,6 +127,7 @@ class MolecularBlender(Operator, ImportHelper):
                       object_type    = self.type_of_object,
                       keystride      = self.keystride,
                       animate_bonds  = self.animate_bonds,
+                      universal_bonds  = self.universal_bonds,
                       find_aromatic  = self.find_aromatic,
                       recycle_materials = self.recycle_materials)
 
