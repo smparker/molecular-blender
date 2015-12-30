@@ -86,23 +86,20 @@ class Molecule():
         atoms = self.atoms
         natoms = len(atoms)
         if (options["bonds"]):
-            if (options["plot_type"] == "frame" or options["animate_bonds"] == "staticfirst"):
-                # only use the first frame to look for bonded pairs
-                for i in range(natoms):
-                    for j in range(i):
+            for i in range(natoms):
+                for j in range(i):
+                    # make a Bond object no matter what, then use it to check whether to keep
+                    bond = Bond(atoms[i], atoms[j])
+                    if (options["plot_type"] == "frame" or options["animate_bonds"] == "staticfirst"):
+                        # only use the first frame to look for bonded pairs
                         vec = atoms[i].position - atoms[j].position
-                        if (are_bonded(vec.length, atoms[i].el, atoms[j].el)):
-                            self.bonds.append(Bond(atoms[i], atoms[j]))
-            elif (options["animate_bonds"] in [ "staticall", "dynamic" ]):
-                # figure out a list of all bonded pairs throughout whole trajectory
-                for i in range(natoms):
-                    for j in range(i):
-                        iel = atoms[i].el
-                        jel = atoms[j].el
+                        if bond.is_bonded(vec.length):
+                            self.bonds.append(bond)
+                    elif (options["animate_bonds"] in [ "staticall", "dynamic" ]):
+                        # search through entire trajectory for a bond
                         for va, vb in zip(atoms[i].trajectory, atoms[j].trajectory):
-                            vec = va - vb
-                            if (are_bonded(vec.length, iel, jel)):
-                                self.bonds.append(Bond(atoms[i], atoms[j]))
+                            if (bond.is_bonded((va - vb).length)):
+                                self.bonds.append(bond)
                                 break
 
 
@@ -110,14 +107,13 @@ class Molecule():
         """Construct mask determining whether a bond should be drawn at each frame"""
         outmask = { }
         natoms = len(self.atoms)
-        for bonded_pair in self.bonds:
-            iatom, jatom = bonded_pair.iatom, bonded_pair.jatom
-            iel, jel = iatom.el, jatom.el
+        for bond in self.bonds:
+            iatom, jatom = bond.iatom, bond.jatom
 
             pairmask = []
             for va, vb in zip(iatom.trajectory, jatom.trajectory):
                 vec = va - vb
-                pairmask.append(are_bonded(vec.length, iel, jel))
+                pairmask.append(bond.is_bonded(vec.length))
 
             outmask[(iatom.index,jatom.index)] = pairmask
         return outmask
@@ -200,14 +196,6 @@ def BabelImport(filename, filetype):
 
     return out
 
-def are_bonded(distance, el1, el2):
-    """
-    Outsourced test of whether two atoms are bonded.
-    Uses the average of the two vdw radii as a bond cutoff.
-    All bond checks use this function, so there is only one place we need to go to alter behavior.
-    """
-    return distance <= (1.2*(el1.covalent + el2.covalent))
-
 def unique_name(name, existing_names, starting_suffix = None):
     """If name is not in existing_names, returns name. Otherwise, returns name + "0", 1, 2, etc."""
     testname = name if starting_suffix is None else "%s%d" % (name, starting_suffix)
@@ -222,15 +210,22 @@ def unique_name(name, existing_names, starting_suffix = None):
     else:
         return testname
 
-def MakeMaterials(molecule):
+def MakeMaterials(molecule, options):
     """Given a molecule object, creates required materials and populates materials dictionary in molecule"""
 
     # set of new atoms to make materials for
     atom_base_set = set([ i.el.symbol for i in molecule.atoms])
 
     for a in atom_base_set:
-        atom = unique_name(a + "_mat", bpy.data.materials.keys()) # get unique name for new material
+        atom = a + "_mat"
+        if (options["recycle_materials"]):
+            if atom in bpy.data.materials.keys():
+                molecule.materials[a] = atom
+                continue
+
+        atom = unique_name(atom, bpy.data.materials.keys()) # get unique name for new material
         molecule.materials[a] = atom # store unique materials
+
         bpy.data.materials.new(atom) # Creates new material
         bpy.data.materials[atom].diffuse_color = mathutils.Color(elements[a].color) # Sets color from atom dictionary
     return
@@ -452,11 +447,11 @@ def BlendMolecule(context, filename, **options):
     molecule = Molecule(name, atoms)
     molecule.determine_bonding(options)
 
-    MakeMaterials(molecule)
+    MakeMaterials(molecule, options)
     if (options["object_type"] == "wireframe"):
         PlotWireFrame(context, molecule, options)
         if (options["plot_type"] == "animate"):
-            print "animation of wireframes not currently supported!"
+            print("animation of wireframes not currently supported!")
     else:
         PlotMolecule(context, molecule, options)
         if (options["plot_type"] == "animate"):

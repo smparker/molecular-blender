@@ -108,6 +108,11 @@ class MolecularBlender(Operator, ImportHelper):
                   description ="Find closed rings and if planar, fill in with object",
                   default     = False)
 
+    recycle_materials = BoolProperty(
+                        name = "Recycle materials",
+                        description = "Re-use materials generated for previously imported molecules",
+                        default = False)
+
     def execute(self, context):
         BlendMolecule(context, self.filepath,
                       bonds          = (self.bond_thickness!=0.0),
@@ -117,7 +122,8 @@ class MolecularBlender(Operator, ImportHelper):
                       object_type    = self.type_of_object,
                       keystride      = self.keystride,
                       animate_bonds  = self.animate_bonds,
-                      find_aromatic  = self.find_aromatic)
+                      find_aromatic  = self.find_aromatic,
+                      recycle_materials = self.recycle_materials)
 
         return {'FINISHED'}
 
