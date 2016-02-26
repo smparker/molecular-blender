@@ -118,6 +118,14 @@ class MolecularBlender(Operator, ImportHelper):
                         description = "Re-use materials generated for previously imported molecules",
                         default = False)
 
+    color_palette = EnumProperty(
+                        name = "Colors",
+                        description = "Palette of colors to use",
+                        items = ( ('default', 'default', 'Colors defined by molecular blender'),
+                                  ('vmd', 'vmd', 'Same colors defined by VMD Element')
+                                ),
+                        default = 'default')
+
     def execute(self, context):
         BlendMolecule(context, self.filepath,
                       bonds          = (self.bond_thickness!=0.0),
@@ -129,7 +137,8 @@ class MolecularBlender(Operator, ImportHelper):
                       animate_bonds  = self.animate_bonds,
                       universal_bonds  = self.universal_bonds,
                       find_aromatic  = self.find_aromatic,
-                      recycle_materials = self.recycle_materials)
+                      recycle_materials = self.recycle_materials,
+                      colors = self.color_palette)
 
         return {'FINISHED'}
 

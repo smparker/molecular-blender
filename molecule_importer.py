@@ -21,7 +21,7 @@
 #
 
 
-from .periodictable import elements,element,symbols
+from .periodictable import element,symbols,generate_table
 from .find_planar_rings import plotRings
 
 # import pybel if it is available
@@ -34,6 +34,8 @@ from collections import namedtuple
 
 import bpy
 import mathutils
+
+elements = {} # container for elements
 
 class Atom():
     """Collect information on single atom"""
@@ -476,6 +478,8 @@ def AnimateMolecule(context, molecule, options):
 
 def BlendMolecule(context, filename, **options):
     """basic driver that calls the appropriate plot functions"""
+    global elements # first redefine elements list
+    elements = generate_table(options["colors"])
     name = filename.rsplit('.', 1)[0].rsplit('/')[-1]
     atoms = ImportXYZ(filename, options)
     molecule = Molecule(name, atoms)
