@@ -299,7 +299,8 @@ def generate_table(palette_name):
     else:
         palette = default_palette
 
-    elements = { # key  :         vdw,   cov,               color,  mass, full name , symbol
+    elements = {
+    # key  :         vdw,   cov,               color,  mass, full name , symbol
       'h'  : element(1.20, 0.31, palette['h' ],   1.0, "Hydrogen", "h"),
       'he' : element(1.40, 0.28, palette['he'],   4.0, "Helium", "he"),
       'li' : element(1.82, 1.28, palette['li'],   6.9, "Lithium", "li"),
@@ -321,7 +322,7 @@ def generate_table(palette_name):
       'k'  : element(2.75, 2.03, palette['k' ],  39.1, "Potassium", "k"),
       'ca' : element(2.31, 1.76, palette['ca'],  40.1, "Calcium", "ca"),
       'sc' : element(1.00, 1.70, palette['sc'],  45.0, "Scandium", "sc"),
-      'ti' : element(1.00, 1.60, palette['ti'],  47.9, "Titanium", "ti"),
+      'ti' : element(1.00, 1.36, palette['ti'],  47.9, "Titanium", "ti"),
       'v'  : element(1.00, 1.53, palette['v' ],  50.9, "Vanadium", "v"),
       'cr' : element(1.00, 1.39, palette['cr'],  52.0, "Chromium", "cr"),
       'mn' : element(1.00, 1.39, palette['mn'],  54.9, "Manganese", "mn"),
