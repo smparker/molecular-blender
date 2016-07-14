@@ -37,16 +37,24 @@ import mathutils
 
 elements = {} # container for elements
 
-class Atom():
+class Snapshot(object):
+    def __init__(self, position, charge, gradient):
+        self.position = mathutils.Vector(position)
+        self.charge = float(charge)
+        self.gradient = mathutils.Vector(position)
+
+class Atom(object):
     """Collect information on single atom"""
-    def __init__(self, symbol, position, index, name = ""):
+    def __init__(self, symbol, position, index, name = "", charge = 0.0, vec = [0.0, 0.0, 0.0]):
         self.el = elements[symbol]
         self.position = mathutils.Vector(position)
         self.index = index
         self.name = name
+        self.charge = charge
+        self.vec = mathutils.Vector(vec)
         self.trajectory = []
 
-class Bond():
+class Bond(object):
     """Join two atoms in a bond"""
     def __init__(self, iatom, jatom, style = "", name = ""):
         self.iatom = iatom
@@ -69,7 +77,7 @@ class Bond():
         jname = self.jatom.name.split('_')[-1]
         return basename + "_" + iname + "-" + jname
 
-class Molecule():
+class Molecule(object):
     """Atoms and bonds form a molecule"""
     def __init__(self, name, atoms):
         self.name = name
@@ -106,7 +114,7 @@ class Molecule():
                     elif (options["animate_bonds"] in [ "staticall", "dynamic" ]):
                         # search through entire trajectory for a bond
                         for va, vb in zip(atoms[i].trajectory, atoms[j].trajectory):
-                            if (bond.is_bonded((va - vb).length)):
+                            if (bond.is_bonded((va.position - vb.position).length)):
                                 self.bonds.append(bond)
                                 break
 
@@ -120,7 +128,7 @@ class Molecule():
 
             pairmask = []
             for va, vb in zip(iatom.trajectory, jatom.trajectory):
-                vec = va - vb
+                vec = va.position - vb.position
                 pairmask.append(bond.is_bonded(vec.length))
 
             outmask[(iatom.index,jatom.index)] = pairmask
@@ -130,60 +138,62 @@ def ImportXYZ(filename, options):
     """Read in xyz file and return list of atoms"""
     out = []
     fh = open(filename,"r")
-    raw = fh.readlines()
-    fh.close()
 
     if (options["plot_type"] == "frame"):
-        natoms = int(raw[0])
-        raw.pop(0) # first line contains number of atoms
-        raw.pop(0) # second line is a comment
-        if (natoms != len(raw)):
-            raise Exception("Improperly formatted xyz file!")
+        # first line contains number of atoms
+        natoms = int(fh.readline())
+        # second line is a comment
+        fh.readline()
 
         index = 0
-        for line in raw:
+        for line in fh:
+            # Expecting:
+            #   <symbol> <x> <y> <z> [<charge> [<vx> <vy> <vz>]]
+            # e.g.
+            #   h 0.0 0.0 1.0 0.0 1.0 2.0 3.0
             tmp = line.split()
             symb = str(tmp[0]).lower()
-            position = ( float(tmp[1]), float(tmp[2]), float(tmp[3]) )
-            out.append(Atom(symb, position, index))
+            position = [ float(x) for x in tmp[1:4] ]
+            charge = float(tmp[5]) if len(tmp) >= 5 else 0.0
+            vec = [ float(x) for x in tmp[6:9] ] if len(tmp) >= 9 else [ 0.0 for x in range(3) ]
+            out.append(Atom(symb, position, index, charge=charge, vec=vec))
             index += 1
+
         assert(index == natoms)
     elif (options["plot_type"] == "animate"):
-        natoms = int(raw[0])
-        if (len(raw) % (natoms+2) != 0):
-            raise Exception("Trajectory file has the wrong number of lines. Should be a multiple of natoms+2.")
-        nframes = int(len(raw)/(natoms+2))
+        # first line contains number of atoms
+        natoms = int(fh.readline())
+        # second line is a comment
+        fh.readline()
 
-        raw.pop(0)
-        raw.pop(0)
-        index = 0
-        for line in range(natoms):
-            tmp = raw[0].split()
+        for iatom in range(natoms):
+            tmp = fh.readline().split()
             symb = str(tmp[0]).lower()
-            position = ( float(tmp[1]), float(tmp[2]), float(tmp[3]) )
-            new_atom = Atom(symb, position, index)
-            index += 1
-            new_atom.trajectory.append(mathutils.Vector(position))
+            position = [ float(x) for x in tmp[1:4] ]
+            charge = float(tmp[5]) if len(tmp) >= 5 else 0.0
+            vec = [ float(x) for x in tmp[6:9] ] if len(tmp) >= 9 else [ 0.0 ] * 3
+            new_atom = Atom(symb, position, iatom, charge=charge, vec=vec)
+
+            new_atom.trajectory.append(Snapshot(position, charge, vec))
             out.append(new_atom)
-            raw.pop(0)
 
-        assert(index == natoms)
-
-        for ifrm in range(nframes-1):
-            frame_atoms = int(raw[0])
+        while (True):
+            line = fh.readline()
+            if (line == ""): break
+            frame_atoms = int(line) # natoms
             if (frame_atoms != natoms):
                 raise Exception("All frames in trajectory must have the same number of atoms.")
 
-            raw.pop(0)
-            raw.pop(0)
+            fh.readline() # comment line
             for i in range(natoms):
-                tmp = raw[0].split()
+                tmp = fh.readline().split()
                 symb = str(tmp[0]).lower()
                 if (symb != out[i].el.symbol):
                     raise Exception("The order of the atoms must be the same for each frame in the animation.")
-                position = ( float(tmp[1]), float(tmp[2]), float(tmp[3]) )
-                out[i].trajectory.append(mathutils.Vector(position))
-                raw.pop(0)
+                position = [ float(x) for x in tmp[1:4] ]
+                charge = float(tmp[5]) if len(tmp) >= 5 else 0.0
+                vec = [ float(x) for x in tmp[6:9] ] if len(tmp) >= 9 else [ 0.0 for x in range(3) ]
+                out[i].trajectory.append(Snapshot(position, charge, vec))
 
     return out
 
@@ -460,8 +470,8 @@ def AnimateMolecule(context, molecule, options):
 
         atom_obj = bpy.data.objects[atom.name]
 
-        for (iframe, position) in enumerate(atom.trajectory):
-            atom_obj.location = position
+        for (iframe, isnap) in enumerate(atom.trajectory):
+            atom_obj.location = isnap.position
             atom_obj.keyframe_insert(data_path='location', frame = iframe*kstride + 1)
 
     if options["animate_bonds"] == "dynamic":
