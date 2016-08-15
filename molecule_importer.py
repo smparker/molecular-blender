@@ -85,6 +85,8 @@ class Molecule(object):
         self.bonds = []
         self.materials = {}
         self.bond_materials = {}
+        self.chgoff = 1.0
+        self.chgfac = 1.0
 
     def COM(self):
         """Computes center of mass from atoms list"""
@@ -133,6 +135,10 @@ class Molecule(object):
 
             outmask[(iatom.index,jatom.index)] = pairmask
         return outmask
+
+    def scale(self, chg):
+        out = self.chgfac * (chg + self.chgoff)
+        return mathutils.Vector((out,out,out))
 
 def ImportXYZ(filename, options):
     """Read in xyz file and return list of atoms"""
@@ -228,6 +234,11 @@ def unique_name(name, existing_names, starting_suffix = None):
     else:
         return testname
 
+def plot_prep(molecule, options):
+    if (options["charges"] != "none"):
+        molecule.chgfac = options["charge_factor"]
+        molecule.chgoff = options["charge_offset"]
+
 def make_atom_materials(molecule, options):
     """Given a molecule object, creates required materials and populates materials dictionary in molecule"""
 
@@ -246,6 +257,17 @@ def make_atom_materials(molecule, options):
 
         bpy.data.materials.new(atom) # Creates new material
         bpy.data.materials[atom].diffuse_color = mathutils.Color(elements[a].color) # Sets color from atom dictionary
+
+    if (options["charges"] != "none"): # make materials used for showing charges
+        pc = unique_name("pluscharge", bpy.data.materials.keys()) + "_mat"
+        nc = unique_name("negcharge", bpy.data.materials.keys()) + "_mat"
+
+        molecule.pluscharge_mat = pc
+        molecule.negcharge_mat = nc
+
+        for ch, col in [ (pc, (0,0,1)), (nc, (1,0,0)) ]:
+            bpy.data.materials.new(ch)
+            bpy.data.materials[ch].diffuse_color = mathutils.Color(col)
     return
 
 def make_bond_materials(molecule, options):
@@ -300,7 +322,7 @@ def PlotMolecule(context, molecule, options):
         bpy.ops.object.select_all(action='DESELECT')
         base_atom = molecule.name + "_" + atom.el.name
         ref_atom = base_atom + "0"
-        if ref_atom in bpy.data.objects.keys():
+        if ref_atom in bpy.data.objects.keys(): # duplicate existing atom
             # name new object
             atom.name = unique_name(base_atom, bpy.data.objects.keys(), 0)
 
@@ -350,6 +372,37 @@ def PlotMolecule(context, molecule, options):
             #make parent active
             context.scene.objects.active=bpy.data.objects[molecule.name]
             bpy.ops.object.parent_set(type='OBJECT',keep_transform=False)
+
+        if (options["charges"] != "none"): # set a sphere on top of atom that will show charge
+            # make plus charge
+            bpy.ops.mesh.primitive_uv_sphere_add(location=atom.position, size=radius)
+            context.object.name = atom.name + "_plus"
+            context.object.data.name = atom.name + "_plus"
+            context.object.data.materials.append(bpy.data.materials[molecule.pluscharge_mat])
+            bpy.ops.object.shade_smooth()
+
+            # initialize scale
+            pc = max(0.0, atom.charge)
+            context.object.scale = molecule.scale(pc)
+
+            # set base atom as parent so it moves alongside
+            context.scene.objects.active = bpy.data.objects[atom.name]
+            bpy.ops.object.parent_set(type='OBJECT', keep_transform = False)
+
+            # make negative charge
+            bpy.ops.mesh.primitive_uv_sphere_add(location=atom.position, size=radius)
+            context.object.name = atom.name + "_neg"
+            context.object.data.name = atom.name + "_neg"
+            context.object.data.materials.append(bpy.data.materials[molecule.negcharge_mat])
+            bpy.ops.object.shade_smooth()
+
+            # initialize scale
+            nc = -min(0.0, atom.charge)
+            context.object.scale = molecule.scale(nc)
+
+            # set base atom as parent so it moves alongside
+            context.scene.objects.active = bpy.data.objects[atom.name]
+            bpy.ops.object.parent_set(type='OBJECT', keep_transform = False)
 
     if len(molecule.bonds) > 0: # Add the bonds
         # Make circles the correct size for the bonds
@@ -427,7 +480,7 @@ def PlotMolecule(context, molecule, options):
             bpy.ops.object.hook_add_selob()
             bpy.ops.object.mode_set(mode='OBJECT')
 
-    if (options["plot_gradient"]):
+    if (options["gradient"]):
         for atom in molecule.atoms:
             if (atom.gradient.length > 1.0e-30):
                 bpy.ops.object.select_all(action='DESELECT')
@@ -492,10 +545,20 @@ def AnimateMolecule(context, molecule, options):
             item.select = False
 
         atom_obj = bpy.data.objects[atom.name]
+        pluscharge = bpy.data.objects[atom.pluscharge] if (options["charges"]!="none") else ""
+        negcharge  = bpy.data.objects[atom.negcharge]  if (options["charges"]!="none") else ""
 
         for (iframe, isnap) in enumerate(atom.trajectory):
             atom_obj.location = isnap.position
             atom_obj.keyframe_insert(data_path='location', frame = iframe*kstride + 1)
+
+            if (options["charges"] != "none"):
+                if (options["charges"] == "scale"):
+                    pc, nc = max(0.0, isnape.charge), -min(0.0, isnap.charge)
+                    pluscharge.scale = molecule.scale(pc)
+                    negcharge.scale = molecule.scale(nc)
+                    for x in [ pluscharge, negcharge ]:
+                        x.keyframe_insert(data_path='scale', frame=iframe*kstride+1)
 
     if options["animate_bonds"] == "dynamic":
         bondmask = molecule.bond_mask(options)
@@ -519,6 +582,8 @@ def BlendMolecule(context, filename, **options):
     molecule.determine_bonding(options)
 
     make_atom_materials(molecule, options)
+    plot_prep(molecule, options)
+
     if (options["object_type"] == "wireframe"):
         PlotWireFrame(context, molecule, options)
         if (options["plot_type"] == "animate"):

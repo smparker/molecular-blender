@@ -118,6 +118,34 @@ class MolecularBlender(Operator, ImportHelper):
                     description = "Draw arrows for data found in gradients column",
                     default = False)
 
+    plot_charges = EnumProperty(
+                    name = "Plot charges",
+                    description = "Style in which to plot atomic charges",
+                    items = ( ('none', 'none', 'No charges plotted'),
+                              ('scale', 'scale', 'Charge magnitude encoded by scale of sphere')
+                            ),
+                    default = 'none')
+
+    charge_offset = FloatProperty(
+                    name = "chgoff",
+                    description = "Use chgfac*(charge + chgoff) in charge plotting to control visibility of charges",
+                    default     = 0.9,
+                    min         = -5.0,
+                    max         = 5.0,
+                    step        = 0.05,
+                    precision   = 2
+                    )
+
+    charge_factor = FloatProperty(
+                    name = "chgfac",
+                    description = "Use chgfac*(charge + chgoff) in charge plotting to control visibility of charges",
+                    default     = 1.0,
+                    min         = -5.0,
+                    max         = 5.0,
+                    step        = 0.05,
+                    precision   = 2
+                    )
+
     recycle_materials = BoolProperty(
                         name = "Recycle materials",
                         description = "Re-use materials generated for previously imported molecules",
@@ -141,7 +169,10 @@ class MolecularBlender(Operator, ImportHelper):
                       keystride      = self.keystride,
                       animate_bonds  = self.animate_bonds,
                       universal_bonds  = self.universal_bonds,
-                      plot_gradient  = self.plot_gradient,
+                      gradient  = self.plot_gradient,
+                      charges = self.plot_charges,
+                      charge_offset = self.charge_offset,
+                      charge_factor = self.charge_factor,
                       find_aromatic  = self.find_aromatic,
                       recycle_materials = self.recycle_materials,
                       colors = self.color_palette)
