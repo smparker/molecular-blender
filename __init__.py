@@ -113,6 +113,11 @@ class MolecularBlender(Operator, ImportHelper):
                   description ="Find closed rings and if planar, fill in with object",
                   default     = False)
 
+    plot_gradient = BoolProperty(
+                    name = "Plot gradient",
+                    description = "Draw arrows for data found in gradients column",
+                    default = False)
+
     recycle_materials = BoolProperty(
                         name = "Recycle materials",
                         description = "Re-use materials generated for previously imported molecules",
@@ -136,6 +141,7 @@ class MolecularBlender(Operator, ImportHelper):
                       keystride      = self.keystride,
                       animate_bonds  = self.animate_bonds,
                       universal_bonds  = self.universal_bonds,
+                      plot_gradient  = self.plot_gradient,
                       find_aromatic  = self.find_aromatic,
                       recycle_materials = self.recycle_materials,
                       colors = self.color_palette)

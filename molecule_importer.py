@@ -45,13 +45,13 @@ class Snapshot(object):
 
 class Atom(object):
     """Collect information on single atom"""
-    def __init__(self, symbol, position, index, name = "", charge = 0.0, vec = [0.0, 0.0, 0.0]):
+    def __init__(self, symbol, position, index, name = "", charge = 0.0, gradient = [0.0, 0.0, 0.0]):
         self.el = elements[symbol]
         self.position = mathutils.Vector(position)
         self.index = index
         self.name = name
         self.charge = charge
-        self.vec = mathutils.Vector(vec)
+        self.gradient = mathutils.Vector(gradient)
         self.trajectory = []
 
 class Bond(object):
@@ -154,9 +154,9 @@ def ImportXYZ(filename, options):
             tmp = line.split()
             symb = str(tmp[0]).lower()
             position = [ float(x) for x in tmp[1:4] ]
-            charge = float(tmp[5]) if len(tmp) >= 5 else 0.0
-            vec = [ float(x) for x in tmp[6:9] ] if len(tmp) >= 9 else [ 0.0 for x in range(3) ]
-            out.append(Atom(symb, position, index, charge=charge, vec=vec))
+            charge = float(tmp[4]) if len(tmp) >= 5 else 0.0
+            vec = [ float(x) for x in tmp[5:8] ] if len(tmp) >= 8 else [ 0.0 for x in range(3) ]
+            out.append(Atom(symb, position, index, charge=charge, gradient=vec))
             index += 1
 
         assert(index == natoms)
@@ -170,9 +170,9 @@ def ImportXYZ(filename, options):
             tmp = fh.readline().split()
             symb = str(tmp[0]).lower()
             position = [ float(x) for x in tmp[1:4] ]
-            charge = float(tmp[5]) if len(tmp) >= 5 else 0.0
-            vec = [ float(x) for x in tmp[6:9] ] if len(tmp) >= 9 else [ 0.0 ] * 3
-            new_atom = Atom(symb, position, iatom, charge=charge, vec=vec)
+            charge = float(tmp[4]) if len(tmp) >= 5 else 0.0
+            vec = [ float(x) for x in tmp[5:8] ] if len(tmp) >= 8 else [ 0.0 ] * 3
+            new_atom = Atom(symb, position, iatom, charge=charge, gradient=vec)
 
             new_atom.trajectory.append(Snapshot(position, charge, vec))
             out.append(new_atom)
@@ -191,8 +191,8 @@ def ImportXYZ(filename, options):
                 if (symb != out[i].el.symbol):
                     raise Exception("The order of the atoms must be the same for each frame in the animation.")
                 position = [ float(x) for x in tmp[1:4] ]
-                charge = float(tmp[5]) if len(tmp) >= 5 else 0.0
-                vec = [ float(x) for x in tmp[6:9] ] if len(tmp) >= 9 else [ 0.0 for x in range(3) ]
+                charge = float(tmp[4]) if len(tmp) >= 5 else 0.0
+                vec = [ float(x) for x in tmp[5:8] ] if len(tmp) >= 8 else [ 0.0 for x in range(3) ]
                 out[i].trajectory.append(Snapshot(position, charge, vec))
 
     return out
@@ -426,6 +426,29 @@ def PlotMolecule(context, molecule, options):
             bpy.ops.curve.de_select_last()
             bpy.ops.object.hook_add_selob()
             bpy.ops.object.mode_set(mode='OBJECT')
+
+    if (options["plot_gradient"]):
+        for atom in molecule.atoms:
+            if (atom.gradient.length > 1.0e-30):
+                bpy.ops.object.select_all(action='DESELECT')
+                curve = bpy.data.curves.new(atom.name+"_gradient", type='CURVE')
+                curve.dimensions = '3D'
+                curve.resolution_u = 2
+                gradline = curve.splines.new('BEZIER')
+                gradline.bezier_points.add(1)
+                gradline.bezier_points[0].co = atom.position
+                gradline.bezier_points[1].co = atom.position + atom.gradient
+                for p in gradline.bezier_points:
+                    p.handle_right_type = p.handle_left_type = 'AUTO'
+                curveOB = bpy.data.objects.new(atom.name+"_gradient", curve)
+
+                curveOB.data.use_fill_caps = True
+                context.scene.objects.link(curveOB)
+                context.scene.objects.active = curveOB
+                curveOB.select = True
+                context.scene.objects.active = bpy.data.objects[molecule.name]
+                bpy.ops.object.parent_set(type='OBJECT', keep_transform=False)
+
     return
 
 def PlotWireFrame(context, molecule, options):
