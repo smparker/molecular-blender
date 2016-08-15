@@ -137,7 +137,8 @@ class Molecule(object):
         return outmask
 
     def scale(self, chg):
-        out = self.chgfac * (chg + self.chgoff)
+        thr = 1.0 - self.chgoff
+        out = self.chgfac * (chg - thr) + 1.0 if chg > thr else 0.0
         return mathutils.Vector((out,out,out))
 
 def ImportXYZ(filename, options):
@@ -147,7 +148,7 @@ def ImportXYZ(filename, options):
 
     if (options["plot_type"] == "frame"):
         # first line contains number of atoms
-        natoms = int(fh.readline())
+        natoms = int(fh.readline().split()[0])
         # second line is a comment
         fh.readline()
 
@@ -168,7 +169,7 @@ def ImportXYZ(filename, options):
         assert(index == natoms)
     elif (options["plot_type"] == "animate"):
         # first line contains number of atoms
-        natoms = int(fh.readline())
+        natoms = int(fh.readline().split()[0])
         # second line is a comment
         fh.readline()
 
@@ -186,7 +187,7 @@ def ImportXYZ(filename, options):
         while (True):
             line = fh.readline()
             if (line == ""): break
-            frame_atoms = int(line) # natoms
+            frame_atoms = int(line.split()[0]) # natoms
             if (frame_atoms != natoms):
                 raise Exception("All frames in trajectory must have the same number of atoms.")
 
@@ -374,10 +375,13 @@ def PlotMolecule(context, molecule, options):
             bpy.ops.object.parent_set(type='OBJECT',keep_transform=False)
 
         if (options["charges"] != "none"): # set a sphere on top of atom that will show charge
+            # store name in atom object
+            atom.plus_charge = atom.name + "_plus"
+
             # make plus charge
             bpy.ops.mesh.primitive_uv_sphere_add(location=atom.position, size=radius)
-            context.object.name = atom.name + "_plus"
-            context.object.data.name = atom.name + "_plus"
+            context.object.name = atom.plus_charge
+            context.object.data.name = atom.plus_charge
             context.object.data.materials.append(bpy.data.materials[molecule.pluscharge_mat])
             bpy.ops.object.shade_smooth()
 
@@ -389,10 +393,13 @@ def PlotMolecule(context, molecule, options):
             context.scene.objects.active = bpy.data.objects[atom.name]
             bpy.ops.object.parent_set(type='OBJECT', keep_transform = False)
 
+            # store name in atom object
+            atom.neg_charge = atom.name + "_neg"
+
             # make negative charge
             bpy.ops.mesh.primitive_uv_sphere_add(location=atom.position, size=radius)
-            context.object.name = atom.name + "_neg"
-            context.object.data.name = atom.name + "_neg"
+            context.object.name = atom.neg_charge
+            context.object.data.name = atom.neg_charge
             context.object.data.materials.append(bpy.data.materials[molecule.negcharge_mat])
             bpy.ops.object.shade_smooth()
 
@@ -545,8 +552,8 @@ def AnimateMolecule(context, molecule, options):
             item.select = False
 
         atom_obj = bpy.data.objects[atom.name]
-        pluscharge = bpy.data.objects[atom.pluscharge] if (options["charges"]!="none") else ""
-        negcharge  = bpy.data.objects[atom.negcharge]  if (options["charges"]!="none") else ""
+        pluscharge = bpy.data.objects[atom.plus_charge] if (options["charges"]!="none") else ""
+        negcharge  = bpy.data.objects[atom.neg_charge]  if (options["charges"]!="none") else ""
 
         for (iframe, isnap) in enumerate(atom.trajectory):
             atom_obj.location = isnap.position
@@ -554,7 +561,7 @@ def AnimateMolecule(context, molecule, options):
 
             if (options["charges"] != "none"):
                 if (options["charges"] == "scale"):
-                    pc, nc = max(0.0, isnape.charge), -min(0.0, isnap.charge)
+                    pc, nc = max(0.0, isnap.charge), -min(0.0, isnap.charge)
                     pluscharge.scale = molecule.scale(pc)
                     negcharge.scale = molecule.scale(nc)
                     for x in [ pluscharge, negcharge ]:
