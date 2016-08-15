@@ -140,8 +140,8 @@ class MolecularBlender(Operator, ImportHelper):
                     name = "chgfac",
                     description = "Use chgfac*(charge + chgoff) in charge plotting to control visibility of charges",
                     default     = 1.0,
-                    min         = -5.0,
-                    max         = 5.0,
+                    min         = -100.0,
+                    max         = 100.0,
                     step        = 0.05,
                     precision   = 2
                     )
