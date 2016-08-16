@@ -32,10 +32,34 @@ import math
 
 from collections import namedtuple
 
+import time
 import bpy
 import mathutils
 
 elements = {} # container for elements
+
+# decorator to measure time in a function using blender timer
+def stopwatch(routine):
+    def stopwatch_dec(func):
+        def wrapper(*args, **kwargs):
+            start = time.time()
+            out = func(*args, **kwargs)
+            end = time.time()
+            print("%.4f sec elapsed in routine %s" % ((end-start), routine))
+            return out
+        return wrapper
+    return stopwatch_dec
+
+class Timer(object):
+    def __init__(self):
+        self.last_time = time.time()
+
+    def tick(self):
+        lt, self.last_time = self.last_time, time.time()
+        return self.last_time - lt
+
+    def tick_print(self, label):
+        print("  %40s: %.4f sec" % (label, self.tick()))
 
 class Snapshot(object):
     def __init__(self, position, charge, gradient):
@@ -98,6 +122,7 @@ class Molecule(object):
         out /= total_mass
         return out
 
+    @stopwatch("determine_bonding")
     def determine_bonding(self, options):
         """builds list of bonded pairs"""
         atoms = self.atoms
@@ -120,7 +145,6 @@ class Molecule(object):
                                 self.bonds.append(bond)
                                 break
 
-
     def bond_mask(self, options):
         """Construct mask determining whether a bond should be drawn at each frame"""
         outmask = { }
@@ -141,6 +165,7 @@ class Molecule(object):
         out = self.chgfac * (chg - thr) + 1.0 if chg > thr else 0.0
         return mathutils.Vector((out,out,out))
 
+@stopwatch("ImportXYZ")
 def ImportXYZ(filename, options):
     """Read in xyz file and return list of atoms"""
     out = []
@@ -240,6 +265,7 @@ def plot_prep(molecule, options):
         molecule.chgfac = options["charge_factor"]
         molecule.chgoff = options["charge_offset"]
 
+@stopwatch("make_atom_materials")
 def make_atom_materials(molecule, options):
     """Given a molecule object, creates required materials and populates materials dictionary in molecule"""
 
@@ -271,6 +297,7 @@ def make_atom_materials(molecule, options):
             bpy.data.materials[ch].diffuse_color = mathutils.Color(col)
     return
 
+@stopwatch("make_bond_materials")
 def make_bond_materials(molecule, options):
     """Given a molecule object, creates the corresponding materials for the bonds"""
 
@@ -291,10 +318,13 @@ def make_bond_materials(molecule, options):
         bpy.data.materials[bond].diffuse_color = mathutils.Color((0.9,0.9,0.9))
     return
 
+@stopwatch("PlotMolecule")
 def PlotMolecule(context, molecule, options):
     """Plots the given molecule object to the specified context"""
     global pt
     global namedtuple
+
+    clock = Timer()
 
     object_type = options["object_type"]
     center_of_mass = molecule.COM()
@@ -304,9 +334,11 @@ def PlotMolecule(context, molecule, options):
 
     # update molecule name to make sure it's unique
     molecule.name = unique_name(molecule.name, bpy.data.objects.keys())
-
     # set name for new parent
     context.object.name = molecule.name
+
+    # hold onto reference to parent
+    molecule_obj = bpy.data.objects[molecule.name]
 
     Style = namedtuple('Style', ['atom_size', 'bond_size', 'atom_scaling', 'bond_scaling'])
     style_dict = { 'vdw'       : Style( atom_size="scaled", bond_size="none", atom_scaling=1.0, bond_scaling=0.0 ),
@@ -317,42 +349,43 @@ def PlotMolecule(context, molecule, options):
 
     bond_thickness = options["bond_thickness"]
 
+    # local list of keys to keep making unique names
+    obj_keys = bpy.data.objects.keys().copy()
+
+    # list of objects that need to be processed after scene creation
+    to_link = []
+    to_hook = []
+    to_parent = []
+
+    clock.tick_print("preamble")
+
     # Check to see if original atom already exists, if yes, create translated linked duplicate, if no, create new object
     for atom in molecule.atoms:
-        #Unselect Everything
+        # Unselect Everything
         bpy.ops.object.select_all(action='DESELECT')
         base_atom = molecule.name + "_" + atom.el.name
         ref_atom = base_atom + "0"
-        if ref_atom in bpy.data.objects.keys(): # duplicate existing atom
+        atom_obj = ""
+        if ref_atom in obj_keys: # duplicate existing atom
             # name new object
-            atom.name = unique_name(base_atom, bpy.data.objects.keys(), 0)
+            atom.name = unique_name(base_atom, obj_keys, 0)
 
             # Create the linked duplicate object
-            bpy.data.objects[ref_atom].select = True #Set active object to base
-            context.scene.objects.active = bpy.data.objects[ref_atom]
-            translation_vector = atom.position - context.object.location
-            bpy.ops.object.duplicate_move_linked(
-                OBJECT_OT_duplicate={"linked":False, "mode":'TRANSLATION'},
-                TRANSFORM_OT_translate={
-                    "value":translation_vector,
-                    "constraint_axis":(False, False, False),
-                    "constraint_orientation":'GLOBAL',
-                    "mirror":False,
-                    "proportional":'DISABLED',
-                    "proportional_edit_falloff":'SMOOTH',
-                    "proportional_size":1,
-                    "snap":False,
-                    "snap_target":'CLOSEST',
-                    "snap_point":(0, 0, 0),
-                    "snap_align":False,
-                    "snap_normal":(0, 0, 0),
-                    "texture_space":False,
-                    "remove_on_cancel":False,
-                    "release_confirm":False}
-                )
+            atom_obj = bpy.data.objects[ref_atom]
 
-            context.object.name = atom.name
-            context.object.data.name = atom.name
+            atom_copy = atom_obj.copy()
+            atom_copy.location = atom.position
+            atom_copy.name = atom.name
+
+            # add new name to local list of keys
+            obj_keys.append(atom.name)
+
+            # store object in to_link list
+            to_link.append(atom_copy)
+
+            # hold onto reference
+            atom_obj = atom_copy
+
         else:   #Create the base atom from which all other of same element will be copied
             atom.name = ref_atom
             bpy.ops.object.select_all(action='DESELECT')
@@ -367,49 +400,44 @@ def PlotMolecule(context, molecule, options):
                 bpy.ops.mesh.primitive_uv_sphere_add(location=atom.position, size=radius)
             context.object.name = ref_atom
             context.object.data.name = ref_atom
+            obj_keys.append(ref_atom)
+
+            # hold onto reference
+            atom_obj = context.object
+
             context.object.data.materials.append(bpy.data.materials[molecule.materials[atom.el.symbol]])
             bpy.ops.object.shade_smooth()
 
-            #make parent active
-            context.scene.objects.active=bpy.data.objects[molecule.name]
+            # make parent active
+            context.scene.objects.active = molecule_obj
             bpy.ops.object.parent_set(type='OBJECT',keep_transform=False)
 
         if (options["charges"] != "none"): # set a sphere on top of atom that will show charge
-            # store name in atom object
-            atom.plus_charge = atom.name + "_plus"
+            plus_obj = atom_obj.copy()
+            plus_obj.data = plus_obj.data.copy()
+            plus_obj.data.materials[0] = bpy.data.materials[molecule.pluscharge_mat]
+            plus_obj.name = atom.name + "_plus"
+            to_link.append(plus_obj)
 
-            # make plus charge
-            bpy.ops.mesh.primitive_uv_sphere_add(location=atom.position, size=radius)
-            context.object.name = atom.plus_charge
-            context.object.data.name = atom.plus_charge
-            context.object.data.materials.append(bpy.data.materials[molecule.pluscharge_mat])
-            bpy.ops.object.shade_smooth()
+            neg_obj = atom_obj.copy()
+            neg_obj.data = neg_obj.data.copy()
+            neg_obj.data.materials[0] = bpy.data.materials[molecule.negcharge_mat]
+            neg_obj.name = atom.name + "_neg"
+            to_link.append(neg_obj)
 
             # initialize scale
             pc = max(0.0, atom.charge)
-            context.object.scale = molecule.scale(pc)
+            plus_obj.scale = molecule.scale(pc)
 
-            # set base atom as parent so it moves alongside
-            context.scene.objects.active = bpy.data.objects[atom.name]
-            bpy.ops.object.parent_set(type='OBJECT', keep_transform = False)
-
-            # store name in atom object
-            atom.neg_charge = atom.name + "_neg"
-
-            # make negative charge
-            bpy.ops.mesh.primitive_uv_sphere_add(location=atom.position, size=radius)
-            context.object.name = atom.neg_charge
-            context.object.data.name = atom.neg_charge
-            context.object.data.materials.append(bpy.data.materials[molecule.negcharge_mat])
-            bpy.ops.object.shade_smooth()
+            to_parent.append((plus_obj, atom_obj))
 
             # initialize scale
             nc = -min(0.0, atom.charge)
-            context.object.scale = molecule.scale(nc)
+            neg_obj.scale = molecule.scale(nc)
 
-            # set base atom as parent so it moves alongside
-            context.scene.objects.active = bpy.data.objects[atom.name]
-            bpy.ops.object.parent_set(type='OBJECT', keep_transform = False)
+            to_parent.append((neg_obj, atom_obj))
+
+    clock.tick_print("atom creation")
 
     if len(molecule.bonds) > 0: # Add the bonds
         # Make circles the correct size for the bonds
@@ -427,13 +455,13 @@ def PlotMolecule(context, molecule, options):
             bevnames[i] = bevelname
             context.object.name = bevelname
 
-            context.scene.objects.active=bpy.data.objects[molecule.name]
+            context.scene.objects.active = molecule_obj
             bpy.ops.object.parent_set(type='OBJECT',keep_transform=False)
 
         make_bond_materials(molecule, options)
 
         for bond in molecule.bonds: # make curves for bonds
-            #deselect all
+            # deselect all
             bpy.ops.object.select_all(action='DESELECT')
 
             iatom = bond.iatom
@@ -441,7 +469,8 @@ def PlotMolecule(context, molecule, options):
 
             bevtype = (iatom if iatom.el.vdw > jatom.el.vdw else jatom).el.symbol
             bond.bevelname = bevnames[bond.style]
-            bond.name = unique_name(bond.make_name(molecule.name), bpy.data.objects.keys())
+            bond.name = unique_name(bond.make_name(molecule.name), obj_keys)
+            obj_keys.append(bond.name)
 
             #create curve object
             coords = [iatom.position, jatom.position]
@@ -454,38 +483,63 @@ def PlotMolecule(context, molecule, options):
             bondline.bezier_points.add(len(coords)-1)
             for i, pnt in enumerate(coords):
                 p = bondline.bezier_points[i]
-                p.co = pnt
+                p.co = pnt - molecule_obj.location
                 p.handle_right_type = p.handle_left_type = 'AUTO'
             curveOB = bpy.data.objects.new(bond.name, curve)
             curveOB.data.bevel_object = bpy.data.objects[bond.bevelname]
             curveOB.data.use_fill_caps = True
-            scn = context.scene
-            scn.objects.link(curveOB)
-            scn.objects.active = curveOB
-            curveOB.select = True
-            context.scene.objects.active=bpy.data.objects[molecule.name]
-            bpy.ops.object.parent_set(type='OBJECT',keep_transform=False)
+            curveOB.parent = bpy.data.objects[molecule.name]
 
-            #Hook to atom1
-            bpy.ops.object.select_all(action='DESELECT')
-            bpy.data.objects[iatom.name].select=True
-            bpy.data.objects[bond.name].select=True
-            context.scene.objects.active = bpy.data.objects[bond.name]
-            bpy.ops.object.mode_set(mode='EDIT')
-            bpy.ops.curve.de_select_first()
-            bpy.ops.object.hook_add_selob()
-            bpy.ops.object.mode_set(mode='OBJECT')
+            to_link.append(curveOB)
 
-            #Hook to atom2
-            bpy.ops.object.select_all(action='DESELECT')
-            bpy.data.objects[jatom.name].select=True
-            bpy.data.objects[bond.name].select=True
-            context.scene.objects.active = bpy.data.objects[bond.name]
-            bpy.ops.object.mode_set(mode='EDIT')
-            bpy.ops.curve.de_select_first()
-            bpy.ops.curve.de_select_last()
-            bpy.ops.object.hook_add_selob()
-            bpy.ops.object.mode_set(mode='OBJECT')
+            to_hook.append((iatom.name, jatom.name, bond.name))
+
+    clock.tick_print("bond creation")
+
+    # finalize by linking in objects and updating scene
+    scn = context.scene
+    for ob in to_link: # link in objects
+        scn.objects.link(ob)
+
+    clock.tick_print("link objects")
+
+    # update scene
+    scn.update()
+
+    clock.tick_print("update scene")
+
+    # add hooks
+    for iatom, jatom, bond in to_hook:
+        # Hook to atom1
+        bpy.ops.object.select_all(action='DESELECT')
+        bpy.data.objects[iatom].select=True
+        bpy.data.objects[bond].select=True
+        context.scene.objects.active = bpy.data.objects[bond]
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.curve.de_select_first()
+        bpy.ops.object.hook_add_selob()
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+        # Hook to atom2
+        bpy.ops.object.select_all(action='DESELECT')
+        bpy.data.objects[jatom].select=True
+        bpy.data.objects[bond].select=True
+        context.scene.objects.active = bpy.data.objects[bond]
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.curve.de_select_first()
+        bpy.ops.curve.de_select_last()
+        bpy.ops.object.hook_add_selob()
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+    clock.tick_print("set hooks")
+
+    for child, parent in to_parent:
+        bpy.ops.object.select_all(action='DESELECT')
+        child.select = True
+        context.scene.objects.active = parent
+        bpy.ops.object.parent_set(type='OBJECT', keep_transform=False)
+
+    clock.tick_print("set parentage")
 
     if (options["gradient"]):
         for atom in molecule.atoms:
