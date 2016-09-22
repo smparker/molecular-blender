@@ -9,6 +9,8 @@ quantum chemistry
 - support for animations (input as multiframe .xyz files) including dynamically
   drawing bonds
 - find and fill in aromatic rings
+- draw spheres sitting on atoms to represent atomic charges and dynamically
+  scale them during an animation
 
 ## Installation
 There are two basic ways to install Molecular Blender, either through
