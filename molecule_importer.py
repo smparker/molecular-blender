@@ -417,12 +417,14 @@ def PlotMolecule(context, molecule, options):
             plus_obj.data = plus_obj.data.copy()
             plus_obj.data.materials[0] = bpy.data.materials[molecule.pluscharge_mat]
             plus_obj.name = atom.name + "_plus"
+            atom.plus_charge = plus_obj.name
             to_link.append(plus_obj)
 
             neg_obj = atom_obj.copy()
             neg_obj.data = neg_obj.data.copy()
             neg_obj.data.materials[0] = bpy.data.materials[molecule.negcharge_mat]
             neg_obj.name = atom.name + "_neg"
+            atom.neg_charge = neg_obj.name
             to_link.append(neg_obj)
 
             # initialize scale
