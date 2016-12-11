@@ -1,0 +1,26 @@
+---
+title: "gallery"
+bg: purple
+color: white
+fa-icon: photo
+---
+
+<h2>TOC art</h2>
+
+<div class="columned">
+  {% for image in site.data.toc %}
+    <div class="img-column">
+      <a href="https://dx.doi.org/{{image.doi}}">
+        <img src="img/{{image.src}}">
+      </a>
+    </div>
+  {% endfor %}
+</div>
+
+<!-- <h2>Animations</h2>
+
+<div class="columned">
+  {% for anim in site.data.animations %}
+    <img src="img/{{anim.src}}">
+  {% endfor %}
+</div> -->
