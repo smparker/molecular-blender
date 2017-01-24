@@ -24,9 +24,9 @@
 from .periodictable import element,symbols,generate_table
 from .find_planar_rings import plotRings
 
-# import pybel if it is available
-try: import pybel
-except ImportError: pass
+from .util import stopwatch, Timer, unique_name
+from .importers import molecule_from_file
+
 import sys
 import math
 
@@ -38,45 +38,32 @@ import mathutils
 
 elements = {} # container for elements
 
-# decorator to measure time in a function using blender timer
-def stopwatch(routine):
-    def stopwatch_dec(func):
-        def wrapper(*args, **kwargs):
-            start = time.time()
-            out = func(*args, **kwargs)
-            end = time.time()
-            print("%.4f sec elapsed in routine %s" % ((end-start), routine))
-            return out
-        return wrapper
-    return stopwatch_dec
-
-class Timer(object):
-    def __init__(self):
-        self.last_time = time.time()
-
-    def tick(self):
-        lt, self.last_time = self.last_time, time.time()
-        return self.last_time - lt
-
-    def tick_print(self, label):
-        print("  %40s: %.4f sec" % (label, self.tick()))
-
 class Snapshot(object):
     def __init__(self, position, charge, gradient):
         self.position = mathutils.Vector(position)
         self.charge = float(charge)
         self.gradient = mathutils.Vector(position)
 
+    @classmethod
+    def from_dict(cls, inp):
+        return cls(inp["position"], inp["charge"], inp["gradient"])
+
 class Atom(object):
     """Collect information on single atom"""
-    def __init__(self, symbol, position, index, name = "", charge = 0.0, gradient = [0.0, 0.0, 0.0]):
+    def __init__(self, symbol, position, index, name = "", charge = 0.0, gradient = [0.0, 0.0, 0.0],
+        trajectory = []):
         self.el = elements[symbol]
         self.position = mathutils.Vector(position)
         self.index = index
         self.name = name
         self.charge = charge
         self.gradient = mathutils.Vector(gradient)
-        self.trajectory = []
+        self.trajectory = trajectory
+
+    @classmethod
+    def from_dict(cls, inp):
+        return cls(inp["symbol"], inp["position"], inp["index"], charge=inp["charge"],
+            gradient=inp["gradient"], trajectory=[ Snapshot.from_dict(x) for x in inp["trajectory"] ])
 
 class Bond(object):
     """Join two atoms in a bond"""
@@ -111,6 +98,10 @@ class Molecule(object):
         self.bond_materials = {}
         self.chgoff = 1.0
         self.chgfac = 1.0
+
+    @classmethod
+    def from_dict(cls, name, inp):
+        return cls(name, [ Atom.from_dict(x) for x in inp["atoms"] ])
 
     def COM(self):
         """Computes center of mass from atoms list"""
@@ -164,101 +155,6 @@ class Molecule(object):
         thr = 1.0 - self.chgoff
         out = self.chgfac * (chg - thr) + 1.0 if chg > thr else 0.0
         return mathutils.Vector((out,out,out))
-
-@stopwatch("ImportXYZ")
-def ImportXYZ(filename, options):
-    """Read in xyz file and return list of atoms"""
-    out = []
-    fh = open(filename,"r")
-
-    if (options["plot_type"] == "frame"):
-        # first line contains number of atoms
-        natoms = int(fh.readline().split()[0])
-        # second line is a comment
-        fh.readline()
-
-        index = 0
-        for line in fh:
-            # Expecting:
-            #   <symbol> <x> <y> <z> [<charge> [<vx> <vy> <vz>]]
-            # e.g.
-            #   h 0.0 0.0 1.0 0.0 1.0 2.0 3.0
-            tmp = line.split()
-            symb = str(tmp[0]).lower()
-            position = [ float(x) for x in tmp[1:4] ]
-            charge = float(tmp[4]) if len(tmp) >= 5 else 0.0
-            vec = [ float(x) for x in tmp[5:8] ] if len(tmp) >= 8 else [ 0.0 for x in range(3) ]
-            out.append(Atom(symb, position, index, charge=charge, gradient=vec))
-            index += 1
-
-        assert(index == natoms)
-    elif (options["plot_type"] == "animate"):
-        # first line contains number of atoms
-        natoms = int(fh.readline().split()[0])
-        # second line is a comment
-        fh.readline()
-
-        for iatom in range(natoms):
-            tmp = fh.readline().split()
-            symb = str(tmp[0]).lower()
-            position = [ float(x) for x in tmp[1:4] ]
-            charge = float(tmp[4]) if len(tmp) >= 5 else 0.0
-            vec = [ float(x) for x in tmp[5:8] ] if len(tmp) >= 8 else [ 0.0 ] * 3
-            new_atom = Atom(symb, position, iatom, charge=charge, gradient=vec)
-
-            new_atom.trajectory.append(Snapshot(position, charge, vec))
-            out.append(new_atom)
-
-        while (True):
-            line = fh.readline()
-            if (line == ""): break
-            frame_atoms = int(line.split()[0]) # natoms
-            if (frame_atoms != natoms):
-                raise Exception("All frames in trajectory must have the same number of atoms.")
-
-            fh.readline() # comment line
-            for i in range(natoms):
-                tmp = fh.readline().split()
-                symb = str(tmp[0]).lower()
-                if (symb != out[i].el.symbol):
-                    raise Exception("The order of the atoms must be the same for each frame in the animation.")
-                position = [ float(x) for x in tmp[1:4] ]
-                charge = float(tmp[4]) if len(tmp) >= 5 else 0.0
-                vec = [ float(x) for x in tmp[5:8] ] if len(tmp) >= 8 else [ 0.0 for x in range(3) ]
-                out[i].trajectory.append(Snapshot(position, charge, vec))
-
-    return out
-
-def ImportPDB(filename):
-    """Read PDB using Babel, if available"""
-    return BabelImport(filename, "pdb")
-
-def BabelImport(filename, filetype):
-    """Implementation for reading a pdb"""
-    if ('pybel' not in sys.modules.keys()):
-        raise Exception("Importing files in " + filetype + " format requires PyBel")
-
-    mol = pybel.readfile(filetype, filename).next()
-
-    out = []
-    for atom in mol:
-        out.append(Atom(symbols[atom.atomicnum].lower(), atom.coord))
-
-    return out
-
-def unique_name(name, existing_names, starting_suffix = None):
-    """If name is not in existing_names, returns name. Otherwise, returns name + "0", 1, 2, etc."""
-    testname = name if starting_suffix is None else "%s%d" % (name, starting_suffix)
-    if testname in existing_names:
-        n = 0 if starting_suffix is None else starting_suffix+1
-        while (True):
-            testname = "%s%d" % (name, n)
-            if testname in existing_names:
-                n += 1
-            else:
-                return testname
-    else:
-        return testname
 
 def plot_prep(molecule, options):
     if (options["charges"] != "none"):
@@ -640,8 +536,7 @@ def BlendMolecule(context, filename, **options):
     global elements # first redefine elements list
     elements = generate_table(options["colors"])
     name = filename.rsplit('.', 1)[0].rsplit('/')[-1]
-    atoms = ImportXYZ(filename, options)
-    molecule = Molecule(name, atoms)
+    molecule = Molecule.from_dict(name, molecule_from_file(filename, options))
     molecule.determine_bonding(options)
 
     make_atom_materials(molecule, options)

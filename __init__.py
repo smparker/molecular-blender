@@ -43,9 +43,8 @@ class MolecularBlender(Operator, ImportHelper):
     bl_label  = "Molecular Blender"
 
     # in the template, we'll figure it out later
-    filename_ext = ".xyz"
     filter_glob  = StringProperty(
-            default = "*.xyz",
+            default = "*.xyz;*.molden",
             options = {'HIDDEN'},
           )
 
