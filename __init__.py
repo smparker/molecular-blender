@@ -86,6 +86,16 @@ class MolecularBlender(Operator, ImportHelper):
                   precision   = 4
                  )
 
+    hook_atoms = EnumProperty(
+            name = "Hook bonds",
+            description = "Hook bonds to atoms to make bonds follow manual manipulation of the atoms",
+            items = (('auto', "Automatic", "Off for single frames, on for animations"),
+                     ('on', "On", "Hook bonds (can be very slow for molecules with hundreds or more atoms)"),
+                     ('off', "Off", "Do not hook bonds to atoms (faster, but manipulating atoms in blender will" +
+                         " not move the bonds alongside")),
+            default = 'auto'
+            )
+
     keystride = IntProperty(
                   name        = "Keystride",
                   description = "Striding between keyframes in animation",
@@ -162,6 +172,7 @@ class MolecularBlender(Operator, ImportHelper):
         BlendMolecule(context, self.filepath,
                       bonds          = (self.bond_thickness!=0.0),
                       bond_thickness = self.bond_thickness,
+                      hook_atoms = self.hook_atoms,
                       plot_style     = self.style_of_plot,
                       plot_type      = self.type_of_plot,
                       object_type    = self.type_of_object,

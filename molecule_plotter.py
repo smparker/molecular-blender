@@ -406,30 +406,30 @@ def PlotMolecule(context, molecule, options):
 
     clock.tick_print("update scene")
 
-    # add hooks
-    for iatom, jatom, bond in to_hook:
-        # Hook to atom1
-        bpy.ops.object.select_all(action='DESELECT')
-        bpy.data.objects[iatom].select=True
-        bpy.data.objects[bond].select=True
-        context.scene.objects.active = bpy.data.objects[bond]
-        bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.curve.de_select_first()
-        bpy.ops.object.hook_add_selob()
-        bpy.ops.object.mode_set(mode='OBJECT')
+    if options["hook_atoms"]:
+        for iatom, jatom, bond in to_hook:
+            # Hook to atom1
+            bpy.ops.object.select_all(action='DESELECT')
+            bpy.data.objects[iatom].select=True
+            bpy.data.objects[bond].select=True
+            context.scene.objects.active = bpy.data.objects[bond]
+            bpy.ops.object.mode_set(mode='EDIT')
+            bpy.ops.curve.de_select_first()
+            bpy.ops.object.hook_add_selob()
+            bpy.ops.object.mode_set(mode='OBJECT')
 
-        # Hook to atom2
-        bpy.ops.object.select_all(action='DESELECT')
-        bpy.data.objects[jatom].select=True
-        bpy.data.objects[bond].select=True
-        context.scene.objects.active = bpy.data.objects[bond]
-        bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.curve.de_select_first()
-        bpy.ops.curve.de_select_last()
-        bpy.ops.object.hook_add_selob()
-        bpy.ops.object.mode_set(mode='OBJECT')
+            # Hook to atom2
+            bpy.ops.object.select_all(action='DESELECT')
+            bpy.data.objects[jatom].select=True
+            bpy.data.objects[bond].select=True
+            context.scene.objects.active = bpy.data.objects[bond]
+            bpy.ops.object.mode_set(mode='EDIT')
+            bpy.ops.curve.de_select_first()
+            bpy.ops.curve.de_select_last()
+            bpy.ops.object.hook_add_selob()
+            bpy.ops.object.mode_set(mode='OBJECT')
 
-    clock.tick_print("set hooks")
+        clock.tick_print("set hooks")
 
     for child, parent in to_parent:
         bpy.ops.object.select_all(action='DESELECT')
@@ -531,8 +531,16 @@ def AnimateMolecule(context, molecule, options):
                 bond_obj.keyframe_insert(data_path="hide_render", frame=iframe*kstride+1)
     return
 
+def process_options(options):
+    """postprocess choices that might interact with each other"""
+    hooking = { "on" : True, "off" : False, "auto": options["plot_type"] == "animate" }
+    options["hook_atoms"] = hooking[options["hook_atoms"]]
+
+    return options
+
 def BlendMolecule(context, filename, **options):
     """basic driver that calls the appropriate plot functions"""
+    options = process_options(options)
     global elements # first redefine elements list
     elements = generate_table(options["colors"])
     name = filename.rsplit('.', 1)[0].rsplit('/')[-1]
