@@ -31,16 +31,25 @@ class Reader(object):
     def __init__(self, filename):
         self.filename = filename
         self.f = None
+        self.mark = 0
+        self.marks = { }
 
     def readline(self):
         """Ignores blanks"""
+        self.mark = self.f.tell()
         out = self.f.readline()
         if out == "":
             raise EOFError
         return out
 
-    def __iter__(self):
-        return self.f.__iter__()
+    def set_mark(self, label):
+        self.marks[label] = self.mark
+
+    def restore_mark(self, label):
+        self.f.seek(self.marks[label])
+
+    def is_marked(self, label):
+        return label in self.marks
 
     def __enter__(self):
         self.f = open(self.filename, "r")
@@ -77,21 +86,17 @@ def molecule_from_xyz(filename, options):
             # second line is a comment
             fh.readline()
 
-            index = 0
-            for line in fh:
+            for iatom in range(natoms):
                 # Expecting:
                 #   <symbol> <x> <y> <z> [<charge> [<vx> <vy> <vz>]]
                 # e.g.
                 #   h 0.0 0.0 1.0 0.0 1.0 2.0 3.0
-                tmp = line.split()
+                tmp = fh.readline().split()
                 symb = str(tmp[0]).lower()
                 position = [ float(x) for x in tmp[1:4] ]
                 charge = float(tmp[4]) if len(tmp) >= 5 else 0.0
                 gradient = [ float(x) for x in tmp[5:8] ] if len(tmp) >= 8 else [ 0.0 for x in range(3) ]
-                out["atoms"].append(make_atom_dict(symb, position, index, charge, gradient))
-                index += 1
-
-            assert(index == natoms)
+                out["atoms"].append(make_atom_dict(symb, position, iatom, charge, gradient))
         elif (options["plot_type"] == "animate"):
             # first line contains number of atoms
             natoms = int(fh.readline().split()[0])
@@ -133,55 +138,129 @@ def molecule_from_xyz(filename, options):
 
     return out
 
+molden_re = re.compile(r"\[\s*molden\s+format\s*\]", flags=re.IGNORECASE)
+atoms_re = re.compile(r"\[\s*atoms\s*\]\s*(angs|au)?", flags=re.IGNORECASE)
+gto_re = re.compile(r"\[\s*gto\s*\]", flags=re.IGNORECASE)
+newsection_re = re.compile(r"\s*\[")
+
+def molden_read_atoms(f):
+    """reads [Atoms] section of molden files"""
+    out = [ ]
+    f.restore_mark("atoms")
+
+    line = f.readline()
+    m = atoms_re.search(line)
+
+    # conversion factor incase atomic units are input
+    factor = 1.0 if m.group(1).lower() in "angs" else au2ang
+
+    # advance until a line starts with [
+    try:
+        line = f.readline()
+        m = newsection_re.match(line)
+        while (not m):
+            el, no, at, x, y, z = line.split()
+            out.append(make_atom_dict(el,
+                [ factor*float(x), factor*float(y), factor*float(z) ],
+                int(no), 0.0, [ 0.0, 0.0, 0.0] ))
+            line = f.readline()
+            m = newsection_re.match(line)
+    except EOFError:
+        pass
+
+    return sorted(out, key=lambda atom: atom["index"])
+
+def molden_read_gto(f):
+    """reads through GTO section to collect basis information"""
+    f.restore_mark("gto")
+
+    line = f.readline() # should just say GTO
+
+    out = []
+
+    try: # allow it to quietly exit if there is no basis
+        line = f.readline()
+    except EOFError:
+        return out
+
+    while True:
+        if newsection_re.search(line):
+            break
+        # specifying basis for atom iatom
+        iatom = line.split()[0]
+
+        atombasis = []
+
+        line = f.readline()
+        while True:
+            shell, nprim = line.split()[0:2]
+
+            if shell not in [ "s", "sp", "p", "d", "f", "g" ]:
+                raise Exception("unsupported shell specified: %s" % shell)
+
+            nprim = int(nprim)
+
+            new_shell = { }
+
+            new_shell["shell"] = shell
+            new_shell["exponents"] = []
+            new_shell["contractions"] = []
+
+            if shell == "sp":
+                raise Exception("sp shells not handled yet")
+
+            for i in range(nprim):
+                if shell != "sp":
+                    exp, con = f.readline().split()
+                    new_shell["exponents"].append(float(exp))
+                    new_shell["contractions"].append(float(con))
+                else:
+                    exp, coeff1, coeff2 = f.readline().split()
+                    exp, coeff1, coeff2 = float(exp), float(coeff1), float(coeff2)
+
+            atombasis.append(new_shell)
+
+            # a blank line signals the end of this atom's basis
+            try: # allow safe deaths
+                line = f.readline()
+                if line.strip() == "":
+                    while line.strip() == "":
+                        line = f.readline()
+                    break
+            except EOFError:
+                pass
+
+        out.append(atombasis)
+
+    return out
+
 @stopwatch("read molden")
 def molecule_from_molden(filename, options):
     """Read molden file to look for coordinates and optionally orbital data"""
     # molden format is not terribly efficient, but hopefully this doesn't matter
     out = { "atoms" : [] }
 
-    molden_re = re.compile(r"\[\s*molden\s+format\s*\]", flags=re.IGNORECASE)
-    atoms_re = re.compile(r"\[\s*atoms\s*\]\s*(angs|au)?", flags=re.IGNORECASE)
-    newsection_re = re.compile(r"\s*\[")
+    marks = { "molden" : molden_re, "atoms" : atoms_re, "gto": gto_re }
 
     with Reader(filename) as f:
         try:
-            line = f.readline()
-            m = molden_re.search(line)
-            # advance to instance of [Molden]
-            while (not m):
-                print(line)
+            while(True):
                 line = f.readline()
-                m = molden_re.search(line)
-
-            # advance to instances of [atom]
-            line = f.readline()
-            m = atoms_re.search(line)
-            while (not m):
-                line = f.readline()
-                m = atoms_re.search(line)
-        except:
-            print("Exception raised before [atoms] section found")
-            raise
-
-        # conversion factor incase atomic units are input
-        factor = 1.0 if m.group(1).lower() in "angs" else au2ang
-
-        # advance until a line starts with [
-        try:
-            line = f.readline()
-            m = newsection_re.match(line)
-            while (not m):
-                el, no, at, x, y, z = line.split()
-                out["atoms"].append(make_atom_dict(el,
-                    [ factor*float(x), factor*float(y), factor*float(z) ],
-                    int(no), 0.0, [ 0.0, 0.0, 0.0] ))
-                line = f.readline()
-                m = newsection_re.match(line)
+                for x in marks:
+                    if marks[x].search(line): f.set_mark(x)
         except EOFError:
             pass
 
-    # sort by index for good measure
-    out["atoms"] = sorted(out["atoms"], key=lambda atom: atom["index"])
+        if not f.is_marked("molden"):
+            raise Exception("Molden file is missing [Molden Format] specification")
+        if not f.is_marked("atoms"):
+            raise Exception("Molden file is missing [Atoms] specification")
+
+        # read through atoms section
+        out["atoms"] = molden_read_atoms(f)
+
+        if f.is_marked("gto"): # read through GTO section to build basis
+            out["basis"] = molden_read_gto(f)
 
     return out
 

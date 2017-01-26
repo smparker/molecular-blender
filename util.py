@@ -21,7 +21,6 @@
 #
 
 import time
-import bpy
 
 class Timer(object):
     """Convenience class for measuring timing of chunks of code"""

@@ -18,16 +18,18 @@
 #  along with Molecular Blender; see COPYING.
 #  If not, see <http://www.gnu.org/licenses/>.
 
+from .util import stopwatch, Timer
+
 import bpy
 
 # Creates a graph structure from list of atoms and bonds
 def createGraph(atomlist,connectivitylist):
-    graph = {}
-    for x in range(len(atomlist)+1):
-        graph[x] = set()
+    graph = [ set() for x in range(len(atomlist)) ]
+
     for x,y in connectivitylist:
         graph[x].update(set([y]))
         graph[y].update(set([x]))
+
     return graph
 
 # Check if vertices of loop are coplanar
@@ -46,46 +48,55 @@ def isPlanar(atomlist,cycle):
                 return False
         return True
 
-# Basic depth first search algorithm, from pulled from the Internet
-def DFS(graph,start,goal):
+# Basic depth first search algorithm, pulled from the Internet
+def DFS(graph, start, goal, pathrange=(2,7)):
     stack = [(start,[start])]
     while stack:
         (vertex,path) = stack.pop()
-        for nextpath in graph[vertex] - set(path):
-            if nextpath == goal:
-                yield path + [nextpath]
-            else:
-                stack.append((nextpath,path + [nextpath]))
+        # any successes after this point will add one to current length of path
+        if len(path)+1 < pathrange[1]:
+            for nextvert in graph[vertex] - set(path):
+                if nextvert == goal:
+                    if pathrange[0] < len(path)+1 < pathrange[1]:
+                        yield path + [nextvert]
+                else:
+                    stack.append((nextvert,path + [nextvert]))
 
 # Finds all unique paths of a vertex back to itself
-def findSpecificCycles(graph,vertex):
+def findSpecificCycles(graph, vertex, pathrange=(2, 7)):
     cycles = []
     fixedcycles = []
     for goal in graph[vertex]:
-        paths = list(DFS(graph,vertex,goal))
-        for path in paths:
+        for path in DFS(graph,vertex,goal,pathrange=pathrange):
             if set(path) not in cycles:
                 cycles.append(set(path))
                 fixedcycles.append(path)
     return cycles,fixedcycles
 
-# Finds all closed walks of length > 2, less than 7
-def findAllUniqueCycles(graph):
+# Finds all closed walks of with lengths bounded by path range. Defaults to paths
+# of length > 2 and < 7
+def findAllUniqueCycles(graph, pathrange=(2,7)):
     cycles = []
-    for x in list(graph):
-        possibleCycles,extras = findSpecificCycles(graph,x)
+    for i in range(len(graph)):
+        possibleCycles,extras = findSpecificCycles(graph,i,pathrange)
         for cycle in possibleCycles:
-            if set(cycle) not in cycles and 2 < len(cycle) < 7:
+            if set(cycle) not in cycles and pathrange[0] < len(cycle) < pathrange[1]:
                 cycles.append(set(cycle))
     return cycles
 
 # Given a list of atoms and bonds, determine where aromatic rings are and plot them
 def plotRings(context, molecule, options):
+    timer = Timer()
     atomlist = molecule.atoms
     bondlist = [(b.iatom.index, b.jatom.index) for b in molecule.bonds]
+    timer.tick_print("generate lists")
     graph = createGraph(atomlist,bondlist)
+    timer.tick_print("create graphs")
     cycles = findAllUniqueCycles(graph)
+    timer.tick_print("find unique cycles")
     planarCycles = [x for x in cycles if isPlanar(atomlist,x)]
+    timer.tick_print("check cycle planarity")
+
     for num,pCycle in enumerate(planarCycles):
         objname  = "Ring" + str(num)
         meshname = objname + "mesh"
@@ -108,3 +119,4 @@ def plotRings(context, molecule, options):
         ringObj = bpy.data.objects.new(objname,ringMesh)
         ringObj.data = ringMesh
         context.scene.objects.link(ringObj)
+    timer.tick_print("plot all planar cycles")

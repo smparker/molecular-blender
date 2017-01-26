@@ -35,7 +35,7 @@ from bpy_extras.io_utils import ImportHelper
 from bpy.props import StringProperty, BoolProperty, EnumProperty, IntProperty, FloatProperty
 from bpy.types import Operator
 
-from .molecule_importer import BlendMolecule
+from .molecule_plotter import BlendMolecule
 
 class MolecularBlender(Operator, ImportHelper):
     """A class designed to conveniently import molecules to blender"""
