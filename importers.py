@@ -21,10 +21,14 @@
 #
 
 from .util import stopwatch, Timer
+from .periodictable import symbols
+
+import numpy as np
 
 import re
 
-au2ang = 1.8897259885789
+ang2bohr = 1.8897259885789
+bohr2ang = 1.0/ang2bohr
 
 class Reader(object):
     """Convenience class to read a line, store it, and throw if file is over"""
@@ -65,15 +69,19 @@ def molecule_from_file(filename, options):
         return molecule_from_xyz(filename, options)
     elif ".molden" in filename.lower():
         return molecule_from_molden(filename, options)
+    elif ".cube" in filename.lower():
+        return molecule_from_cube(filename, options)
     else: # fall back to some sort of babel import
         return molecule_from_babel(filename, options)
 
 def make_atom_dict(symbol, position, index, charge, gradient):
-    return { "symbol" : symbol.lower(), "position" : position,
-        "index" : index, "charge" : charge, "gradient" : gradient, "trajectory" : [] }
+    return { "symbol" : str(symbol).lower(), "position" : [ float(x) for x in position ],
+        "index" : int(index), "charge" : float(charge),
+        "gradient" : [ float(x) for x in gradient ], "trajectory" : [] }
 
 def make_snap_dict(position, charge, gradient):
-    return { "position" : position, "charge" : charge, "gradient" : gradient }
+    return { "position" : [ float(x) for x in position ], "charge" : float(charge),
+            "gradient" : [ float(x) for x in gradient ] }
 
 @stopwatch("read xyz")
 def molecule_from_xyz(filename, options):
@@ -152,7 +160,7 @@ def molden_read_atoms(f):
     m = atoms_re.search(line)
 
     # conversion factor incase atomic units are input
-    factor = 1.0 if m.group(1).lower() in "angs" else au2ang
+    factor = 1.0 if m.group(1).lower() in "angs" else bohr2ang
 
     # advance until a line starts with [
     try:
@@ -263,6 +271,66 @@ def molecule_from_molden(filename, options):
             out["basis"] = molden_read_gto(f)
 
     return out
+
+@stopwatch("read cube")
+def molecule_from_cube(filename, options):
+    """Read a cube file including its volumetric data"""
+    out = { "atoms" : [] }
+
+    with Reader(filename) as f:
+        f.readline() # first two lines are comments
+        f.readline() # first two lines are comments
+
+        # 3rd line is <natoms> <origin_x> <origin_y> <origin_z>
+        natoms, ox, oy, oz = f.readline().split()
+        natoms = int(natoms)
+        origin = np.array([ox, oy, oz], dtype=np.float32) * bohr2ang
+
+        nres = [ 0, 0, 0 ] # number of points in each direction
+        axes = np.zeros([3,3], dtype=np.float32) # axes[i,:] defines the i-th axis
+
+        # 4th, 5th, 6th lines describe the axes that define the grid with: <npoints> <axis_x> <axis_y> <axis_z>
+        for i in range(3):
+            res, vx, vy, vz = f.readline().split()
+            nres[i] = int(res)
+            axes[i,:] = np.array([vx, vy, vz], dtype=np.float32)
+            if nres[i] > 0: # aces defined in Bohr
+                axes[i,:] *= bohr2ang
+            else: # axes defined in Angstrom
+                nres[i] *= -1
+
+        # make sure axes aren't oblique
+        S = np.dot(axes.T, axes)
+        for x in ( S[0,1], S[0,2], S[1,2] ):
+            if abs(x) > 1e-6:
+                raise Exception("Sheared axes are not supported with cube files!")
+
+        # next natoms lines define the molecule
+        # <atomic number> <charge> <x> <y> <z>
+        for i in range(natoms):
+            ato, chg, x, y, z = f.readline().split()
+            iatom = int(ato)
+            position = [ bohr2ang * float(xx) for xx in [x,y,z] ]
+            out["atoms"].append(make_atom_dict(symbols[iatom], position, i, chg, [0.0,0.0,0.0]))
+
+        # and finally the volumetric data comes, 6 elements per line in z, y, x order
+        ndata = np.prod(nres)
+        data = np.zeros(ndata)
+        i = 0
+        while True:
+            #line = np.array(f.readline().split())
+            line = f.readline().split()
+            print(line)
+            ldata = np.array([ float(x) for x in line ])
+            data[i:i+len(line)] = line
+            i += len(line)
+            if i == ndata:
+                break
+
+    out["data"] = data.reshape(nres) # now should have shape [nx, ny, nz]
+
+    return out
+
 
 def molecule_from_babel(filename, options):
     raise Exception("Importing from babel currently disabled")

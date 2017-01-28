@@ -44,7 +44,7 @@ class MolecularBlender(Operator, ImportHelper):
 
     # in the template, we'll figure it out later
     filter_glob  = StringProperty(
-            default = "*.xyz;*.molden",
+            default = "*.xyz;*.molden:*.cube",
             options = {'HIDDEN'},
           )
 
