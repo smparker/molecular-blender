@@ -275,7 +275,7 @@ def molecule_from_molden(filename, options):
 @stopwatch("read cube")
 def molecule_from_cube(filename, options):
     """Read a cube file including its volumetric data"""
-    out = { "atoms" : [] }
+    out = { "atoms" : [], "volume" : {} }
 
     with Reader(filename) as f:
         f.readline() # first two lines are comments
@@ -285,6 +285,7 @@ def molecule_from_cube(filename, options):
         natoms, ox, oy, oz = f.readline().split()
         natoms = int(natoms)
         origin = np.array([ox, oy, oz], dtype=np.float32) * bohr2ang
+        out["volume"]["origin"] = origin
 
         nres = [ 0, 0, 0 ] # number of points in each direction
         axes = np.zeros([3,3], dtype=np.float32) # axes[i,:] defines the i-th axis
@@ -298,6 +299,9 @@ def molecule_from_cube(filename, options):
                 axes[i,:] *= bohr2ang
             else: # axes defined in Angstrom
                 nres[i] *= -1
+
+        out["volume"]["nres"] = nres
+        out["volume"]["axes"] = axes
 
         # make sure axes aren't oblique
         S = np.dot(axes.T, axes)
@@ -318,16 +322,14 @@ def molecule_from_cube(filename, options):
         data = np.zeros(ndata)
         i = 0
         while True:
-            #line = np.array(f.readline().split())
             line = f.readline().split()
-            print(line)
             ldata = np.array([ float(x) for x in line ])
             data[i:i+len(line)] = line
             i += len(line)
             if i == ndata:
                 break
 
-    out["data"] = data.reshape(nres) # now should have shape [nx, ny, nz]
+    out["volume"]["data"] = data.reshape(nres) # now should have shape [nx, ny, nz]
 
     return out
 

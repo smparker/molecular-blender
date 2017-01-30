@@ -44,7 +44,7 @@ class MolecularBlender(Operator, ImportHelper):
 
     # in the template, we'll figure it out later
     filter_glob  = StringProperty(
-            default = "*.xyz;*.molden:*.cube",
+            default = "*.xyz;*.molden;*.cube",
             options = {'HIDDEN'},
           )
 
@@ -135,6 +135,18 @@ class MolecularBlender(Operator, ImportHelper):
                             ),
                     default = 'none')
 
+    isovalues = StringProperty(
+        name = "Isovalues to plot",
+        description = "List of isovalues to plot densities or orbitals",
+        default = "")
+
+    volume = EnumProperty(
+        name = "Volume",
+        description = "Type of volume to plot",
+        items = ( ('density', 'density', "Density"),
+            ('orbital', 'orbital', "Plot orbitals (positive and negative isovalues will be drawn)")),
+        default = 'orbital')
+
     charge_offset = FloatProperty(
                     name = "chgoff",
                     description = "Use chgfac*(charge + chgoff) in charge plotting to control visibility of charges",
@@ -185,6 +197,8 @@ class MolecularBlender(Operator, ImportHelper):
                       charge_factor = self.charge_factor,
                       find_aromatic  = self.find_aromatic,
                       recycle_materials = self.recycle_materials,
+                      isovalues = self.isovalues,
+                      volume = self.volume,
                       colors = self.color_palette)
 
         return {'FINISHED'}

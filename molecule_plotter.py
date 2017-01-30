@@ -23,18 +23,19 @@
 
 from .periodictable import element,symbols,generate_table
 from .find_planar_rings import plotRings
+from .marching_cube import isosurface, cube_isosurface
 
 from .util import stopwatch, Timer, unique_name
 from .importers import molecule_from_file
 
-import sys
-import math
+import numpy as np
 
 from collections import namedtuple
+from itertools import chain
 
-import time
 import bpy
 import mathutils
+import bmesh
 
 elements = {} # container for elements
 
@@ -88,9 +89,23 @@ class Bond(object):
         jname = self.jatom.name.split('_')[-1]
         return basename + "_" + iname + "-" + jname
 
+class VolumeData(object):
+    """Stores volumetric information from, for example, a cube file"""
+    def __init__(self, origin, axes, nres, data):
+        self.origin = origin
+        self.axes = axes
+        self.nres = nres
+        self.data = data
+
+        self.axis_norms = np.array([ np.linalg.norm(self.axes[:,i]) for i in range(3) ])
+
+    @classmethod
+    def from_dict(cls, inp):
+        return cls(inp["origin"], inp["axes"], inp["nres"], inp["data"])
+
 class Molecule(object):
     """Atoms and bonds form a molecule"""
-    def __init__(self, name, atoms):
+    def __init__(self, name, atoms, volume = None):
         self.name = name
         self.atoms = atoms
         self.bonds = []
@@ -98,10 +113,12 @@ class Molecule(object):
         self.bond_materials = {}
         self.chgoff = 1.0
         self.chgfac = 1.0
+        self.volume = volume
 
     @classmethod
     def from_dict(cls, name, inp):
-        return cls(name, [ Atom.from_dict(x) for x in inp["atoms"] ])
+        vol = VolumeData.from_dict(inp["volume"]) if "volume" in inp else None
+        return cls(name, [ Atom.from_dict(x) for x in inp["atoms"] ], volume=vol)
 
     def COM(self):
         """Computes center of mass from atoms list"""
@@ -531,16 +548,86 @@ def AnimateMolecule(context, molecule, options):
                 bond_obj.keyframe_insert(data_path="hide_render", frame=iframe*kstride+1)
     return
 
-def process_options(options):
+def create_mesh(name, verts, faces):
+    """Some black magic to make a mesh with the given name, verts, and faces"""
+    me = bpy.data.meshes.new(name)  # create a new mesh
+    me.from_pydata(verts,[],faces)
+    me.update()      # update the mesh with the new data
+
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.01)
+    bm.to_mesh(me)
+
+    ob = bpy.data.objects.new(name,me) # create a new object
+    ob.data = me          # link the mesh data to the object
+    return ob
+
+def create_geometry(verts):
+    faces=[]
+    faceoffset=0
+    for ver in verts:
+        if len(ver)==4:
+            faces.append((faceoffset+0,faceoffset+1,faceoffset+2,faceoffset+3))
+            faceoffset+=4
+        elif len(ver)==3:
+            faces.append((faceoffset+0,faceoffset+1,faceoffset+2))
+            faceoffset+=3
+    return list(chain.from_iterable(verts)), faces
+
+def draw_surfaces(molecule, context, options):
+    vertex_sets = []
+    if molecule.volume is not None: # volumetric data was read
+        vol = molecule.volume
+        isovals = options["isovalues"]
+
+        # marching cubes to make the surface
+        vertex_sets = cube_isosurface(vol.data, vol.origin, vol.axes, isovals, context)
+
+    meshes = []
+    for v in vertex_sets:
+        # add surfaces to the scene
+        name = molecule.name + "_iso_" + "%f" % v["isovalue"]
+        verts, faces = create_geometry(v["triangles"])
+        meshes.append(create_mesh(name, verts, faces))
+
+    mol_obj = bpy.data.objects[molecule.name]
+    for m in meshes:
+        context.scene.objects.link(m)
+        m.select = True
+
+    mol_obj.select = True
+    # parent them
+    context.scene.objects.active = mol_obj
+    bpy.ops.object.parent_set(type='OBJECT', keep_transform=False)
+
+def process_options(filename, options):
     """postprocess choices that might interact with each other"""
     hooking = { "on" : True, "off" : False, "auto": options["plot_type"] == "animate" }
     options["hook_atoms"] = hooking[options["hook_atoms"]]
+
+    options["isosurfaces"] = ".cube" in filename
+    if options["isosurfaces"]:
+        isovals = options["isovalues"].split(',')
+        isovals = [ float(x) for x in isovals ]
+        if len(isovals) == 0:
+            raise Exception("Isovalues must be specified")
+
+        if options["volume"] == "orbital":
+            # automatically include positive and negative
+            iso_set = set()
+            for iso in isovals:
+                iso_set.add(iso)
+                iso_set.add(-iso)
+            isovals = list(iso_set)
+
+        options["isovalues"] = isovals
 
     return options
 
 def BlendMolecule(context, filename, **options):
     """basic driver that calls the appropriate plot functions"""
-    options = process_options(options)
+    options = process_options(filename, options)
     global elements # first redefine elements list
     elements = generate_table(options["colors"])
     name = filename.rsplit('.', 1)[0].rsplit('/')[-1]
@@ -561,3 +648,6 @@ def BlendMolecule(context, filename, **options):
 
     if (options["find_aromatic"]):
         plotRings(context, molecule, options)
+
+    if options["isosurfaces"]:
+        draw_surfaces(molecule, context, options)

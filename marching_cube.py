@@ -19,73 +19,32 @@
 
 This Code is based on the example from
 http://paulbourke.net/geometry/polygonise/
- by Paul Bourke,
+by Paul Bourke,
 
- and modified by Tom Sapien to work with python within blender.
+and modified by Tom Sapien to work with python within blender.
 
- Subsequent optimizations by Robert Forsman.
+Subsequent optimizations by Robert Forsman.
 
- See also https://github.com/Pyroevil/CubeSurfer for a cython derivative by Jean-Francois Gallant
+See also https://github.com/Pyroevil/CubeSurfer for a cython derivative by Jean-Francois Gallant
 
- This code is under the terms of GPL
+This code is under the terms of GPL
+
+Further modified for clarity and compatibility with molecular blender
+by Shane Parker
 
 """
-__author__ = "Tom Sapiens and Robert Forsman"
+__author__ = "Tom Sapiens, Robert Forsman and Shane Parker"
 __copyright__ = "Copyright 2011, Tom Sapiens"
-__credits__ = ["Tom Sapiens", "Paul Bourke", "Robert Forsman"]
+__credits__ = ["Tom Sapiens", "Paul Bourke", "Robert Forsman", "Shane Parker"]
 __license__ = "GPL"
 __version__ = "0.1"
-__maintainer__ = "Robert Forsman"
-__email__ = "blender@thoth.purplefrog.com"
+__maintainer__ = "Shane Parker"
+__email__ = "smparker@uci.edu"
 __status__ = "alpha"
 
+import numpy as np
 
-import time
-import math
-from math import sqrt,sin,cos,tan
-import mathutils
-import bpy
-from itertools import chain
-import bmesh
-
-vec=mathutils.Vector
-ABS=abs
-
-def main():
-    print("start calculation of isosurface")
-
-#change this part to create your own surfaces
-#####################################################
-    # define a 3D scalarfield (the function which defines the shape of the isosurface)
-    def scalarfield(pos):
-        x,y,z=pos[0],pos[1],pos[2]
-        m=2 #distance between spheres
-        a= 1.0/(1+(x-m)*(x-m)+y*y+z*z)
-        b= 1.0/(1+(x+m)*(x+m)+y*y+z*z)
-        c= 0.5*(sin(6*x)+sin(6*z))
-        csq=c**10
-        return (a+b)-csq
-
-    p0=-5,-5,-5             #first point defining the gridbox of the MC-algorithm
-    p1=5,5,5                #second point defining the gridbox of the MC-algorithm
-    res=200
-    resolution=(res,res,res)   #resolution in x,y,z direction of the grid (10x10x10 means 1000 cubes)
-    isolevel=0.3         #threshold value used for the surface within the scalarfield
-
-#end of isosurface definition
-###############################################
-
-    start = time.time()
-    isosurface(p0,p1,resolution,isolevel,scalarfield)
-    elapsed = time.time()-start
-    print("end test %r"%elapsed)
-
-#
-#
-#
-
-
-edgetable=(0x0  , 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c,
+edgetable=  (0x0 , 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c,
             0x80c, 0x905, 0xa0f, 0xb06, 0xc0a, 0xd03, 0xe09, 0xf00,
             0x190, 0x99 , 0x393, 0x29a, 0x596, 0x49f, 0x795, 0x69c,
             0x99c, 0x895, 0xb9f, 0xa96, 0xd9a, 0xc93, 0xf99, 0xe90,
@@ -117,6 +76,7 @@ edgetable=(0x0  , 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c,
             0x69c, 0x795, 0x49f, 0x596, 0x29a, 0x393, 0x99 , 0x190,
             0xf00, 0xe09, 0xd03, 0xc0a, 0xb06, 0xa0f, 0x905, 0x80c,
             0x70c, 0x605, 0x50f, 0x406, 0x30a, 0x203, 0x109, 0x0)
+
 tritable = [[-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
         [0, 8, 3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
         [0, 1, 9, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
@@ -377,8 +337,6 @@ tritable = [[-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
 
 
 def polygonise(cornervalues, isolevel, x1, y1, z1, x2, y2, z2):
-
-
     #   Determine the index into the edge table which
     #   tells us which vertices are inside of the surface
     cubeindex = 0
@@ -422,11 +380,11 @@ def polygonise(cornervalues, isolevel, x1, y1, z1, x2, y2, z2):
     return triangles
 
 def vertexinterp(isolevel,p1,p2,valp1,valp2):
-   if (ABS(isolevel-valp1) < 0.00001):
+   if (abs(isolevel-valp1) < 0.00001):
       return p1
-   if (ABS(isolevel-valp2) < 0.00001):
+   if (abs(isolevel-valp2) < 0.00001):
       return p2
-   if (ABS(valp1-valp2) < 0.00001):
+   if (abs(valp1-valp2) < 0.00001):
       return p1
    mu = (isolevel - valp1) / (valp2 - valp1);
    x = p1[0] + mu * (p2[0] - p1[0]);
@@ -435,79 +393,64 @@ def vertexinterp(isolevel,p1,p2,valp1,valp2):
 
    return x,y,z
 
-def create_mesh_for(objname,verts,faces):
-    me = bpy.data.meshes.new(objname)  # create a new mesh
-    me.from_pydata(verts,[],faces)
-    me.update()      # update the mesh with the new data
-
-
-    bm = bmesh.new()
-    bm.from_mesh(me)
-    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.01)
-    bm.to_mesh(me)
-
-    ob = bpy.data.objects.new(objname,me) # create a new object
-    ob.data = me          # link the mesh data to the object
-    return ob
-
-def creategeometry(verts):
-    faces=[]
-    faceoffset=0
-    for ver in verts:
-        if len(ver)==4:
-            faces.append((faceoffset+0,faceoffset+1,faceoffset+2,faceoffset+3))
-            faceoffset+=4
-        elif len(ver)==3:
-            faces.append((faceoffset+0,faceoffset+1,faceoffset+2))
-            faceoffset+=3
-    return list(chain.from_iterable(verts)),faces
-
-def make_object_in_scene(verts, scene):
-    verts,faces=creategeometry(verts)
-    block=create_mesh_for("block",verts,faces)
-
-    scene.objects.link(block)
-    selectobj(block)
-
-    return block
-
-def selectobj(obj):
-    for o2 in bpy.context.scene.objects:
-        o2.select = (o2==obj)
-    bpy.context.scene.objects.active=obj
-
-#a threshold function:
-borders=[5,5,5]
-
 def arange(start, stop, step):
      r = start
      while r < stop:
         yield r
         r += step
 
-def cellloop(p0,p1,r):
-    for z in arange(p0[2],p1[2],r[2]):
-     for y in arange(p0[1],p1[1],r[1]):
-      for x in arange(p0[0],p1[0],r[0]):
-        yield x,y,z
+def transform_triangles(triangles, origin, axes):
+    """Transforms and translates set of triangles to match input origin/axes"""
+    coords = np.array(triangles)
+    out = np.dot(coords, axes)
+    return [ out[i,:] + origin for i in range(coords.shape[0]) ]
 
-def cornerloop(x,y,z):
-    for cz in (0,z):
-        for cy,cx in zip((0,y,y,0),(0,0,x,x)):
-             yield cx,cy,cz
+def cube_isosurface(data, origin, axes, isovalues, context):
+    triangle_sets = [ { "isovalue" : iso } for iso in isovalues ]
 
-def isosurface(p0,p1,resolution,isolevel,isofunc):
+    tri_list = [ [] for iso in isovalues ]
+
+    z_plane_a = data[:,:,0]
+    cornervalues = np.zeros([2,2,2])
+
+    for k in range(1, data.shape[2]):
+        z_plane_b = data[:,:,k]
+
+        for i in range(data.shape[0] - 1):
+            for j in range(data.shape[1] - 1):
+                cornervalues = np.array([
+                    z_plane_a[i,j],
+                    z_plane_a[i,j+1],
+                    z_plane_a[i+1,j+1],
+                    z_plane_a[i+1,j],
+                    z_plane_b[i,j],
+                    z_plane_b[i,j+1],
+                    z_plane_b[i+1,j+1],
+                    z_plane_b[i+1,j],
+                ])
+
+                x, y, z = float(i), float(j), float(k)
+                x2, y2, z2 = x+1.0, y+1.0, z+1.0
+
+                for iiso, isoval in enumerate(isovalues):
+                    tri_list[iiso].extend(polygonise(cornervalues, isoval, x, y, z, x2, y2, z2))
+        z_plane_a = z_plane_b
+
+    for iiso in range(len(isovalues)):
+        triangle_sets[iiso]["triangles"] = transform_triangles(tri_list[iiso], origin, axes)
+
+    return triangle_sets
+
+def isosurface(p0, p1, resolution, isolevel, isofunc, axes, context):
     r=[(x1-x0)/sw for x0,x1,sw in zip(p0,p1,resolution)]
 
     triangles=[]
     z_a = p0[2]
     z_plane_a = [ [ isofunc([x,y,z_a]) for y in arange(p0[1], p1[1], r[1]) ] for x in arange(p0[0], p1[0], r[0])]
 
-    c_loop_1 = list( cornerloop(1,1,1) )
-
     cornervalues = [0]*8
 
-    for z in arange(p0[2], p1[2], r[2]):
+    for z in arange(p0[2], p1[2]-r[2], r[2]):
         z2 = z + r[2]
         z_plane_b = [ [ isofunc([x,y, z2]) for y in arange(p0[1], p1[1], r[1])] for x in arange(p0[0], p1[0], r[0])]
         for yi in range(len(z_plane_a[0]) -1):
@@ -533,7 +476,6 @@ def isosurface(p0,p1,resolution,isolevel,isofunc):
                 triangles.extend(polygonise(cornervalues, isolevel, x,y,z, x2, y2, z2))
         z_plane_a = z_plane_b
 
-    return make_object_in_scene(triangles, bpy.context.scene)
+    triangles = transform_triangles(triangles, axes)
 
-if __name__=="__main__":
-    main()
+    return make_object_in_scene(triangles, context)
