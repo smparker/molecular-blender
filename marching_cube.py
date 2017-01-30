@@ -335,24 +335,24 @@ tritable = [[-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
         [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
 ]
 
-
 def polygonise(cornervalues, isolevel, x1, y1, z1, x2, y2, z2):
-    #   Determine the index into the edge table which
-    #   tells us which vertices are inside of the surface
+    # Determine the index into the edge table which
+    # tells us which vertices are inside of the surface
     cubeindex = 0
-    if cornervalues[0] < isolevel: cubeindex = cubeindex | 1
-    if cornervalues[1] < isolevel: cubeindex = cubeindex | 2
-    if cornervalues[2] < isolevel: cubeindex = cubeindex | 4
-    if cornervalues[3] < isolevel: cubeindex = cubeindex | 8
-    if cornervalues[4] < isolevel: cubeindex = cubeindex | 16
-    if cornervalues[5] < isolevel: cubeindex = cubeindex | 32
-    if cornervalues[6] < isolevel: cubeindex = cubeindex | 64
-    if cornervalues[7] < isolevel: cubeindex = cubeindex | 128
+
+    if cornervalues[0] < isolevel: cubeindex |= 1
+    if cornervalues[1] < isolevel: cubeindex |= 2
+    if cornervalues[2] < isolevel: cubeindex |= 4
+    if cornervalues[3] < isolevel: cubeindex |= 8
+    if cornervalues[4] < isolevel: cubeindex |= 16
+    if cornervalues[5] < isolevel: cubeindex |= 32
+    if cornervalues[6] < isolevel: cubeindex |= 64
+    if cornervalues[7] < isolevel: cubeindex |= 128
 
     # Cube is entirely in/out of the surface
     if edgetable[cubeindex] == 0: return []
 
-    vertlist=[[]]*12
+    vertlist=[None]*12
     # Find the vertices where the surface intersects the cube
     if (edgetable[cubeindex] & 1):    vertlist[0]  = vertexinterp(isolevel,[x1,y1,z1],[x1,y2,z1],cornervalues[0],cornervalues[1])
     if (edgetable[cubeindex] & 2):    vertlist[1]  = vertexinterp(isolevel,[x1,y2,z1],[x2,y2,z1],cornervalues[1],cornervalues[2])
@@ -369,7 +369,6 @@ def polygonise(cornervalues, isolevel, x1, y1, z1, x2, y2, z2):
 
     #Create the triangle
     triangles = []
-    #for (i=0;triTable[cubeindex][i]!=-1;i+=3) {
     i=0
     while tritable[cubeindex][i] != -1:
         triangles.append([vertlist[tritable[cubeindex][i  ]],
@@ -401,6 +400,8 @@ def arange(start, stop, step):
 
 def transform_triangles(triangles, origin, axes):
     """Transforms and translates set of triangles to match input origin/axes"""
+    if len(triangles) == 0:
+        return triangles
     coords = np.array(triangles)
     out = np.dot(coords, axes)
     return [ out[i,:] + origin for i in range(coords.shape[0]) ]

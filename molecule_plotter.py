@@ -575,6 +575,7 @@ def create_geometry(verts):
             faceoffset+=3
     return list(chain.from_iterable(verts)), faces
 
+@stopwatch("draw surfaces")
 def draw_surfaces(molecule, context, options):
     vertex_sets = []
     if molecule.volume is not None: # volumetric data was read
