@@ -39,11 +39,14 @@ def isPlanar(atomlist,cycle):
     else:
         testlist = list(cycle)
         for x in range(3,len(testlist)):
-            C1 = atomlist[ testlist[x-3] ].position
-            C2 = atomlist[ testlist[x-2] ].position
-            C3 = atomlist[ testlist[x-1] ].position
-            C4 = atomlist[ testlist[x-0] ].position
-            threshold = (C3-C1).dot((C2-C1).cross(C4-C3))
+            c1, c2, c3, c4 = [ atomlist[testlist[x-i]].position for i in range(4) ]
+            v21 = c2 - c1
+            v43 = c4 - c3
+            v31 = c3 - c1
+            v21.normalize()
+            v43.normalize()
+            v31.normalize()
+            threshold = v31.dot(v21.cross(v43))
             if abs(threshold) > 0.1:
                 return False
         return True
