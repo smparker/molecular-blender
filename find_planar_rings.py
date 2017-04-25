@@ -18,9 +18,10 @@
 #  along with Molecular Blender; see COPYING.
 #  If not, see <http://www.gnu.org/licenses/>.
 
-from .util import stopwatch, Timer
+from .util import unique_name, stopwatch, Timer
 
 import bpy
+import mathutils
 
 # Creates a graph structure from list of atoms and bonds
 def createGraph(atomlist,connectivitylist):
@@ -100,6 +101,12 @@ def plotRings(context, molecule, options):
     planarCycles = [x for x in cycles if isPlanar(atomlist,x)]
     timer.tick_print("check cycle planarity")
 
+    ringmat = unique_name(molecule.name + "_ring_mat", bpy.data.materials.keys())
+    bpy.data.materials.new(ringmat)
+    bpy.data.materials[ringmat].diffuse_color = mathutils.Color((0.0,0.9,0.0))
+
+    to_parent = []
+
     for num,pCycle in enumerate(planarCycles):
         objname  = "Ring" + str(num)
         meshname = objname + "mesh"
@@ -120,6 +127,16 @@ def plotRings(context, molecule, options):
         ringMesh.from_pydata(verts,bonds,[range(size)])
         ringMesh.update()
         ringObj = bpy.data.objects.new(objname,ringMesh)
+        ringObj.data.materials.append(bpy.data.materials[ringmat])
         ringObj.data = ringMesh
         context.scene.objects.link(ringObj)
+        to_parent.append(ringObj)
+
+    molecule_obj = bpy.data.objects[molecule.name]
+    for child in to_parent:
+        bpy.ops.object.select_all(action='DESELECT')
+        child.select = True
+        context.scene.objects.active = molecule_obj
+        bpy.ops.object.parent_set(type="OBJECT", keep_transform=False)
+
     timer.tick_print("plot all planar cycles")
