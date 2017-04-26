@@ -101,9 +101,11 @@ def plotRings(context, molecule, options):
     planarCycles = [x for x in cycles if isPlanar(atomlist,x)]
     timer.tick_print("check cycle planarity")
 
-    ringmat = unique_name(molecule.name + "_ring_mat", bpy.data.materials.keys())
-    bpy.data.materials.new(ringmat)
-    bpy.data.materials[ringmat].diffuse_color = mathutils.Color((0.0,0.9,0.0))
+    ringmat = "ring_mat"
+    if not (options["recycle_materials"] and ringmat in bpy.data.materials.keys()):
+        ringmat = unique_name(ringmat, bpy.data.materials.keys())
+        bpy.data.materials.new(ringmat)
+        bpy.data.materials[ringmat].diffuse_color = mathutils.Color((0.0,0.9,0.0))
 
     to_parent = []
 
