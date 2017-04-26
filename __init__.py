@@ -117,6 +117,11 @@ class MolecularBlender(Operator, ImportHelper):
                         description = "Use one bond type for whole plot",
                         default = True)
 
+    ignore_hydrogen = BoolProperty(
+        name = "Ignore Hydrogens",
+        description = "Ignores Hydrogen atoms for cleaner images",
+        default = False)
+
     find_aromatic = BoolProperty(
                   name        ="Plot Aromatics",
                   description ="Find closed rings and if planar, fill in with object",
@@ -170,7 +175,7 @@ class MolecularBlender(Operator, ImportHelper):
     recycle_materials = BoolProperty(
                         name = "Recycle materials",
                         description = "Re-use materials generated for previously imported molecules",
-                        default = False)
+                        default = True)
 
     color_palette = EnumProperty(
                         name = "Colors",
@@ -191,6 +196,7 @@ class MolecularBlender(Operator, ImportHelper):
                       keystride      = self.keystride,
                       animate_bonds  = self.animate_bonds,
                       universal_bonds  = self.universal_bonds,
+                      ignore_hydrogen = self.ignore_hydrogen,
                       gradient  = self.plot_gradient,
                       charges = self.plot_charges,
                       charge_offset = self.charge_offset,

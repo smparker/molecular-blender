@@ -74,10 +74,10 @@ def molecule_from_file(filename, options):
     else: # fall back to some sort of babel import
         return molecule_from_babel(filename, options)
 
-def make_atom_dict(symbol, position, index, charge, gradient):
+def make_atom_dict(symbol, position, index, charge, gradient, hidden):
     return { "symbol" : str(symbol).lower(), "position" : [ float(x) for x in position ],
         "index" : int(index), "charge" : float(charge),
-        "gradient" : [ float(x) for x in gradient ], "trajectory" : [] }
+        "gradient" : [ float(x) for x in gradient ], "trajectory" : [], "hidden" : hidden }
 
 def make_snap_dict(position, charge, gradient):
     return { "position" : [ float(x) for x in position ], "charge" : float(charge),
@@ -87,6 +87,8 @@ def make_snap_dict(position, charge, gradient):
 def molecule_from_xyz(filename, options):
     """Read in xyz file and return a dictionary of results"""
     out = { "atoms" : [] }
+    ignore_H = options.get("ignore_hydrogen", False)
+
     with Reader(filename) as fh:
         if (options["plot_type"] == "frame"):
             # first line contains number of atoms
@@ -104,7 +106,9 @@ def molecule_from_xyz(filename, options):
                 position = [ float(x) for x in tmp[1:4] ]
                 charge = float(tmp[4]) if len(tmp) >= 5 else 0.0
                 gradient = [ float(x) for x in tmp[5:8] ] if len(tmp) >= 8 else [ 0.0 for x in range(3) ]
-                out["atoms"].append(make_atom_dict(symb, position, iatom, charge, gradient))
+                hidden = ignore_H and symb=="h"
+                out["atoms"].append(make_atom_dict(symb, position, iatom, charge, gradient, hidden))
+
         elif (options["plot_type"] == "animate"):
             # first line contains number of atoms
             natoms = int(fh.readline().split()[0])
@@ -117,7 +121,8 @@ def molecule_from_xyz(filename, options):
                 position = [ float(x) for x in tmp[1:4] ]
                 charge = float(tmp[4]) if len(tmp) >= 5 else 0.0
                 gradient = [ float(x) for x in tmp[5:8] ] if len(tmp) >= 8 else [ 0.0 ] * 3
-                new_atom = make_atom_dict(symb, position, iatom, charge, gradient)
+                hidden = ignore_H and symb=="h"
+                new_atom = make_atom_dict(symb, position, iatom, charge, gradient, hidden)
                 new_atom["trajectory"] = [ make_snap_dict(position, charge, gradient) ]
 
                 out["atoms"].append(new_atom)
@@ -134,15 +139,15 @@ def molecule_from_xyz(filename, options):
                     raise Exception("All frames in trajectory must have the same number of atoms.")
 
                 fh.readline() # comment line
-                for i in range(natoms):
+                for iatom in range(natoms):
                     tmp = fh.readline().split()
                     symb = str(tmp[0]).lower()
-                    if (symb != out["atoms"][i]["symbol"]):
+                    if (symb != out["atoms"][iatom]["symbol"]):
                         raise Exception("The order of the atoms must be the same for each frame in the animation.")
                     position = [ float(x) for x in tmp[1:4] ]
                     charge = float(tmp[4]) if len(tmp) >= 5 else 0.0
                     gradient = [ float(x) for x in tmp[5:8] ] if len(tmp) >= 8 else [ 0.0 for x in range(3) ]
-                    out["atoms"][i]["trajectory"].append(make_snap_dict(position, charge, gradient))
+                    out["atoms"][iatom]["trajectory"].append(make_snap_dict(position, charge, gradient))
 
     return out
 
@@ -151,7 +156,7 @@ atoms_re = re.compile(r"\[\s*atoms\s*\]\s*(angs|au)?", flags=re.IGNORECASE)
 gto_re = re.compile(r"\[\s*gto\s*\]", flags=re.IGNORECASE)
 newsection_re = re.compile(r"\s*\[")
 
-def molden_read_atoms(f):
+def molden_read_atoms(f, ignore_H = False):
     """reads [Atoms] section of molden files"""
     out = [ ]
     f.restore_mark("atoms")
@@ -167,10 +172,14 @@ def molden_read_atoms(f):
         line = f.readline()
         m = newsection_re.match(line)
         while (not m):
-            el, no, at, x, y, z = line.split()
-            out.append(make_atom_dict(el,
-                [ factor*float(x), factor*float(y), factor*float(z) ],
-                int(no), 0.0, [ 0.0, 0.0, 0.0] ))
+            el, index, at, x, y, z = line.split()
+            el = el.lower()
+            index = int(index)
+            pos = [ fac * float(a) for a in [x, y, z] ]
+            charge = 0.0
+            grad = [ 0.0, 0.0, 0.0 ]
+            hidden = ignore_h and el == "h"
+            out.append(make_atom_dict(el, pos, index, charge, grad, hidden))
             line = f.readline()
             m = newsection_re.match(line)
     except EOFError:
@@ -250,6 +259,8 @@ def molecule_from_molden(filename, options):
 
     marks = { "molden" : molden_re, "atoms" : atoms_re, "gto": gto_re }
 
+    ignore_H = options.get("ignore_hydrogen", False)
+
     with Reader(filename) as f:
         try:
             while(True):
@@ -276,6 +287,8 @@ def molecule_from_molden(filename, options):
 def molecule_from_cube(filename, options):
     """Read a cube file including its volumetric data"""
     out = { "atoms" : [], "volume" : {} }
+
+    ignore_H = options.get("ignore_hydrogen", False)
 
     with Reader(filename) as f:
         f.readline() # first two lines are comments
@@ -315,7 +328,8 @@ def molecule_from_cube(filename, options):
             ato, chg, x, y, z = f.readline().split()
             iatom = int(ato)
             position = [ bohr2ang * float(xx) for xx in [x,y,z] ]
-            out["atoms"].append(make_atom_dict(symbols[iatom], position, i, chg, [0.0,0.0,0.0]))
+            hidden = ignore_H and symbols[iatom] == "h"
+            out["atoms"].append(make_atom_dict(symbols[iatom], position, i, chg, [0.0,0.0,0.0], hidden))
 
         # and finally the volumetric data comes, 6 elements per line in z, y, x order
         ndata = np.prod(nres)

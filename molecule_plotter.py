@@ -52,7 +52,7 @@ class Snapshot(object):
 class Atom(object):
     """Collect information on single atom"""
     def __init__(self, symbol, position, index, name = "", charge = 0.0, gradient = [0.0, 0.0, 0.0],
-        trajectory = []):
+        trajectory = [], hidden = False):
         self.el = elements[symbol]
         self.position = mathutils.Vector(position)
         self.index = index
@@ -60,11 +60,13 @@ class Atom(object):
         self.charge = charge
         self.gradient = mathutils.Vector(gradient)
         self.trajectory = trajectory
+        self.hidden = hidden
 
     @classmethod
     def from_dict(cls, inp):
         return cls(inp["symbol"], inp["position"], inp["index"], charge=inp["charge"],
-            gradient=inp["gradient"], trajectory=[ Snapshot.from_dict(x) for x in inp["trajectory"] ])
+            gradient=inp["gradient"], trajectory=[ Snapshot.from_dict(x) for x in inp["trajectory"] ],
+            hidden=inp["hidden"])
 
 class Bond(object):
     """Join two atoms in a bond"""
@@ -274,6 +276,7 @@ def PlotMolecule(context, molecule, options):
 
     # Check to see if original atom already exists, if yes, create translated linked duplicate, if no, create new object
     for atom in molecule.atoms:
+        if atom.hidden: continue
         # Unselect Everything
         bpy.ops.object.select_all(action='DESELECT')
         base_atom = molecule.name + "_" + atom.el.name
@@ -382,6 +385,8 @@ def PlotMolecule(context, molecule, options):
             iatom = bond.iatom
             jatom = bond.jatom
 
+            if iatom.hidden or jatom.hidden: continue
+
             bevtype = (iatom if iatom.el.vdw > jatom.el.vdw else jatom).el.symbol
             bond.bevelname = bevnames[bond.style]
             bond.name = unique_name(bond.make_name(molecule.name), obj_keys)
@@ -458,6 +463,7 @@ def PlotMolecule(context, molecule, options):
 
     if (options["gradient"]):
         for atom in molecule.atoms:
+            if atom.hidden: continue
             if (atom.gradient.length > 1.0e-30):
                 bpy.ops.object.select_all(action='DESELECT')
                 curve = bpy.data.curves.new(atom.name+"_gradient", type='CURVE')
@@ -515,6 +521,8 @@ def AnimateMolecule(context, molecule, options):
             raise Exception("No name found for an atom. Was PlotMolecule or PlotAtoms called properly?")
         if atom.name not in bpy.data.objects.keys():
             raise Exception("Atom " + atom.name + " not found. Was PlotMolecule or PlotAtoms called properly?")
+
+        if atom.hidden: continue
 
         # deselect everything for good measure
         for item in context.selectable_objects:
