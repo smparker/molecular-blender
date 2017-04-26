@@ -85,11 +85,15 @@ class Bond(object):
         dist = distance if (distance is not None) else (self.iatom.position - self.jatom.position).length
         return dist <= self.threshold
 
-    def make_name(self, basename):
+    def make_name(self, basename, split = False):
         """builds name for a molecule from basename and connected atoms"""
         iname = self.iatom.name.split('_')[-1]
         jname = self.jatom.name.split('_')[-1]
-        return basename + "_" + iname + "-" + jname
+        if split:
+            return ( "%s_%s-%s_a" % (basename, iname, jname),
+                "%s_%s-%s_b" % (basename, iname, jname))
+        else:
+            return basename + "_" + iname + "-" + jname
 
 class VolumeData(object):
     """Stores volumetric information from, for example, a cube file"""
@@ -255,11 +259,11 @@ def PlotMolecule(context, molecule, options):
     # hold onto reference to parent
     molecule_obj = bpy.data.objects[molecule.name]
 
-    Style = namedtuple('Style', ['atom_size', 'bond_size', 'atom_scaling', 'bond_scaling'])
-    style_dict = { 'vdw'       : Style( atom_size="scaled", bond_size="none", atom_scaling=1.0, bond_scaling=0.0 ),
-                   'bs'        : Style( atom_size="scaled", bond_size="vdw", atom_scaling=0.25, bond_scaling=0.1 ),
-                   'fixedbs'   : Style( atom_size="scaled", bond_size="fixed", atom_scaling=0.25, bond_scaling=1.0 ),
-                   'sticks'     : Style( atom_size="bond", bond_size="fixed", atom_scaling=0.2, bond_scaling=1.0 ) }
+    Style = namedtuple('Style', ['atom_size', 'bond_size', 'atom_scaling', 'bond_scaling', 'split_bond'])
+    style_dict = { 'vdw'       : Style( atom_size="scaled", bond_size="none", atom_scaling=1.0, bond_scaling=0.0, split_bond=False ),
+                   'bs'        : Style( atom_size="scaled", bond_size="vdw", atom_scaling=0.25, bond_scaling=0.1, split_bond=False ),
+                   'fixedbs'   : Style( atom_size="scaled", bond_size="fixed", atom_scaling=0.25, bond_scaling=1.0, split_bond=False ),
+                   'sticks'    : Style( atom_size="bond", bond_size="fixed", atom_scaling=0.2, bond_scaling=1.0, split_bond=True ) }
     plot_style = style_dict[options["plot_style"]]
 
     bond_thickness = options["bond_thickness"]
@@ -389,30 +393,61 @@ def PlotMolecule(context, molecule, options):
 
             bevtype = (iatom if iatom.el.vdw > jatom.el.vdw else jatom).el.symbol
             bond.bevelname = bevnames[bond.style]
-            bond.name = unique_name(bond.make_name(molecule.name), obj_keys)
-            obj_keys.append(bond.name)
 
-            #create curve object
-            coords = [iatom.position, jatom.position]
-            curve = bpy.data.curves.new(bond.name,type='CURVE')
-            curve.materials.append(bpy.data.materials[molecule.bond_materials[bond.style]])
+            bond.name = unique_name(bond.make_name(molecule.name, plot_style.split_bond), obj_keys)
+            if plot_style.split_bond:
+                obj_keys.extend( [ x for x in bond.name ] )
 
-            curve.dimensions = '3D'
-            curve.resolution_u = 2
-            bondline = curve.splines.new('BEZIER')
-            bondline.bezier_points.add(len(coords)-1)
-            for i, pnt in enumerate(coords):
-                p = bondline.bezier_points[i]
-                p.co = pnt - molecule_obj.location
-                p.handle_right_type = p.handle_left_type = 'AUTO'
-            curveOB = bpy.data.objects.new(bond.name, curve)
-            curveOB.data.bevel_object = bpy.data.objects[bond.bevelname]
-            curveOB.data.use_fill_caps = True
-            curveOB.parent = bpy.data.objects[molecule.name]
+                coords = [ iatom.position, jatom.position ]
 
-            to_link.append(curveOB)
+                curves = [ bpy.data.curves.new(bname, type='CURVE') for bname in bond.name ]
+                for a, c in zip([iatom,jatom], curves):
+                    c.materials.append(bpy.data.materials[molecule.materials[a.el.symbol]])
 
-            to_hook.append((iatom.name, jatom.name, bond.name))
+                for c, cname, bounds in zip(curves, bond.name, [ (0.0,0.5), (0.5,1.0) ]):
+                    c.dimensions = '3D'
+                    c.resolution_u = 2
+
+                    bondline = c.splines.new('BEZIER')
+                    bondline.bezier_points.add(len(coords)-1)
+
+                    for i, pnt in enumerate(coords):
+                        p = bondline.bezier_points[i]
+                        p.co = pnt - molecule_obj.location
+                        p.handle_right_type = p.handle_left_type = 'AUTO'
+
+                    c_obj = bpy.data.objects.new(cname, c)
+                    c_obj.data.bevel_object = bpy.data.objects[bond.bevelname]
+                    c_obj.data.use_fill_caps = True
+                    c_obj.data.bevel_factor_start, c_obj.data.bevel_factor_end = bounds
+                    c_obj.parent = bpy.data.objects[molecule.name]
+
+                    to_link.append(c_obj)
+                    to_hook.append((iatom.name, jatom.name, cname))
+            else:
+                obj_keys.append(bond.name)
+
+                #create curve object
+                coords = [iatom.position, jatom.position]
+                curve = bpy.data.curves.new(bond.name,type='CURVE')
+                curve.materials.append(bpy.data.materials[molecule.bond_materials[bond.style]])
+
+                curve.dimensions = '3D'
+                curve.resolution_u = 2
+                bondline = curve.splines.new('BEZIER')
+                bondline.bezier_points.add(len(coords)-1)
+                for i, pnt in enumerate(coords):
+                    p = bondline.bezier_points[i]
+                    p.co = pnt - molecule_obj.location
+                    p.handle_right_type = p.handle_left_type = 'AUTO'
+                curveOB = bpy.data.objects.new(bond.name, curve)
+                curveOB.data.bevel_object = bpy.data.objects[bond.bevelname]
+                curveOB.data.use_fill_caps = True
+                curveOB.parent = bpy.data.objects[molecule.name]
+
+                to_link.append(curveOB)
+
+                to_hook.append((iatom.name, jatom.name, bond.name))
 
     clock.tick_print("bond creation")
 
