@@ -394,8 +394,9 @@ def PlotMolecule(context, molecule, options):
             bevtype = (iatom if iatom.el.vdw > jatom.el.vdw else jatom).el.symbol
             bond.bevelname = bevnames[bond.style]
 
-            bond.name = unique_name(bond.make_name(molecule.name, plot_style.split_bond), obj_keys)
-            if plot_style.split_bond:
+            to_split = plot_style.split_bond and iatom.el != jatom.el
+            bond.name = unique_name(bond.make_name(molecule.name, to_split), obj_keys)
+            if to_split:
                 obj_keys.extend( [ x for x in bond.name ] )
 
                 coords = [ iatom.position, jatom.position ]
@@ -430,7 +431,9 @@ def PlotMolecule(context, molecule, options):
                 #create curve object
                 coords = [iatom.position, jatom.position]
                 curve = bpy.data.curves.new(bond.name,type='CURVE')
-                curve.materials.append(bpy.data.materials[molecule.bond_materials[bond.style]])
+                bond_mat = bpy.data.materials[molecule.materials[iatom.el.symbol]] if plot_style.split_bond else \
+                    bpy.data.materials[molecule.bond_materials[bond.style]]
+                curve.materials.append(bond_mat)
 
                 curve.dimensions = '3D'
                 curve.resolution_u = 2
