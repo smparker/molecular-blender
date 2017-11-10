@@ -154,6 +154,7 @@ def molecule_from_xyz(filename, options):
 molden_re = re.compile(r"\[\s*molden\s+format\s*\]", flags=re.IGNORECASE)
 atoms_re = re.compile(r"\[\s*atoms\s*\]\s*(angs|au)?", flags=re.IGNORECASE)
 gto_re = re.compile(r"\[\s*gto\s*\]", flags=re.IGNORECASE)
+mo_re = re.compile(r"\[\s*mo\s*\]", flags=re.IGNORECASE)
 newsection_re = re.compile(r"\s*\[")
 
 def molden_read_atoms(f, ignore_H = False):
@@ -175,10 +176,10 @@ def molden_read_atoms(f, ignore_H = False):
             el, index, at, x, y, z = line.split()
             el = el.lower()
             index = int(index)
-            pos = [ fac * float(a) for a in [x, y, z] ]
+            pos = [ factor * float(a) for a in [x, y, z] ]
             charge = 0.0
             grad = [ 0.0, 0.0, 0.0 ]
-            hidden = ignore_h and el == "h"
+            hidden = ignore_H and el == "h"
             out.append(make_atom_dict(el, pos, index, charge, grad, hidden))
             line = f.readline()
             m = newsection_re.match(line)
@@ -251,13 +252,81 @@ def molden_read_gto(f):
 
     return out
 
+def molden_read_mo(f, nmo):
+    """reads through [MO] section to collect MO coefficient information"""
+    f.restore_mark("mo")
+
+    moinf = { "sym" : re.compile(r"\s*sym\s*=\s*(\S+)", flags=re.IGNORECASE),
+            "ene" : re.compile(r"\s*ene\s*=\s*(\S+)", flags=re.IGNORECASE),
+            "spin" : re.compile(r"\s*spin\s*=\s*(\S+)", flags=re.IGNORECASE),
+            "occup" : re.compile(r"\s*occup\s*=\s*(\S+)", flags=re.IGNORECASE) }
+
+    re_coef = re.compile(r"\s*(\d+)\s+(\S+)", flags=re.IGNORECASE)
+
+    line = f.readline() # should just say MO
+
+    out = []
+
+    try: # allow it to quietly exit if there is no basis
+        line = f.readline()
+    except EOFError:
+        return out
+
+    while True:
+        if newsection_re.search(line):
+            break
+
+        # new MO
+        modata = {}
+        coef = []
+
+        while True:
+            found = False
+            for k, srch in moinf.items():
+                m = srch.match(line)
+                if m:
+                    modata[k] = m.group(1)
+                    line = f.readline()
+                    found = True
+                    break
+            if not found: break
+
+        for i in range(nmo):
+            if i != 0:
+                line = f.readline()
+            m = re_coef.match(line)
+            if not m:
+                raise Exception("Expected coefficient line, found something else")
+            coef.append(float(m.group(2)))
+
+        modata["coeff"] = coef
+        out.append(modata)
+
+        try: # allow safe deaths
+            line = f.readline()
+        except EOFError:
+            break
+
+    return out
+
 @stopwatch("read molden")
 def molecule_from_molden(filename, options):
     """Read molden file to look for coordinates and optionally orbital data"""
     # molden format is not terribly efficient, but hopefully this doesn't matter
     out = { "atoms" : [] }
 
-    marks = { "molden" : molden_re, "atoms" : atoms_re, "gto": gto_re }
+    marks = { "molden" : molden_re,
+            "atoms" : atoms_re,
+            "gto" : gto_re,
+            "mo" : mo_re,
+            "5d" : re.compile(r"[5D]"),
+            "5d10f" : re.compile(r"[5D10F]"),
+            "5d7f" : re.compile(r"[5D7F]"),
+            "9g" : re.compile(r"[9G]") }
+
+    # Molden defaults to Cartesian basis functions
+    shelldegen = { "s" : 1, "sp" : 4, "p" : 3, "d" : 6, "f" : 10, "g" : 15 }
+    sphdegen =   { "s" : 1, "sp" : 4, "p" : 3, "d" : 5, "f" : 7,  "g" : 9  }
 
     ignore_H = options.get("ignore_hydrogen", False)
 
@@ -279,7 +348,22 @@ def molecule_from_molden(filename, options):
         out["atoms"] = molden_read_atoms(f)
 
         if f.is_marked("gto"): # read through GTO section to build basis
+            make_spherical = [ ]
+            if f.is_marked("5d") or f.is_marked("5d7f"):
+                make_spherical.extend( ["d", "f"] )
+            if f.is_marked("7f"):
+                make_spherical.append("f")
+            if f.is_marked("5d10f"):
+                make_spherical.append("d")
+            if f.is_marked("9g"):
+                make_spherical.append("g")
+            for l in make_spherical:
+                shelldegen[l] = sphdegen[l]
             out["basis"] = molden_read_gto(f)
+
+        if f.is_marked("mo") and "basis" in out: # read through MO section to build coefs
+            nmo = sum([ sum([ shelldegen[x["shell"]] for x in atom ]) for atom in out["basis"] ])
+            out["mo"] = molden_read_mo(f, nmo)
 
     return out
 
