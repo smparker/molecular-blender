@@ -22,13 +22,10 @@
 
 from .util import stopwatch, Timer
 from .periodictable import symbols
+from .constants import ang2bohr, bohr2ang
 
 import numpy as np
-
 import re
-
-ang2bohr = 1.8897259885789
-bohr2ang = 1.0/ang2bohr
 
 class Reader(object):
     """Convenience class to read a line, store it, and throw if file is over"""
@@ -357,6 +354,10 @@ def molecule_from_molden(filename, options):
                 make_spherical.append("d")
             if f.is_marked("9g"):
                 make_spherical.append("g")
+
+            cartesian = len(make_spherical) == 0
+            if not cartesian:
+                raise Exception("MolecularBlender currently can only handle cartesian d-, f-, and g-functions")
             for l in make_spherical:
                 shelldegen[l] = sphdegen[l]
             out["basis"] = molden_read_gto(f)
@@ -430,7 +431,6 @@ def molecule_from_cube(filename, options):
     out["volume"]["data"] = data.reshape(nres) # now should have shape [nx, ny, nz]
 
     return out
-
 
 def molecule_from_babel(filename, options):
     raise Exception("Importing from babel currently disabled")

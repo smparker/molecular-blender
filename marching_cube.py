@@ -42,6 +42,8 @@ __maintainer__ = "Shane Parker"
 __email__ = "smparker@uci.edu"
 __status__ = "alpha"
 
+from .constants import ang2bohr, bohr2ang
+
 import numpy as np
 
 edgetable=  (0x0 , 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c,
@@ -406,7 +408,7 @@ def transform_triangles(triangles, origin, axes):
     out = np.dot(coords, axes)
     return [ out[i,:] + origin for i in range(coords.shape[0]) ]
 
-def cube_isosurface(data, origin, axes, isovalues, context):
+def cube_isosurface(data, origin, axes, isovalues):
     triangle_sets = [ { "isovalue" : iso } for iso in isovalues ]
 
     tri_list = [ [] for iso in isovalues ]
@@ -442,41 +444,50 @@ def cube_isosurface(data, origin, axes, isovalues, context):
 
     return triangle_sets
 
-def isosurface(p0, p1, resolution, isolevel, isofunc, axes, context):
-    r=[(x1-x0)/sw for x0,x1,sw in zip(p0,p1,resolution)]
+def molden_isosurface(orbital, isovalues, resolution):
+    p0, p1 = orbital.bounding_box(min([ abs(x) for x in isovalues] ) * 0.01)
+    resolution = [ int(round((j - i)/(resolution * ang2bohr))) for i, j in zip(p0, p1) ]
+    axes = np.eye(3) * bohr2ang
 
-    triangles=[]
+    return isosurface(p0, p1, resolution, isovalues, orbital.value, axes)
+
+def isosurface(p0, p1, npoints, isovalues, isofunc, axes):
+    r=[(x1-x0)/sw for x0,x1,sw in zip(p0,p1,npoints)]
+
+    triangle_sets = [ { "isovalue" : iso } for iso in isovalues ]
+    tri_list = [ [] for iso in isovalues ]
+
     z_a = p0[2]
-    z_plane_a = [ [ isofunc([x,y,z_a]) for y in arange(p0[1], p1[1], r[1]) ] for x in arange(p0[0], p1[0], r[0])]
+    z_plane_a = [ [ isofunc(x,y,z_a) for y in arange(p0[1], p1[1], r[1]) ] for x in arange(p0[0], p1[0], r[0])]
 
     cornervalues = [0]*8
 
     for z in arange(p0[2], p1[2]-r[2], r[2]):
         z2 = z + r[2]
-        z_plane_b = [ [ isofunc([x,y, z2]) for y in arange(p0[1], p1[1], r[1])] for x in arange(p0[0], p1[0], r[0])]
+        z_plane_b = [ [ isofunc(x,y, z2) for y in arange(p0[1], p1[1], r[1])] for x in arange(p0[0], p1[0], r[0])]
         for yi in range(len(z_plane_a[0]) -1):
             y = p0[1]+yi*r[1]
             y2 = y + r[1]
             for xi in range(len(z_plane_a)-1):
                 x = p0[0]+xi*r[0]
                 x2 = x + r[0]
-                if True:
-                    cornervalues = [
-                        z_plane_a[xi][yi],
-                        z_plane_a[xi][yi+1],
-                        z_plane_a[xi+1][yi+1],
-                        z_plane_a[xi+1][yi],
-                        z_plane_b[xi][yi],
-                        z_plane_b[xi][yi+1],
-                        z_plane_b[xi+1][yi+1],
-                        z_plane_b[xi+1][yi],
-                    ]
-                else:
-                    cornervalues = [ (z_plane_a if cz==0 else z_plane_b)[xi+cx][yi+cy] for cx,cy,cz in c_loop_1]
+                cornervalues = [
+                    z_plane_a[xi][yi],
+                    z_plane_a[xi][yi+1],
+                    z_plane_a[xi+1][yi+1],
+                    z_plane_a[xi+1][yi],
+                    z_plane_b[xi][yi],
+                    z_plane_b[xi][yi+1],
+                    z_plane_b[xi+1][yi+1],
+                    z_plane_b[xi+1][yi],
+                ]
 
-                triangles.extend(polygonise(cornervalues, isolevel, x,y,z, x2, y2, z2))
+                for iiso, isoval in enumerate(isovalues):
+                    tri_list[iiso].extend(polygonise(cornervalues, isoval, x, y, z, x2, y2, z2))
+
         z_plane_a = z_plane_b
 
-    triangles = transform_triangles(triangles, axes)
+    for iiso in range(len(isovalues)):
+        triangle_sets[iiso]["triangles"] = transform_triangles(tri_list[iiso], [0.0, 0.0, 0.0], axes)
 
-    return make_object_in_scene(triangles, context)
+    return triangle_sets

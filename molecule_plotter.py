@@ -23,7 +23,8 @@
 
 from .periodictable import element,symbols,generate_table
 from .find_planar_rings import plotRings
-from .marching_cube import isosurface, cube_isosurface
+from .marching_cube import cube_isosurface, molden_isosurface
+from .compute_orbitals import MOData
 
 from .util import stopwatch, Timer, unique_name
 from .importers import molecule_from_file
@@ -111,7 +112,7 @@ class VolumeData(object):
 
 class Molecule(object):
     """Atoms and bonds form a molecule"""
-    def __init__(self, name, atoms, volume = None):
+    def __init__(self, name, atoms, volume=None, orbitals=None):
         self.name = name
         self.atoms = atoms
         self.bonds = []
@@ -120,11 +121,13 @@ class Molecule(object):
         self.chgoff = 1.0
         self.chgfac = 1.0
         self.volume = volume
+        self.orbitals = orbitals
 
     @classmethod
     def from_dict(cls, name, inp):
         vol = VolumeData.from_dict(inp["volume"]) if "volume" in inp else None
-        return cls(name, [ Atom.from_dict(x) for x in inp["atoms"] ], volume=vol)
+        mo = MOData.from_dict(inp) if "basis" in inp else None
+        return cls(name, [ Atom.from_dict(x) for x in inp["atoms"] ], volume=vol, orbitals=mo)
 
     def COM(self):
         """Computes center of mass from atoms list"""
@@ -629,7 +632,14 @@ def draw_surfaces(molecule, context, options):
         isovals = options["isovalues"]
 
         # marching cubes to make the surface
-        vertex_sets = cube_isosurface(vol.data, vol.origin, vol.axes, isovals, context)
+        vertex_sets = cube_isosurface(vol.data, vol.origin, vol.axes, isovals)
+    elif molecule.orbitals is not None: # orbital data was read
+        orbitals = molecule.orbitals
+        orb = orbitals.get_orbital(options["orbital"])
+        isovals = options["isovalues"]
+        resolution = options["resolution"]
+
+        vertex_sets = molden_isosurface(orb, isovals, resolution)
 
     meshes = []
     for v in vertex_sets:
@@ -653,7 +663,7 @@ def process_options(filename, options):
     hooking = { "on" : True, "off" : False, "auto": options["plot_type"] == "animate" }
     options["hook_atoms"] = hooking[options["hook_atoms"]]
 
-    options["isosurfaces"] = ".cube" in filename
+    options["isosurfaces"] = ".cube" in filename or ".molden" in filename
     if options["isosurfaces"]:
         isovals = options["isovalues"].split(',')
         isovals = [ float(x) for x in isovals ]

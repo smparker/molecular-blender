@@ -152,6 +152,20 @@ class MolecularBlender(Operator, ImportHelper):
             ('orbital', 'orbital', "Plot orbitals (positive and negative isovalues will be drawn)")),
         default = 'orbital')
 
+    orbital = IntProperty(
+        name = "Orbital",
+        description = "Plot this orbital from molden file (ignored for other inputs)",
+        default = 0)
+
+    resolution = FloatProperty(
+        name = "Resolution",
+        description = "Desired spacing between points in isosurface (Angstrom)",
+        default = 0.1,
+        min = 0.001,
+        max = 1.0,
+        step = 0.01,
+        precision = 3)
+
     charge_offset = FloatProperty(
                     name = "chgoff",
                     description = "Use chgfac*(charge + chgoff) in charge plotting to control visibility of charges",
@@ -205,6 +219,8 @@ class MolecularBlender(Operator, ImportHelper):
                       recycle_materials = self.recycle_materials,
                       isovalues = self.isovalues,
                       volume = self.volume,
+                      orbital = self.orbital,
+                      resolution = self.resolution,
                       colors = self.color_palette)
 
         return {'FINISHED'}
