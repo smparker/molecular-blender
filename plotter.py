@@ -21,10 +21,10 @@
 #
 
 
-from .periodictable import element,symbols,generate_table
+from .periodictable import element, symbols, generate_table
 from .find_planar_rings import plotRings
 from .marching_cube import cube_isosurface, molden_isosurface
-from .compute_orbitals import MOData
+from .orbitals import MOData
 
 from .util import stopwatch, Timer, unique_name
 from .importers import molecule_from_file
@@ -557,9 +557,9 @@ def AnimateMolecule(context, molecule, options):
     # check to make sure trajectory information is stored for at least the first atom
     if (len(molecule.atoms[0].trajectory) == 0):
         raise Exception("Trajectory must be read before calling AnimateMolecule")
-    for atom in molecule.atoms:
-        if (atom.name == ''):
-            raise Exception("No name found for an atom. Was PlotMolecule or PlotAtoms called properly?")
+    if all([ atom.name == '' for atom in molecule.atoms ]):
+        raise Exception("No names found for any atom in Molecule. Was PlotMolecule or PlotAtoms called?")
+    for atom in filter(lambda x: x.name != '', molecule.atoms):
         if atom.name not in bpy.data.objects.keys():
             raise Exception("Atom " + atom.name + " not found. Was PlotMolecule or PlotAtoms called properly?")
 
@@ -660,6 +660,35 @@ def draw_surfaces(molecule, context, options):
 
 def process_options(filename, options):
     """postprocess choices that might interact with each other"""
+
+    # force defaults in case called outside of the blender UI
+    defaults = { "bonds" : True,
+        "bond_thickness" : 0.2,
+        "hook_atoms" : "auto",
+        "plot_style" : "sticks",
+        "plot_type" : "frame",
+        "object_type" : "mesh",
+        "keystride" : 2,
+        "animate_bonds" : "staticfirst",
+        "universal_bonds" : True,
+        "ignore_hydrogen" : True,
+        "gradient" : False,
+        "charges" : "none",
+        "charges_offset" : 0.0,
+        "charges_factor" : 1.0,
+        "find_aromatic" : False,
+        "recycle_materials" : True,
+        "isovalues" : "0.1",
+        "volume" : "orbital",
+        "orbital" : 0,
+        "resolution" : 0.5,
+        "colors" : "default"
+        }
+
+    for d in defaults:
+        if d not in options:
+            options[d] = defaults[d]
+
     hooking = { "on" : True, "off" : False, "auto": options["plot_type"] == "animate" }
     options["hook_atoms"] = hooking[options["hook_atoms"]]
 
@@ -684,6 +713,7 @@ def process_options(filename, options):
 
 def BlendMolecule(context, filename, **options):
     """basic driver that calls the appropriate plot functions"""
+
     options = process_options(filename, options)
     global elements # first redefine elements list
     elements = generate_table(options["colors"])

@@ -1,6 +1,6 @@
 #
 #  Molecular Blender
-#  Filename: compute_orbitals.py
+#  Filename: orbitals.py
 #  Copyright (C) 2017 Shane Parker, Joshua Szekely
 #
 #  This file is part of Molecular Blender.
@@ -141,7 +141,7 @@ def gaussian_overlap(ax, aexp, ak, bx, bexp, bk):
 class MOData(object):
     """Organizes data for computing orbitals in real space"""
     def __init__(self, shells, coeff, nocc):
-        assert(sum([sh.size for sh in shells]) == len(coeff))
+        assert(sum([sh.size for sh in shells]) == coeff.shape[1])
 
         self.shells = shells
         self.coeff = coeff
@@ -181,7 +181,9 @@ class OrbitalCalculater(object):
         self.shells = shells
         self.coeff = coeff
 
-        self.logmxcoeff = np.log(np.array([ np.max(abs(self.coeff[sh.start:sh.start+sh.size])) for sh in self.shells ]))
+        # use very small number to replace zeros
+        self.logmxcoeff = np.log(np.array([
+            max(np.max(abs(self.coeff[sh.start:sh.start+sh.size])), 1e-30) for sh in self.shells ]))
 
     def bounding_box(self, thr = 1.0e-5):
         """returns lower and upper limits of box that should fully contain orbital"""

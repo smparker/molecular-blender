@@ -20,7 +20,10 @@
 #  If not, see <http://www.gnu.org/licenses/>.
 #
 
+import os
 import time
+
+debug = os.environ.get('MB_DEBUG', '') == '1'
 
 class Timer(object):
     """Convenience class for measuring timing of chunks of code"""
@@ -37,17 +40,20 @@ class Timer(object):
     def tick_print(self, label):
         """Calls tick and automatically prints the output with the given label"""
         out = self.tick()
-        print("  %40s: %.4f sec" % (label, out))
+        if debug:
+            print("  %40s: %.4f sec" % (label, out))
         return out
 
-def stopwatch(routine):
+def stopwatch(routine, verbose=debug):
     """Decorator to measure time in a function using blender timer"""
+
     def stopwatch_dec(func):
         def wrapper(*args, **kwargs):
             start = time.time()
             out = func(*args, **kwargs)
             end = time.time()
-            print("%.4f sec elapsed in routine %s" % ((end-start), routine))
+            if verbose:
+                print("%.4f sec elapsed in routine %s" % ((end-start), routine))
             return out
         return wrapper
     return stopwatch_dec

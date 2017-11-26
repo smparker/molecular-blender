@@ -110,7 +110,7 @@ def plotRings(context, molecule, options):
     to_parent = []
 
     for num,pCycle in enumerate(planarCycles):
-        objname  = "Ring" + str(num)
+        objname  = molecule.name + "_ring_" + str(num)
         meshname = objname + "mesh"
         ringMesh = bpy.data.meshes.new(meshname)
         verts = []

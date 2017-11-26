@@ -29,6 +29,9 @@ class element():
         self.name= n
         self.symbol = s
 
+    def __str__(self):
+        return self.symbol
+
 default_palette = {
   'h'  : (1.000,1.000,1.000),
   'he' : (0.851,1.000,1.000),

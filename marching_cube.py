@@ -421,7 +421,7 @@ def cube_isosurface(data, origin, axes, isovalues):
 
         for i in range(data.shape[0] - 1):
             for j in range(data.shape[1] - 1):
-                cornervalues = np.array([
+                cornervalues = [
                     z_plane_a[i,j],
                     z_plane_a[i,j+1],
                     z_plane_a[i+1,j+1],
@@ -430,7 +430,7 @@ def cube_isosurface(data, origin, axes, isovalues):
                     z_plane_b[i,j+1],
                     z_plane_b[i+1,j+1],
                     z_plane_b[i+1,j],
-                ])
+                ]
 
                 x, y, z = float(i), float(j), float(k)
                 x2, y2, z2 = x+1.0, y+1.0, z+1.0

@@ -50,7 +50,7 @@ class Reader(object):
         self.f.seek(self.marks[label])
 
     def is_marked(self, label):
-        return label in self.marks
+        return (label in self.marks)
 
     def __enter__(self):
         self.f = open(self.filename, "r")
@@ -87,7 +87,7 @@ def molecule_from_xyz(filename, options):
     ignore_H = options.get("ignore_hydrogen", False)
 
     with Reader(filename) as fh:
-        if (options["plot_type"] == "frame"):
+        if (options.get("plot_type", "frame") == "frame"):
             # first line contains number of atoms
             natoms = int(fh.readline().split()[0])
             # second line is a comment
@@ -106,7 +106,7 @@ def molecule_from_xyz(filename, options):
                 hidden = ignore_H and symb=="h"
                 out["atoms"].append(make_atom_dict(symb, position, iatom, charge, gradient, hidden))
 
-        elif (options["plot_type"] == "animate"):
+        elif (options.get("plot_type", "frame") == "animate"):
             # first line contains number of atoms
             natoms = int(fh.readline().split()[0])
             # second line is a comment
@@ -316,10 +316,10 @@ def molecule_from_molden(filename, options):
             "atoms" : atoms_re,
             "gto" : gto_re,
             "mo" : mo_re,
-            "5d" : re.compile(r"[5D]"),
-            "5d10f" : re.compile(r"[5D10F]"),
-            "5d7f" : re.compile(r"[5D7F]"),
-            "9g" : re.compile(r"[9G]") }
+            "5d" : re.compile(r"\[5D\]"),
+            "5d10f" : re.compile(r"\[5D10F\]"),
+            "5d7f" : re.compile(r"\[5D7F\]"),
+            "9g" : re.compile(r"\[9G\]") }
 
     # Molden defaults to Cartesian basis functions
     shelldegen = { "s" : 1, "sp" : 4, "p" : 3, "d" : 6, "f" : 10, "g" : 15 }
@@ -393,7 +393,7 @@ def molecule_from_cube(filename, options):
             res, vx, vy, vz = f.readline().split()
             nres[i] = int(res)
             axes[i,:] = np.array([vx, vy, vz], dtype=np.float32)
-            if nres[i] > 0: # aces defined in Bohr
+            if nres[i] > 0: # axes defined in Bohr
                 axes[i,:] *= bohr2ang
             else: # axes defined in Angstrom
                 nres[i] *= -1
