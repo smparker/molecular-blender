@@ -21,7 +21,7 @@ class TestBlendSticksRings(unittest.TestCase):
             plot_style = "sticks",
             find_aromatic = True)
 
-        nrings = sum([ "_ring_" in x.name for x in bpy.data.objects ])
+        nrings = sum([ "tetracene_dimer_ring" in x.name for x in bpy.data.objects ])
         self.assertEqual(nrings, 8, 'Incorrect number of rings.')
 
         nCarbon = sum([ self.atom_re.match(x.name) is not None for x in bpy.data.objects ])
