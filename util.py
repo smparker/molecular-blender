@@ -25,6 +25,7 @@ import time
 
 debug = os.environ.get('MB_DEBUG', '') == '1'
 
+
 class Timer(object):
     """Convenience class for measuring timing of chunks of code"""
 
@@ -44,6 +45,7 @@ class Timer(object):
             print("  %40s: %.4f sec" % (label, out))
         return out
 
+
 def stopwatch(routine, verbose=debug):
     """Decorator to measure time in a function using blender timer"""
 
@@ -53,16 +55,19 @@ def stopwatch(routine, verbose=debug):
             out = func(*args, **kwargs)
             end = time.time()
             if verbose:
-                print("%.4f sec elapsed in routine %s" % ((end-start), routine))
+                print("%.4f sec elapsed in routine %s" %
+                      ((end - start), routine))
             return out
         return wrapper
     return stopwatch_dec
 
-def unique_name(name, existing_names, starting_suffix = None):
+
+def unique_name(name, existing_names, starting_suffix=None):
     """If name is not in existing_names, returns name. Otherwise, returns name + "0", 1, 2, etc."""
-    testname = name if starting_suffix is None else "%s%d" % (name, starting_suffix)
+    testname = name if starting_suffix is None else "%s%d" % (
+        name, starting_suffix)
     if testname in existing_names:
-        n = 0 if starting_suffix is None else starting_suffix+1
+        n = 0 if starting_suffix is None else starting_suffix + 1
         while (True):
             testname = "%s%d" % (name, n)
             if testname in existing_names:
@@ -71,4 +76,3 @@ def unique_name(name, existing_names, starting_suffix = None):
                 return testname
     else:
         return testname
-

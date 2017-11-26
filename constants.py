@@ -21,5 +21,4 @@
 #
 
 ang2bohr = 1.8897259885789
-bohr2ang = 1.0/ang2bohr
-
+bohr2ang = 1.0 / ang2bohr

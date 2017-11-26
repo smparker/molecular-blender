@@ -21,216 +21,215 @@
 #
 
 bl_info = {
-    "name" : "Molecular Blender",
-    "author" : "Shane Parker and Josh Szekely",
-    "version" : (0,1,0),
+    "name": "Molecular Blender",
+    "author": "Shane Parker and Josh Szekely",
+    "version": (0, 1, 0),
     "location": "File > Import",
-    "description" : "Import XYZ files",
-    "category" : "Import-Export"
+    "description": "Import XYZ files",
+    "category": "Import-Export"
 }
 
-import bpy
-
-from bpy_extras.io_utils import ImportHelper
+import bpy, bpy_extras
 from bpy.props import StringProperty, BoolProperty, EnumProperty, IntProperty, FloatProperty
-from bpy.types import Operator
 
 from .plotter import BlendMolecule
 
-class MolecularBlender(Operator, ImportHelper):
+
+class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     """A class designed to conveniently import molecules to blender"""
     bl_idname = "import.molecular_blender"
-    bl_label  = "Molecular Blender"
+    bl_label = "Molecular Blender"
 
     # in the template, we'll figure it out later
-    filter_glob  = StringProperty(
-            default = "*.xyz;*.molden;*.cube",
-            options = {'HIDDEN'},
-          )
+    filter_glob = StringProperty(
+        default="*.xyz;*.molden;*.cube",
+        options={'HIDDEN'})
 
-    type_of_object = EnumProperty(
-                         name        = "Object type",
-                         description = "Object type to use to draw atoms",
-                         items       = (('meta', "Metaballs", "Metaballs"),
-                                  ('nurbs', "NURBS", "NURBS"),
-                                  ('mesh', "Mesh", "Mesh"),
-                                  ('wireframe', "Wireframe", "Wireframe")),
-                         default     = 'mesh'
-                        )
+    object_type = EnumProperty(
+        name="Object type",
+        description="Object type to use to draw atoms",
+        items=(('meta', "Metaballs", "Metaballs"),
+               ('nurbs', "NURBS", "NURBS"),
+               ('mesh', "Mesh", "Mesh"),
+               ('wireframe', "Wireframe", "Wireframe")),
+        default='mesh')
 
-    type_of_plot = EnumProperty(
-                    name        = "Type",
-                    description = "What to draw",
-                    items       = (('frame', "Single Frame", "Plot a single frame from an XYZ"),
-                             ('animate', "Animation", "Animate from an XYZ")),
-                    default     = 'frame',
-                   )
+    plot_type = EnumProperty(
+        name="Type",
+        description="What to draw",
+        items=(('frame', "Single Frame", "Plot a single frame from an XYZ"),
+               ('animate', "Animation", "Animate from an XYZ")),
+        default='frame')
 
-    style_of_plot = EnumProperty(
-                     name        = "Style",
-                     description = "Plot style",
-                     items       = (('vdw', "Van der Waals", "Plot using VDW radii"),
-                              ('bs', "Ball-and-stick", "Ball and stick with bond radii determined automaticaly"),
-                              ('fixedbs', "Fixed ball-and-stick", "Ball and stick with a fixed bond radius"),
-                              ('sticks', "Stick model", "Just sticks")),
-                     default     = 'fixedbs'
-                    )
+    plot_style = EnumProperty(
+        name="Style",
+        description="Plot style",
+        items=(('vdw', "Van der Waals", "Plot using VDW radii"),
+               ('bs', "Ball-and-stick",
+                "Ball and stick with bond radii determined automaticaly"),
+               ('fixedbs', "Fixed ball-and-stick",
+                "Ball and stick with a fixed bond radius"),
+               ('sticks', "Stick model", "Just sticks")),
+        default='fixedbs')
 
     bond_thickness = FloatProperty(
-                  name        = "Thickness of bonds",
-                  description = "Determine overall thickness of bonds (0.0 turns bonds off)",
-                  default     = 0.15,
-                  min         = 0.0,
-                  max         = 50.0,
-                  step        = 0.05,
-                  precision   = 4
-                 )
+        name="Thickness of bonds",
+        description="Determine overall thickness of bonds (0.0 turns bonds off)",
+        default=0.15,
+        min=0.0,
+        max=50.0,
+        step=0.05,
+        precision=4)
 
     hook_atoms = EnumProperty(
-            name = "Hook bonds",
-            description = "Hook bonds to atoms to make bonds follow manual manipulation of the atoms",
-            items = (('auto', "Automatic", "Off for single frames, on for animations"),
-                     ('on', "On", "Hook bonds (can be very slow for molecules with hundreds or more atoms)"),
-                     ('off', "Off", "Do not hook bonds to atoms (faster, but manipulating atoms in blender will" +
-                         " not move the bonds alongside")),
-            default = 'auto'
-            )
+        name="Hook bonds",
+        description="Hook bonds to atoms to make bonds follow manual manipulation of the atoms",
+        items=(('auto', "Automatic", "Off for single frames, on for animations"),
+               ('on', "On", "Hook bonds (can be very slow for molecules with hundreds or more atoms)"),
+               ('off', "Off", "Do not hook bonds to atoms (faster, but manipulating atoms in blender will" +
+                " not move the bonds alongside")),
+        default='auto')
 
     keystride = IntProperty(
-                  name        = "Keystride",
-                  description = "Striding between keyframes in animation",
-                  default     = 2
-                )
+        name="Keystride",
+        description="Striding between keyframes in animation",
+        default=2)
 
     animate_bonds = EnumProperty(
-                        name = "Animate bonds",
-                        description = "Determine how the bonds are handled for an animation",
-                        items = (   ('staticfirst', "Static: first frame", "Use bonds determined from only the first frame"),
-                                    ('staticall', "Static: all frames", "Draw all bonds that are formed during any frame"),
-                                    ('dynamic', "Dynamically draw frames", "Dynamically form and break bonds during animation")
-                                ),
-                        default = 'staticfirst'
-                    )
+        name="Animate bonds",
+        description="Determine how the bonds are handled for an animation",
+        items=(('staticfirst', "Static: first frame", "Use bonds determined from only the first frame"),
+               ('staticall', "Static: all frames",
+                "Draw all bonds that are formed during any frame"),
+               ('dynamic', "Dynamically draw frames",
+                "Dynamically form and break bonds during animation")
+               ),
+        default='staticfirst')
 
     universal_bonds = BoolProperty(
-                        name = "Universal bonds",
-                        description = "Use one bond type for whole plot",
-                        default = True)
+        name="Universal bonds",
+        description="Use one bond type for whole plot",
+        default=True)
 
     ignore_hydrogen = BoolProperty(
-        name = "Ignore Hydrogens",
-        description = "Ignores Hydrogen atoms for cleaner images",
-        default = False)
+        name="Ignore Hydrogens",
+        description="Ignores Hydrogen atoms for cleaner images",
+        default=False)
 
     find_aromatic = BoolProperty(
-                  name        ="Plot Aromatics",
-                  description ="Find closed rings and if planar, fill in with object",
-                  default     = False)
+        name="Plot Aromatics",
+        description="Find closed rings and if planar, fill in with object",
+        default=False)
 
-    plot_gradient = BoolProperty(
-                    name = "Plot gradient",
-                    description = "Draw arrows for data found in gradients column",
-                    default = False)
+    gradient = BoolProperty(
+        name="Plot gradient",
+        description="Draw arrows for data found in gradients column",
+        default=False)
 
-    plot_charges = EnumProperty(
-                    name = "Plot charges",
-                    description = "Style in which to plot atomic charges",
-                    items = ( ('none', 'none', 'No charges plotted'),
-                              ('scale', 'scale', 'Charge magnitude encoded by scale of sphere')
-                            ),
-                    default = 'none')
+    charges = EnumProperty(
+        name="Plot charges",
+        description="Style in which to plot atomic charges",
+        items=(('none', 'none', 'No charges plotted'),
+               ('scale', 'scale',
+                'Charge magnitude encoded by scale of sphere')
+               ),
+        default='none')
 
     isovalues = StringProperty(
-        name = "Isovalues to plot",
-        description = "List of isovalues to plot densities or orbitals",
-        default = "")
+        name="Isovalues to plot",
+        description="List of isovalues to plot densities or orbitals",
+        default="")
 
     volume = EnumProperty(
-        name = "Volume",
-        description = "Type of volume to plot",
-        items = ( ('density', 'density', "Density"),
-            ('orbital', 'orbital', "Plot orbitals (positive and negative isovalues will be drawn)")),
-        default = 'orbital')
+        name="Volume",
+        description="Type of volume to plot",
+        items=(('density', 'density', "Density"),
+               ('orbital', 'orbital', "Plot orbitals (positive and negative isovalues will be drawn)")),
+        default='orbital')
 
     orbital = IntProperty(
-        name = "Orbital",
-        description = "Plot this orbital from molden file (ignored for other inputs)",
-        default = 0)
+        name="Orbital",
+        description="Plot this orbital from molden file (ignored for other inputs)",
+        default=0)
 
     resolution = FloatProperty(
-        name = "Resolution",
-        description = "Desired spacing between points in isosurface (Angstrom)",
-        default = 0.1,
-        min = 0.001,
-        max = 1.0,
-        step = 0.01,
-        precision = 3)
+        name="Resolution",
+        description="Desired spacing between points in isosurface (Angstrom)",
+        default=0.1,
+        min=0.001,
+        max=1.0,
+        step=0.01,
+        precision=3)
 
     charge_offset = FloatProperty(
-                    name = "chgoff",
-                    description = "Use chgfac*(charge + chgoff) in charge plotting to control visibility of charges",
-                    default     = 0.9,
-                    min         = -5.0,
-                    max         = 5.0,
-                    step        = 0.05,
-                    precision   = 2
-                    )
+        name="chgoff",
+        description="Use chgfac*(charge + chgoff) in charge plotting to control visibility of charges",
+        default=0.9,
+        min=-5.0,
+        max=5.0,
+        step=0.05,
+        precision=2
+    )
 
     charge_factor = FloatProperty(
-                    name = "chgfac",
-                    description = "Use chgfac*(charge + chgoff) in charge plotting to control visibility of charges",
-                    default     = 1.0,
-                    min         = -100.0,
-                    max         = 100.0,
-                    step        = 0.05,
-                    precision   = 2
-                    )
+        name="chgfac",
+        description="Use chgfac*(charge + chgoff) in charge plotting to control visibility of charges",
+        default=1.0,
+        min=-100.0,
+        max=100.0,
+        step=0.05,
+        precision=2
+    )
 
     recycle_materials = BoolProperty(
-                        name = "Recycle materials",
-                        description = "Re-use materials generated for previously imported molecules",
-                        default = True)
+        name="Recycle materials",
+        description="Re-use materials generated for previously imported molecules",
+        default=True)
 
-    color_palette = EnumProperty(
-                        name = "Colors",
-                        description = "Palette of colors to use",
-                        items = ( ('default', 'default', 'Colors defined by molecular blender'),
-                                  ('vmd', 'vmd', 'Same colors defined by VMD Element')
-                                ),
-                        default = 'default')
+    colors = EnumProperty(
+        name="Colors",
+        description="Palette of colors to use",
+        items=(('default', 'default', 'Colors defined by molecular blender'),
+               ('vmd', 'vmd', 'Same colors defined by VMD Element')
+               ),
+        default='default')
 
     def execute(self, context):
         BlendMolecule(context, self.filepath,
-                      bonds          = (self.bond_thickness!=0.0),
-                      bond_thickness = self.bond_thickness,
-                      hook_atoms = self.hook_atoms,
-                      plot_style     = self.style_of_plot,
-                      plot_type      = self.type_of_plot,
-                      object_type    = self.type_of_object,
-                      keystride      = self.keystride,
-                      animate_bonds  = self.animate_bonds,
-                      universal_bonds  = self.universal_bonds,
-                      ignore_hydrogen = self.ignore_hydrogen,
-                      gradient  = self.plot_gradient,
-                      charges = self.plot_charges,
-                      charge_offset = self.charge_offset,
-                      charge_factor = self.charge_factor,
-                      find_aromatic  = self.find_aromatic,
-                      recycle_materials = self.recycle_materials,
-                      isovalues = self.isovalues,
-                      volume = self.volume,
-                      orbital = self.orbital,
-                      resolution = self.resolution,
-                      colors = self.color_palette)
+                      bonds=(self.bond_thickness != 0.0),
+                      bond_thickness=self.bond_thickness,
+                      hook_atoms=self.hook_atoms,
+                      plot_style=self.plot_style,
+                      plot_type=self.plot_type,
+                      object_type=self.object_type,
+                      keystride=self.keystride,
+                      animate_bonds=self.animate_bonds,
+                      universal_bonds=self.universal_bonds,
+                      ignore_hydrogen=self.ignore_hydrogen,
+                      gradient=self.gradient,
+                      charges=self.charges,
+                      charge_offset=self.charge_offset,
+                      charge_factor=self.charge_factor,
+                      find_aromatic=self.find_aromatic,
+                      recycle_materials=self.recycle_materials,
+                      isovalues=self.isovalues,
+                      volume=self.volume,
+                      orbital=self.orbital,
+                      resolution=self.resolution,
+                      colors=self.colors)
 
         return {'FINISHED'}
 
+
 def menu_func_import(self, context):
-    self.layout.operator(MolecularBlender.bl_idname, text="Molecular Blender (Import XYZ)")
+    self.layout.operator(MolecularBlender.bl_idname,
+                         text="Molecular Blender (Import XYZ)")
+
 
 def register():
     bpy.utils.register_class(MolecularBlender)
     bpy.types.INFO_MT_file_import.append(menu_func_import)
+
 
 def unregister():
     bpy.utils.unregister_class(MolecularBlender)
