@@ -20,6 +20,6 @@ install:
   # register addon
   - export BLENDER_DIR=${HOME}/.config/blender/${BLENDER_VERSION}
   - mkdir -p ${BLENDER_DIR}/scripts/addons
-  - sudo ln -s ${PWD}/molecular_blender ${BLENDER_DIR}/scripts/addons
+  - sudo ln -s ${PWD} ${BLENDER_DIR}/scripts/addons
 
 script: ./run_test.sh ${BNAME}/blender
