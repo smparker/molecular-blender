@@ -1,0 +1,16 @@
+language: python
+
+python: "3.6"
+
+before_install:
+  # update apt-gets repository sources
+  - sudo apt-get update -qq
+  # install blender from official sources.
+  - sudo apt-get install blender
+
+install:
+  - export BLENDER_VERSION=$(blender --version | awk \'NR==1 {print $2}\')
+  - mkdir -p ${HOME}/.blender/${BLENDER_VERSION}/scripts/addons
+  - sudo ln -s ${PWD}/molecular_blender ${HOME}/.blender/${BLENDER_VERSION}/scripts/addons
+
+script: ./run_test.sh
