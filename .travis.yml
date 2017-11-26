@@ -1,7 +1,5 @@
 language: python
 
-python: "3.4"
-
 before_install:
   # update apt-gets repository sources
   - sudo apt-get update -qq
@@ -9,7 +7,17 @@ before_install:
   - sudo apt-get install blender
 
 install:
-  - export BLENDER_VERSION=$(blender --version | awk \'NR==1 {print $2}\')
+  # manually install recent blender off mirror
+  - export BLENDER_VERSION=2.79
+  - echo "Installing Blender ${BLENDER_VERSION}"
+  - export BNAME="blender-${BLENDER_VERSION}-linux-glibc219-x86_64"
+  - wget "http://mirror.cs.umn.edu/blender.org/release/Blender${BLENDER_VERSION}/${BNAME}.tar.bz2"
+  - tar -xjf ${BNAME}.tar.bz2
+
+  # set up path to use this blender
+  - export PATH=${PWD}/${BNAME}:${PATH}
+
+  # register addon
   - export BLENDER_DIR=${HOME}/.config/blender/${BLENDER_VERSION}
   - mkdir -p ${BLENDER_DIR}/scripts/addons
   - sudo ln -s ${PWD}/molecular_blender ${BLENDER_DIR}/scripts/addons
