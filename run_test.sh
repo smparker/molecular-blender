@@ -18,4 +18,4 @@ cd $(dirname $0)
 
 # pass on arguments to unittest
 args="$@"
-${BLENDER} --background --python test.py -- $args
+${BLENDER} --background --python-exit-code 1 --python test.py -- $args

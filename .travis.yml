@@ -10,7 +10,8 @@ before_install:
 
 install:
   - export BLENDER_VERSION=$(blender --version | awk \'NR==1 {print $2}\')
-  - mkdir -p ${HOME}/.blender/${BLENDER_VERSION}/scripts/addons
-  - sudo ln -s ${PWD}/molecular_blender ${HOME}/.blender/${BLENDER_VERSION}/scripts/addons
+  - export BLENDER_DIR=${HOME}/.config/blender/${BLENDER_VERSION}
+  - mkdir -p ${BLENDER_DIR}/scripts/addons
+  - sudo ln -s ${PWD}/molecular_blender ${BLENDER_DIR}/scripts/addons
 
 script: ./run_test.sh
