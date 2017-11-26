@@ -22,4 +22,4 @@ install:
   - mkdir -p ${BLENDER_DIR}/scripts/addons
   - sudo ln -s ${PWD}/molecular_blender ${BLENDER_DIR}/scripts/addons
 
-script: ./run_test.sh
+script: ./run_test.sh ${BNAME}/blender
