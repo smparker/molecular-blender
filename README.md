@@ -1,4 +1,4 @@
-# Molecular Blender
+# Molecular Blender [![Build Status](https://travis-ci.org/smparker/molecular-blender.svg?branch=master)](https://travis-ci.org/smparker/molecular-blender)
 An import plugin specialized for .xyz files of molecules used in, for example,
 quantum chemistry
 
@@ -36,7 +36,7 @@ On Mac OS X, the path for a user supplied addon is
 
     /Users/<username>/Library/Application\ Support/Blender/<version>/scripts/addons
 
-where `<username>` and `<version` should be replaced with your username and the
+where `<username>` and `<version>` should be replaced with your username and the
 Blender version you are using.
 
 ## Design
