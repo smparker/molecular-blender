@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# pylint: disable=bad-whitespace,multiple-statements,line-too-long,invalid-name
 """
 
         z
@@ -42,9 +44,8 @@ __maintainer__ = "Shane Parker"
 __email__ = "smparker@uci.edu"
 __status__ = "alpha"
 
-from .constants import ang2bohr, bohr2ang
-
 import numpy as np
+from .constants import ang2bohr, bohr2ang
 
 edgetable = (0x0, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c,
              0x80c, 0x905, 0xa0f, 0xb06, 0xc0a, 0xd03, 0xe09, 0xf00,
@@ -335,12 +336,12 @@ tritable = [[-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
             [0, 9, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
             [0, 3, 8, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
             [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
-            ]
+           ]
 
 
 def polygonise(cornervalues, isolevel, x1, y1, z1, x2, y2, z2):
-    # Determine the index into the edge table which
-    # tells us which vertices are inside of the surface
+    """Determine the index into the edge table which
+    tells us which vertices are inside of the surface"""
     cubeindex = 0
 
     if cornervalues[0] < isolevel: cubeindex |= 1
@@ -358,18 +359,18 @@ def polygonise(cornervalues, isolevel, x1, y1, z1, x2, y2, z2):
 
     vertlist = [None] * 12
     # Find the vertices where the surface intersects the cube
-    if (edgetable[cubeindex] & 1):    vertlist[0]  = vertexinterp(isolevel,[x1,y1,z1],[x1,y2,z1],cornervalues[0],cornervalues[1])
-    if (edgetable[cubeindex] & 2):    vertlist[1]  = vertexinterp(isolevel,[x1,y2,z1],[x2,y2,z1],cornervalues[1],cornervalues[2])
-    if (edgetable[cubeindex] & 4):    vertlist[2]  = vertexinterp(isolevel,[x2,y2,z1],[x2,y1,z1],cornervalues[2],cornervalues[3])
-    if (edgetable[cubeindex] & 8):    vertlist[3]  = vertexinterp(isolevel,[x2,y1,z1],[x1,y1,z1],cornervalues[3],cornervalues[0])
-    if (edgetable[cubeindex] & 16):   vertlist[4]  = vertexinterp(isolevel,[x1,y1,z2],[x1,y2,z2],cornervalues[4],cornervalues[5])
-    if (edgetable[cubeindex] & 32):   vertlist[5]  = vertexinterp(isolevel,[x1,y2,z2],[x2,y2,z2],cornervalues[5],cornervalues[6])
-    if (edgetable[cubeindex] & 64):   vertlist[6]  = vertexinterp(isolevel,[x2,y2,z2],[x2,y1,z2],cornervalues[6],cornervalues[7])
-    if (edgetable[cubeindex] & 128):  vertlist[7]  = vertexinterp(isolevel,[x2,y1,z2],[x1,y1,z2],cornervalues[7],cornervalues[4])
-    if (edgetable[cubeindex] & 256):  vertlist[8]  = vertexinterp(isolevel,[x1,y1,z1],[x1,y1,z2],cornervalues[0],cornervalues[4])
-    if (edgetable[cubeindex] & 512):  vertlist[9]  = vertexinterp(isolevel,[x1,y2,z1],[x1,y2,z2],cornervalues[1],cornervalues[5])
-    if (edgetable[cubeindex] & 1024): vertlist[10] = vertexinterp(isolevel,[x2,y2,z1],[x2,y2,z2],cornervalues[2],cornervalues[6])
-    if (edgetable[cubeindex] & 2048): vertlist[11] = vertexinterp(isolevel,[x2,y1,z1],[x2,y1,z2],cornervalues[3],cornervalues[7])
+    if edgetable[cubeindex] & 1:    vertlist[0]  = vertexinterp(isolevel,[x1,y1,z1],[x1,y2,z1],cornervalues[0],cornervalues[1])
+    if edgetable[cubeindex] & 2:    vertlist[1]  = vertexinterp(isolevel,[x1,y2,z1],[x2,y2,z1],cornervalues[1],cornervalues[2])
+    if edgetable[cubeindex] & 4:    vertlist[2]  = vertexinterp(isolevel,[x2,y2,z1],[x2,y1,z1],cornervalues[2],cornervalues[3])
+    if edgetable[cubeindex] & 8:    vertlist[3]  = vertexinterp(isolevel,[x2,y1,z1],[x1,y1,z1],cornervalues[3],cornervalues[0])
+    if edgetable[cubeindex] & 16:   vertlist[4]  = vertexinterp(isolevel,[x1,y1,z2],[x1,y2,z2],cornervalues[4],cornervalues[5])
+    if edgetable[cubeindex] & 32:   vertlist[5]  = vertexinterp(isolevel,[x1,y2,z2],[x2,y2,z2],cornervalues[5],cornervalues[6])
+    if edgetable[cubeindex] & 64:   vertlist[6]  = vertexinterp(isolevel,[x2,y2,z2],[x2,y1,z2],cornervalues[6],cornervalues[7])
+    if edgetable[cubeindex] & 128:  vertlist[7]  = vertexinterp(isolevel,[x2,y1,z2],[x1,y1,z2],cornervalues[7],cornervalues[4])
+    if edgetable[cubeindex] & 256:  vertlist[8]  = vertexinterp(isolevel,[x1,y1,z1],[x1,y1,z2],cornervalues[0],cornervalues[4])
+    if edgetable[cubeindex] & 512:  vertlist[9]  = vertexinterp(isolevel,[x1,y2,z1],[x1,y2,z2],cornervalues[1],cornervalues[5])
+    if edgetable[cubeindex] & 1024: vertlist[10] = vertexinterp(isolevel,[x2,y2,z1],[x2,y2,z2],cornervalues[2],cornervalues[6])
+    if edgetable[cubeindex] & 2048: vertlist[11] = vertexinterp(isolevel,[x2,y1,z1],[x2,y1,z2],cornervalues[3],cornervalues[7])
 
     #Create the triangle
     triangles = []
@@ -384,11 +385,12 @@ def polygonise(cornervalues, isolevel, x1, y1, z1, x2, y2, z2):
 
 
 def vertexinterp(isolevel, p1, p2, valp1, valp2):
-    if (abs(isolevel - valp1) < 0.00001):
+    """Returns linearly interpolated value along edge."""
+    if abs(isolevel - valp1) < 0.00001:
         return p1
-    if (abs(isolevel - valp2) < 0.00001):
+    if abs(isolevel - valp2) < 0.00001:
         return p2
-    if (abs(valp1 - valp2) < 0.00001):
+    if abs(valp1 - valp2) < 0.00001:
         return p1
     mu = (isolevel - valp1) / (valp2 - valp1)
     x = p1[0] + mu * (p2[0] - p1[0])
@@ -399,6 +401,7 @@ def vertexinterp(isolevel, p1, p2, valp1, valp2):
 
 
 def arange(start, stop, step):
+    """Generator for range"""
     r = start
     while r < stop:
         yield r
@@ -407,7 +410,7 @@ def arange(start, stop, step):
 
 def transform_triangles(triangles, origin, axes):
     """Transforms and translates set of triangles to match input origin/axes"""
-    if len(triangles) == 0:
+    if not triangles:
         return triangles
     coords = np.array(triangles)
     out = np.dot(coords, axes)
@@ -415,6 +418,7 @@ def transform_triangles(triangles, origin, axes):
 
 
 def cube_isosurface(data, origin, axes, isovalues):
+    """Return set of triangles from cube file"""
     triangle_sets = [{"isovalue": iso} for iso in isovalues]
 
     tri_list = [[] for iso in isovalues]
@@ -454,6 +458,7 @@ def cube_isosurface(data, origin, axes, isovalues):
 
 
 def molden_isosurface(orbital, isovalues, resolution):
+    """Return set of triangles from Molden file"""
     p0, p1 = orbital.bounding_box(min([abs(x) for x in isovalues]) * 0.01)
     resolution = [int(round((j - i) / (resolution * ang2bohr)))
                   for i, j in zip(p0, p1)]
@@ -463,6 +468,7 @@ def molden_isosurface(orbital, isovalues, resolution):
 
 
 def isosurface(p0, p1, npoints, isovalues, isofunc, axes):
+    """Return set of triangles from function object"""
     r = [(x1 - x0) / sw for x0, x1, sw in zip(p0, p1, npoints)]
 
     triangle_sets = [{"isovalue": iso} for iso in isovalues]

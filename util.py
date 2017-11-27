@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 #
 #  Molecular Blender
 #  Filename: util.py
@@ -20,10 +21,12 @@
 #  If not, see <http://www.gnu.org/licenses/>.
 #
 
+"""Common utilities for Molecular Blender"""
+
 import os
 import time
 
-debug = os.environ.get('MB_DEBUG', '') == '1'
+DEBUG = os.environ.get('MB_DEBUG', '') == '1'
 
 
 class Timer(object):
@@ -41,16 +44,17 @@ class Timer(object):
     def tick_print(self, label):
         """Calls tick and automatically prints the output with the given label"""
         out = self.tick()
-        if debug:
+        if DEBUG:
             print("  %40s: %.4f sec" % (label, out))
         return out
 
 
-def stopwatch(routine, verbose=debug):
+def stopwatch(routine, verbose=DEBUG):
     """Decorator to measure time in a function using blender timer"""
-
     def stopwatch_dec(func):
+        """Specific decorator"""
         def wrapper(*args, **kwargs):
+            """Wrapper for decorator to measure timer"""
             start = time.time()
             out = func(*args, **kwargs)
             end = time.time()
@@ -67,11 +71,11 @@ def unique_name(name, existing_names, starting_suffix=None):
     testname = name if starting_suffix is None else "%s%d" % (
         name, starting_suffix)
     if testname in existing_names:
-        n = 0 if starting_suffix is None else starting_suffix + 1
-        while (True):
-            testname = "%s%d" % (name, n)
+        i = 0 if starting_suffix is None else starting_suffix + 1
+        while True:
+            testname = "%s%d" % (name, i)
             if testname in existing_names:
-                n += 1
+                i += 1
             else:
                 return testname
     else:

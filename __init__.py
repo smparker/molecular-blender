@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 #
 #  Molecular Blender
 #  Filename: __init__.py
@@ -20,7 +21,14 @@
 #  If not, see <http://www.gnu.org/licenses/>.
 #
 
-bl_info = {
+"""Blender plug-in to read files commonly used in Quantum Chemistry"""
+
+import bpy
+from bpy.props import StringProperty, BoolProperty, EnumProperty, IntProperty, FloatProperty
+import bpy_extras
+from .plotter import BlendMolecule
+
+bl_info = {  # pylint: disable=invalid-name
     "name": "Molecular Blender",
     "author": "Shane Parker and Josh Szekely",
     "version": (0, 1, 0),
@@ -28,12 +36,6 @@ bl_info = {
     "description": "Import XYZ files",
     "category": "Import-Export"
 }
-
-import bpy, bpy_extras
-from bpy.props import StringProperty, BoolProperty, EnumProperty, IntProperty, FloatProperty
-
-from .plotter import BlendMolecule
-
 
 class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     """A class designed to conveniently import molecules to blender"""
@@ -85,9 +87,9 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         name="Hook bonds",
         description="Hook bonds to atoms to make bonds follow manual manipulation of the atoms",
         items=(('auto', "Automatic", "Off for single frames, on for animations"),
-               ('on', "On", "Hook bonds (can be very slow for molecules with hundreds or more atoms)"),
-               ('off', "Off", "Do not hook bonds to atoms (faster, but manipulating atoms in blender will" +
-                " not move the bonds alongside")),
+               ('on', "On", "Hook bonds (slow for molecules with hundreds or more atoms)"),
+               ('off', "Off", "Do not hook bonds to atoms (faster, but manipulating atoms in" +
+                " blender will not move the bonds alongside)")),
         default='auto')
 
     keystride = IntProperty(
@@ -98,12 +100,12 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     animate_bonds = EnumProperty(
         name="Animate bonds",
         description="Determine how the bonds are handled for an animation",
-        items=(('staticfirst', "Static: first frame", "Use bonds determined from only the first frame"),
+        items=(('staticfirst', "Static: first frame", "Use bonds from only the first frame"),
                ('staticall', "Static: all frames",
                 "Draw all bonds that are formed during any frame"),
                ('dynamic', "Dynamically draw frames",
                 "Dynamically form and break bonds during animation")
-               ),
+              ),
         default='staticfirst')
 
     universal_bonds = BoolProperty(
@@ -132,7 +134,7 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         items=(('none', 'none', 'No charges plotted'),
                ('scale', 'scale',
                 'Charge magnitude encoded by scale of sphere')
-               ),
+              ),
         default='none')
 
     isovalues = StringProperty(
@@ -144,7 +146,7 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         name="Volume",
         description="Type of volume to plot",
         items=(('density', 'density', "Density"),
-               ('orbital', 'orbital', "Plot orbitals (positive and negative isovalues will be drawn)")),
+               ('orbital', 'orbital', "Plot orbitals (positive and negative isovalues)")),
         default='orbital')
 
     orbital = IntProperty(
@@ -163,7 +165,7 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
     charge_offset = FloatProperty(
         name="chgoff",
-        description="Use chgfac*(charge + chgoff) in charge plotting to control visibility of charges",
+        description="Use chgfac*(charge + chgoff) to control visibility of charges",
         default=0.9,
         min=-5.0,
         max=5.0,
@@ -173,7 +175,7 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
     charge_factor = FloatProperty(
         name="chgfac",
-        description="Use chgfac*(charge + chgoff) in charge plotting to control visibility of charges",
+        description="Use chgfac*(charge + chgoff) to control visibility of charges",
         default=1.0,
         min=-100.0,
         max=100.0,
@@ -191,10 +193,11 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         description="Palette of colors to use",
         items=(('default', 'default', 'Colors defined by molecular blender'),
                ('vmd', 'vmd', 'Same colors defined by VMD Element')
-               ),
+              ),
         default='default')
 
     def execute(self, context):
+        """Function called to plot molecule"""
         BlendMolecule(context, self.filepath,
                       bonds=(self.bond_thickness != 0.0),
                       bond_thickness=self.bond_thickness,
@@ -221,16 +224,19 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         return {'FINISHED'}
 
 
-def menu_func_import(self, context):
+def menu_func_import(self, _context):
+    """Define layout of menu"""
     self.layout.operator(MolecularBlender.bl_idname,
                          text="Molecular Blender (Import XYZ)")
 
 
 def register():
+    """Register class with Blender on load"""
     bpy.utils.register_class(MolecularBlender)
     bpy.types.INFO_MT_file_import.append(menu_func_import)
 
 
 def unregister():
+    """Unregister class with Blender on exit"""
     bpy.utils.unregister_class(MolecularBlender)
     bpy.types.INFO_MT_file_import.remove(menu_func_import)

@@ -1,23 +1,28 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""Unit testing for molecular blender"""
+
+import unittest
+import sys
+import re
 
 import molecular_blender as mb
 import numpy as np
 
 import bpy
 
-import unittest
-import sys
-import re
-
-
 class TestBlendSticksRings(unittest.TestCase):
+    """Test Suite for plotting with sticks and drawing rings"""
     def setUp(self):
+        """Setup function"""
         self.file = 'examples/tetracene_dimer.xyz'
         self.atom_re = re.compile(r"^tetracene_dimer_Carbon\d+$")
         self.bond_re = re.compile(r"^tetracene_dimer_Carbon\d+-Carbon\d+$")
         self.context = bpy.context
 
     def test_sticks_and_rings_import(self):
+        """Test importer for sticks/rings"""
         mb.BlendMolecule(self.context, self.file,
                          plot_style="sticks",
                          find_aromatic=True)
@@ -26,24 +31,27 @@ class TestBlendSticksRings(unittest.TestCase):
             ["tetracene_dimer_ring" in x.name for x in bpy.data.objects])
         self.assertEqual(nrings, 8, 'Incorrect number of rings.')
 
-        nCarbon = sum([self.atom_re.match(x.name)
+        ncarbon = sum([self.atom_re.match(x.name)
                        is not None for x in bpy.data.objects])
-        self.assertEqual(nCarbon, 36, 'Incorrect number of Carbon atoms.')
+        self.assertEqual(ncarbon, 36, 'Incorrect number of Carbon atoms.')
 
-        nCC = sum([self.bond_re.match(x.name)
+        ncc = sum([self.bond_re.match(x.name)
                    is not None for x in bpy.data.objects])
-        self.assertEqual(nCC, 42, 'Incorrect number of Carbon-Carbon bonds.')
+        self.assertEqual(ncc, 42, 'Incorrect number of Carbon-Carbon bonds.')
 
         nobj = sum(["tetracene_dimer" in x.name for x in bpy.data.objects])
         self.assertEqual(nobj, 88, 'Incorrect number of objects created.')
 
 
 class TestAnimateBallAndSticks(unittest.TestCase):
+    """Test Suite for animation"""
     def setUp(self):
+        """Setup function"""
         self.file = 'examples/benzopentyl_twist.xyz'
         self.context = bpy.context
 
     def test_balls_and_sticks(self):
+        """Test importer for animation involving balls/sticks"""
         mb.BlendMolecule(self.context, self.file,
                          plot_style="fixedbs",
                          plot_type="animate",
@@ -64,37 +72,46 @@ class TestAnimateBallAndSticks(unittest.TestCase):
 
 
 class TestXYZRead(unittest.TestCase):
+    """Test Suite for reading XYZ"""
     def setUp(self):
+        """Setup function"""
         self.geo = mb.importers.molecule_from_file(
             'examples/tetracene_dimer.xyz', {})
 
     def test_read_xyz(self):
+        """Test to read XYZ"""
         self.assertEqual(len(self.geo["atoms"]), 60)
 
 
 class TestCubeRead(unittest.TestCase):
+    """Test Suite for reading cube files"""
     def setUp(self):
+        """Setup function"""
         self.geo = mb.importers.molecule_from_file('examples/water.cube', {})
         dxyz = [np.linalg.norm(self.geo["volume"]["axes"][:, i])
                 for i in range(3)]
-        self.dV = np.prod(dxyz)
+        self.dvol = np.prod(dxyz)
 
     def test_total_density(self):
+        """Test integrate density"""
         vol = self.geo["volume"]["data"]
 
-        total_density = np.sum(vol * vol) * self.dV
+        total_density = np.sum(vol * vol) * self.dvol
         self.assertAlmostEqual(total_density, 0.141058531145, places=4)
 
 
 class TestMoldenRead(unittest.TestCase):
+    """Test Suite for reading molden files"""
     def setUp(self):
+        """Setup function"""
         self.geo = mb.importers.molecule_from_file(
             'examples/water-sto-3g.molden', {})
         self.orbitals = mb.orbitals.MOData.from_dict(self.geo)
         self.xyz = np.linspace(-10, 10, 50)
-        self.dV = (self.xyz[1] - self.xyz[0])**3
+        self.dvol = (self.xyz[1] - self.xyz[0])**3
 
     def test_orbital_norm(self):
+        """Test to verify orbital norm"""
         orb = self.orbitals.get_orbital(2)
 
         integration = 0.0
@@ -103,11 +120,12 @@ class TestMoldenRead(unittest.TestCase):
                 for z in self.xyz:
                     phi = orb.value(x, y, z)
                     integration += phi * phi
-        integration *= self.dV
+        integration *= self.dvol
 
         self.assertAlmostEqual(integration, 0.98273143395905316, places=6)
 
     def test_orbital_overlap(self):
+        """Test to verify orbital overlaps"""
         iorb = self.orbitals.get_orbital(3)
         jorb = self.orbitals.get_orbital(4)
 
@@ -118,20 +136,24 @@ class TestMoldenRead(unittest.TestCase):
                     phi_i = iorb.value(x, y, z)
                     phi_j = jorb.value(x, y, z)
                     integration += phi_i * phi_j
-        integration *= self.dV
+        integration *= self.dvol
 
         self.assertAlmostEqual(integration, -0.0010284808822276, places=6)
+
+
+def blender_argv(argv):
+    """Processes argv to process the Blender specific parts"""
+    out = argv
+    if "blender" in sys.argv[0] and "--python" in sys.argv:
+        # probably called through blender
+        out = [argv[argv.index('--python') + 1]]
+        if '--' in argv:
+            out.extend(argv[argv.index('--') + 1:])
+
+    return out
 
 
 # When called through Blender, sys.argv includes the blender command. The
 # code block here is constructing argv to match what unittest expects.
 if __name__ == "__main__":
-    if "blender" in sys.argv[0] and "--python" in sys.argv:
-        # probably called through blender
-        argv = [sys.argv[sys.argv.index('--python') + 1]]
-        if '--' in sys.argv:
-            argv.extend(sys.argv[sys.argv.index('--') + 1:])
-    else:
-        argv = sys.argv
-
-    unittest.main(argv=argv)
+    unittest.main(argv=blender_argv(sys.argv))

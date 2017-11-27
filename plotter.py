@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 #
 #  Molecular Blender
 #  Filename: plotter.py
@@ -20,15 +21,7 @@
 #  If not, see <http://www.gnu.org/licenses/>.
 #
 
-from .molecule import Molecule, elements
-from .periodictable import generate_table
-from .aromatics import find_planar_cycles
-from .marching_cube import cube_isosurface, molden_isosurface
-
-from .util import stopwatch, Timer, unique_name
-from .importers import molecule_from_file
-
-import numpy as np
+"""Methods to handle Blender interactions for Molecular Blender"""
 
 from collections import namedtuple
 from itertools import chain
@@ -37,23 +30,32 @@ import bpy
 import mathutils
 import bmesh
 
+from .molecule import Molecule, ELEMENTS
+from .periodictable import generate_table
+from .aromatics import find_planar_cycles
+from .marching_cube import cube_isosurface, molden_isosurface
+
+from .util import stopwatch, Timer, unique_name
+from .importers import molecule_from_file
+
 
 def plot_prep(molecule, options):
-    if (options["charges"] != "none"):
+    """Preprocess options"""
+    if options["charges"] != "none":
         molecule.chgfac = options["charge_factor"]
         molecule.chgoff = options["charge_offset"]
 
 
 @stopwatch("make_atom_materials")
 def make_atom_materials(molecule, options):
-    """Given a molecule object, creates required materials and populates materials dictionary in molecule"""
+    """Given a molecule object, creates required materials and populates materials dictionary"""
 
     # set of new atoms to make materials for
-    atom_base_set = set([i.el.symbol for i in molecule.atoms])
+    atom_base_set = set([i.element.symbol for i in molecule.atoms])
 
     for a in atom_base_set:
         atom = a + "_mat"
-        if (options["recycle_materials"]):
+        if options["recycle_materials"]:
             if atom in bpy.data.materials.keys():
                 molecule.materials[a] = atom
                 continue
@@ -64,9 +66,9 @@ def make_atom_materials(molecule, options):
 
         bpy.data.materials.new(atom)  # Creates new material
         bpy.data.materials[atom].diffuse_color = mathutils.Color(
-            elements[a].color)  # Sets color from atom dictionary
+            ELEMENTS[a].color)  # Sets color from atom dictionary
 
-    if (options["charges"] != "none"):  # make materials used for showing charges
+    if options["charges"] != "none":  # make materials used for showing charges
         pc = unique_name("pluscharge", bpy.data.materials.keys()) + "_mat"
         nc = unique_name("negcharge", bpy.data.materials.keys()) + "_mat"
 
@@ -88,7 +90,7 @@ def make_bond_materials(molecule, options):
 
     for b in bond_base_set:
         bond = b + "_bond_mat"
-        if (options["recycle_materials"]):
+        if options["recycle_materials"]:
             if bond in bpy.data.materials.keys():
                 molecule.bond_materials[b] = bond
                 continue
@@ -106,13 +108,12 @@ def make_bond_materials(molecule, options):
 @stopwatch("PlotMolecule")
 def PlotMolecule(context, molecule, options):
     """Plots the given molecule object to the specified context"""
-    global pt
     global namedtuple
 
     clock = Timer()
 
     object_type = options["object_type"]
-    center_of_mass = molecule.COM()
+    center_of_mass = molecule.center_of_mass()
 
     # Creates empty to collect all the new objects
     bpy.ops.object.empty_add(type='PLAIN_AXES', location=center_of_mass)
@@ -127,10 +128,15 @@ def PlotMolecule(context, molecule, options):
 
     Style = namedtuple(
         'Style', ['atom_size', 'bond_size', 'atom_scaling', 'bond_scaling', 'split_bond'])
-    style_dict = {'vdw': Style(atom_size="scaled", bond_size="none", atom_scaling=1.0, bond_scaling=0.0, split_bond=False),
-                  'bs': Style(atom_size="scaled", bond_size="vdw", atom_scaling=0.25, bond_scaling=0.1, split_bond=False),
-                  'fixedbs': Style(atom_size="scaled", bond_size="fixed", atom_scaling=0.25, bond_scaling=1.0, split_bond=False),
-                  'sticks': Style(atom_size="bond", bond_size="fixed", atom_scaling=0.2, bond_scaling=1.0, split_bond=True)}
+    style_dict = {
+        'vdw': Style(atom_size="scaled", bond_size="none",
+                     atom_scaling=1.0, bond_scaling=0.0, split_bond=False),
+        'bs': Style(atom_size="scaled", bond_size="vdw",
+                    atom_scaling=0.25, bond_scaling=0.1, split_bond=False),
+        'fixedbs': Style(atom_size="scaled", bond_size="fixed",
+                         atom_scaling=0.25, bond_scaling=1.0, split_bond=False),
+        'sticks': Style(atom_size="bond", bond_size="fixed",
+                        atom_scaling=0.2, bond_scaling=1.0, split_bond=True)}
     plot_style = style_dict[options["plot_style"]]
 
     bond_thickness = options["bond_thickness"]
@@ -145,13 +151,14 @@ def PlotMolecule(context, molecule, options):
 
     clock.tick_print("preamble")
 
-    # Check to see if original atom already exists, if yes, create translated linked duplicate, if no, create new object
+    # Check to see if original atom already exists.
+    # if yes, create translated linked duplicate, if no, create new object
     for atom in molecule.atoms:
         if atom.hidden:
             continue
         # Unselect Everything
         bpy.ops.object.select_all(action='DESELECT')
-        base_atom = molecule.name + "_" + atom.el.name
+        base_atom = molecule.name + "_" + atom.element.name
         ref_atom = base_atom + "0"
         atom_obj = ""
         if ref_atom in obj_keys:  # duplicate existing atom
@@ -179,8 +186,8 @@ def PlotMolecule(context, molecule, options):
             bpy.ops.object.select_all(action='DESELECT')
 
             radius = plot_style.atom_scaling * \
-                atom.el.vdw if (plot_style.atom_size !=
-                                "bond") else bond_thickness
+                atom.element.vdw if (plot_style.atom_size !=
+                                     "bond") else bond_thickness
 
             if object_type == "nurbs":
                 bpy.ops.surface.primitive_nurbs_surface_sphere_add(
@@ -199,14 +206,14 @@ def PlotMolecule(context, molecule, options):
             atom_obj = context.object
 
             context.object.data.materials.append(
-                bpy.data.materials[molecule.materials[atom.el.symbol]])
+                bpy.data.materials[molecule.materials[atom.element.symbol]])
             bpy.ops.object.shade_smooth()
 
             # make parent active
             context.scene.objects.active = molecule_obj
             bpy.ops.object.parent_set(type='OBJECT', keep_transform=False)
 
-        if (options["charges"] != "none"):  # set a sphere on top of atom that will show charge
+        if options["charges"] != "none":  # set a sphere on top of atom that will show charge
             plus_obj = atom_obj.copy()
             plus_obj.data = plus_obj.data.copy()
             plus_obj.data.materials[0] = bpy.data.materials[molecule.pluscharge_mat]
@@ -235,7 +242,7 @@ def PlotMolecule(context, molecule, options):
 
     clock.tick_print("atom creation")
 
-    if len(molecule.bonds) > 0:  # Add the bonds
+    if molecule.bonds:  # Add the bonds
         # Make circles the correct size for the bonds
         bevnames = {}
 
@@ -243,8 +250,8 @@ def PlotMolecule(context, molecule, options):
         # set up bevel types
         for i in bond_bevels:
             rad = bond_thickness
-            if (not options['universal_bonds'] and plot_style.bond_size == "vdw"):
-                rad = elements[i].vdw * bond_scaling
+            if not options['universal_bonds'] and plot_style.bond_size == "vdw":
+                rad = ELEMENTS[i].vdw * plot_style.bond_scaling
 
             bpy.ops.curve.primitive_bezier_circle_add(
                 radius=rad, location=(0, 0, 0))
@@ -268,11 +275,9 @@ def PlotMolecule(context, molecule, options):
             if iatom.hidden or jatom.hidden:
                 continue
 
-            bevtype = (iatom if iatom.el.vdw >
-                       jatom.el.vdw else jatom).el.symbol
             bond.bevelname = bevnames[bond.style]
 
-            to_split = plot_style.split_bond and iatom.el != jatom.el
+            to_split = plot_style.split_bond and iatom.element != jatom.element
             bond.name = unique_name(bond.make_name(
                 molecule.name, to_split), obj_keys)
             if to_split:
@@ -284,7 +289,7 @@ def PlotMolecule(context, molecule, options):
                     bname, type='CURVE') for bname in bond.name]
                 for a, c in zip([iatom, jatom], curves):
                     c.materials.append(
-                        bpy.data.materials[molecule.materials[a.el.symbol]])
+                        bpy.data.materials[molecule.materials[a.element.symbol]])
 
                 for c, cname, bounds in zip(curves, bond.name, [(0.0, 0.5), (0.5, 1.0)]):
                     c.dimensions = '3D'
@@ -312,7 +317,8 @@ def PlotMolecule(context, molecule, options):
                 # create curve object
                 coords = [iatom.position, jatom.position]
                 curve = bpy.data.curves.new(bond.name, type='CURVE')
-                bond_mat = bpy.data.materials[molecule.materials[iatom.el.symbol]] if plot_style.split_bond else \
+                bond_mat = bpy.data.materials[molecule.materials[iatom.element.symbol]] \
+                    if plot_style.split_bond else \
                     bpy.data.materials[molecule.bond_materials[bond.style]]
                 curve.materials.append(bond_mat)
 
@@ -380,11 +386,11 @@ def PlotMolecule(context, molecule, options):
 
     clock.tick_print("set parentage")
 
-    if (options["gradient"]):
+    if options["gradient"]:
         for atom in molecule.atoms:
             if atom.hidden:
                 continue
-            if (atom.gradient.length > 1.0e-30):
+            if atom.gradient.length > 1.0e-30:
                 bpy.ops.object.select_all(action='DESELECT')
                 curve = bpy.data.curves.new(
                     atom.name + "_gradient", type='CURVE')
@@ -408,7 +414,7 @@ def PlotMolecule(context, molecule, options):
     return
 
 
-def PlotWireFrame(context, molecule, options):
+def PlotWireFrame(context, molecule, _options):
     """driver for wireframe plotter"""
     for item in context.selectable_objects:
         item.select = False
@@ -437,7 +443,7 @@ def AnimateMolecule(context, molecule, options):
     kstride = options["keystride"]
 
     # check to make sure trajectory information is stored for at least the first atom
-    if (len(molecule.atoms[0].trajectory) == 0):
+    if not molecule.atoms[0].trajectory:
         raise Exception(
             "Trajectory must be read before calling AnimateMolecule")
     if all([atom.name == '' for atom in molecule.atoms]):
@@ -466,8 +472,8 @@ def AnimateMolecule(context, molecule, options):
             atom_obj.keyframe_insert(
                 data_path='location', frame=iframe * kstride + 1)
 
-            if (options["charges"] != "none"):
-                if (options["charges"] == "scale"):
+            if options["charges"] != "none":
+                if options["charges"] == "scale":
                     pc, nc = max(0.0, isnap.charge), -min(0.0, isnap.charge)
                     pluscharge.scale = molecule.scale(pc)
                     negcharge.scale = molecule.scale(nc)
@@ -507,6 +513,7 @@ def create_mesh(name, verts, faces):
 
 
 def create_geometry(verts):
+    """Build geometry out of vertices"""
     faces = []
     faceoffset = 0
     for ver in verts:
@@ -522,6 +529,7 @@ def create_geometry(verts):
 
 @stopwatch("draw surfaces")
 def draw_surfaces(molecule, context, options):
+    """Draws isosurfaces"""
     vertex_sets = []
     if molecule.volume is not None:  # volumetric data was read
         vol = molecule.volume
@@ -617,7 +625,7 @@ def process_options(filename, options):
                 "orbital": 0,
                 "resolution": 0.5,
                 "colors": "default"
-                }
+               }
 
     for d in defaults:
         if d not in options:
@@ -631,7 +639,7 @@ def process_options(filename, options):
     if options["isosurfaces"]:
         isovals = options["isovalues"].split(',')
         isovals = [float(x) for x in isovals]
-        if len(isovals) == 0:
+        if not isovals:
             raise Exception("Isovalues must be specified")
 
         if options["volume"] == "orbital":
@@ -651,8 +659,8 @@ def BlendMolecule(context, filename, **options):
     """basic driver that calls the appropriate plot functions"""
 
     options = process_options(filename, options)
-    global elements  # first redefine elements list
-    elements.update(generate_table(options["colors"]))
+    global ELEMENTS  # first redefine ELEMENTS list
+    ELEMENTS.update(generate_table(options["colors"]))
     name = filename.rsplit('.', 1)[0].rsplit('/')[-1]
     molecule = Molecule.from_dict(name, molecule_from_file(filename, options))
     molecule.determine_bonding(options)
@@ -660,16 +668,16 @@ def BlendMolecule(context, filename, **options):
     make_atom_materials(molecule, options)
     plot_prep(molecule, options)
 
-    if (options["object_type"] == "wireframe"):
+    if options["object_type"] == "wireframe":
         PlotWireFrame(context, molecule, options)
-        if (options["plot_type"] == "animate"):
+        if options["plot_type"] == "animate":
             print("animation of wireframes not currently supported!")
     else:
         PlotMolecule(context, molecule, options)
-        if (options["plot_type"] == "animate"):
+        if options["plot_type"] == "animate":
             AnimateMolecule(context, molecule, options)
 
-    if (options["find_aromatic"]):
+    if options["find_aromatic"]:
         plot_rings(context, molecule, options)
 
     if options["isosurfaces"]:

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 #
 #  Molecular Blender
 #  Filename: orbitals.py
@@ -20,28 +21,51 @@
 #  If not, see <http://www.gnu.org/licenses/>.
 #
 
-from .constants import ang2bohr, bohr2ang
-from .util import stopwatch
-from .periodictable import symbols
+"""Classes and functions to compute orbital values in real space."""
 
 import numpy as np
+from .constants import ang2bohr
 
 
-def gamma2n(n2):
+def gamma2n(i):
     """Returns Gamma(n/2), only for half-integers"""
-    return np.array([gamma2n_impl(int(round(x))) for x in n2])
+    return np.array([gamma2n_impl(int(round(x))) for x in i])
 
 
-def gamma2n_impl(n2):
-    """Returns gamma2n_impl(n) where n is input as 2*n=n2"""
-    if n2 <= 0:
+def gamma2n_impl(i):
+    """Returns gamma2n_impl(n) where n is input as 2*n=i"""
+    if i <= 0:
         raise Exception("gamma2n_impl function cannot accept negative numbers")
-    elif n2 == 2:
+    elif i == 2:
         return 1
-    elif n2 == 1:
+    elif i == 1:
         return np.sqrt(np.pi)
     else:
-        return (0.5 * n2 - 1.) * gamma2n_impl(n2 - 2)
+        return (0.5 * i - 1.) * gamma2n_impl(i - 2)
+
+
+
+# Polynomial functions
+def polynomial_s(X, Y, Z):  # pylint: disable=unused-argument
+    """n/a"""
+    return 1.0
+
+def polynomial_p(X, Y, Z):
+    """x, y, z"""
+    return np.array([X, Y, Z])
+
+def polynomial_d(X, Y, Z):
+    """xx, yy, zz, xy, xz, yz"""
+    return np.array([X*X, Y*Y, Z*Z, X*Y, X*Z, Y*Z])
+
+def polynomial_f(X, Y, Z):
+    """xxx, yyy, zzz, xyy, xxy, xxz, xzz, yzz, yyz, xyz"""
+    return np.array([X*X*X, Y*Y*Y, Z*Z*Z, X*Y*Y, X*X*Y, X*Z*Z, Y*Z*Z, Y*Y*Z, X*Y*Z])
+
+def polynomial_g(X, Y, Z):
+    """xxxx yyyy zzzz xxxy xxxz yyyx yyyz zzzx zzzy xxyy xxzz yyzz xxyz yyxz zzxy"""
+    return np.array([X*X*X*X, Y*Y*Y*Y, Z*Z*Z*Z, X*X*X*Y, X*X*X*Z, Y*Y*Y*X, Y*Y*Y*Z,
+                     Z*Z*Z*X, Z*Z*Z*Y, X*X*Y*Y, X*X*Z*Z, Y*Y*Z*Z, X*X*Y*Z, Y*Y*X*Z, Z*Z*X*Y])
 
 
 class Shell(object):
@@ -58,8 +82,8 @@ class Shell(object):
         self.size = (self.l + 1) * (self.l + 2) // 2
 
         self.norms = 1.0 / np.sqrt(self.__norms())
-        self.__poly = [self.__poly_s, self.__poly_p,
-                       self.__poly_d, self.__poly_f, self.__poly_g][l]
+        self.polynomial = [polynomial_s, polynomial_p,
+                           polynomial_d, polynomial_f, polynomial_g][l]
 
         # most diffuse exponent in shell
         imin = np.argmin(self.exponents)
@@ -75,10 +99,10 @@ class Shell(object):
                ["x", "y", "z"],
                ["xx", "yy", "zz", "xy", "xz", "yz"],
                ["xxx", "yyy", "zzz", "xyy", "xxy",
-                   "xxz", "xzz", "yzz", "yyz", "xyz"],
+                "xxz", "xzz", "yzz", "yyz", "xyz"],
                ["xxxx", "yyyy", "zzzz", "xxxy", "xxxz", "yyyx", "yyyz", "zzzx", "zzzy",
                 "xxyy", "xxzz", "yyzz", "xxyz", "yyxz", "zzxy"]
-               ]
+              ]
 
     def __norms(self):
         """Returns [nL, nexp] array of norms"""
@@ -91,67 +115,46 @@ class Shell(object):
 
         return out
 
-    def __poly_s(self, X, Y, Z):
-        """n/a"""
-        return 1.0
-
-    def __poly_p(self, X, Y, Z):
-        """x, y, z"""
-        return np.array([X, Y, Z])
-
-    def __poly_d(self, X, Y, Z):
-        """xx, yy, zz, xy, xz, yz"""
-        return np.array([X*X, Y*Y, Z*Z, X*Y, X*Z, Y*Z])
-
-    def __poly_f(self, X, Y, Z):
-        """xxx, yyy, zzz, xyy, xxy, xxz, xzz, yzz, yyz, xyz"""
-        return np.array([X*X*X, Y*Y*Y, Z*Z*Z, X*Y*Y, X*X*Y, X*Z*Z, Y*Z*Z, Y*Y*Z, X*Y*Z])
-
-    def __poly_g(self, X, Y, Z):
-        """xxxx yyyy zzzz xxxy xxxz yyyx yyyz zzzx zzzy xxyy xxzz yyzz xxyz yyxz zzxy"""
-        return np.array([X*X*X*X, Y*Y*Y*Y, Z*Z*Z*Z, X*X*X*Y, X*X*X*Z, Y*Y*Y*X, Y*Y*Y*Z,
-                         Z*Z*Z*X, Z*Z*Z*Y, X*X*Y*Y, X*X*Z*Z, Y*Y*Z*Z, X*X*Y*Z, Y*Y*X*Z, Z*Z*X*Y])
-
     def bounding_box_size(self, thr, logmxcoeff=0.0):
-        """returns half the edgelength of a box outside of which the shell is guaranteed to be below the given threshold"""
-        xx = self.l * ( np.log(self.mxx) - np.log(thr / self.mxnorm) + logmxcoeff ) / self.diffuse
+        """Returns half the edgelength of a box outside of which the shell
+        is guaranteed to be below the given threshold"""
+        xx = self.l * (np.log(self.mxx) - np.log(thr / self.mxnorm) + logmxcoeff) / self.diffuse
         if xx < 0:
             return 0.0
-        else:
-            return np.sqrt(xx)
+        return np.sqrt(xx)
 
     def value(self, x, y, z, logmxcoeff=0.0):
         """compute values of shell at point, screening out contributions below shell threshold"""
-        px, py, pz = x - self.X, y - self.Y, z - self.Z
+        px = x - self.X
+        py = y - self.Y
+        pz = z - self.Z
         rr = px * px + py * py + pz * pz
 
         if rr < self.logthr - logmxcoeff:
-            expz = np.exp(-self.exponents * rr) * self.coeff
+            expz = np.exp(-1.0 * rr * self.exponents) * self.coeff
             base = np.dot(self.norms, expz)
-            return base * self.__poly(px, py, pz)
-        else:  # screen out tight functions
-            return None
+            return base * self.polynomial(px, py, pz)
+        return None
 
 
-def gaussian_overlap(ax, aexp, ak, bx, bexp, bk):
-    """returns overlap integral for gaussians centered at x with exponents exp
-    and angular momentum k"""
-    assert((ax == bx).all())  # too lazy to do two-center overlap for now
-    kn = [k + n for k, n in zip(ak, bk)]
-    if any([i % 2 == 1 for i in kn]):
+def gaussian_overlap(axyz, aexp, apoly, bxyz, bexp, bpoly):
+    """returns overlap integral for gaussians centered at xyz with exponents exp
+    and angular momentum poly"""
+    assert (axyz == bxyz).all()  # too lazy to do two-center overlap for now
+    abpoly = [k + n for k, n in zip(apoly, bpoly)]
+    if any([i % 2 == 1 for i in abpoly]):
         return 0.0
-    else:
-        kn = np.array(kn) + 1.
-        fac = np.power(aexp + bexp, -0.5 * kn)
-        gam = gamma2n(kn)
-        return np.prod(fac * gam)
+    abpoly = np.array(abpoly) + 1.
+    fac = np.power(aexp + bexp, -0.5 * abpoly)
+    gam = gamma2n(abpoly)
+    return np.prod(fac * gam)
 
 
 class MOData(object):
     """Organizes data for computing orbitals in real space"""
 
     def __init__(self, shells, coeff, nocc):
-        assert(sum([sh.size for sh in shells]) == coeff.shape[1])
+        assert sum([sh.size for sh in shells]) == coeff.shape[1]
 
         self.shells = shells
         self.coeff = coeff
@@ -167,9 +170,9 @@ class MOData(object):
         """Builds MOData out of the dict object available in MolecularBlender"""
         shells = []
         ico = 0
-        for a, ash in zip(geo["atoms"], geo["basis"]):
+        for atom, ash in zip(geo["atoms"], geo["basis"]):
             # make sure centers are given in bohr
-            xyz = [x * ang2bohr for x in a["position"]]
+            xyz = [x * ang2bohr for x in atom["position"]]
             for sh in ash:
                 newshell = Shell(xyz, "spdfg".index(
                     sh["shell"]), sh["exponents"], sh["contractions"], start=ico)
@@ -196,7 +199,8 @@ class OrbitalCalculater(object):
 
         # use very small number to replace zeros
         self.logmxcoeff = np.log(np.array([
-            max(np.max(abs(self.coeff[sh.start:sh.start + sh.size])), 1e-30) for sh in self.shells]))
+            max(np.max(abs(self.coeff[sh.start:sh.start + sh.size])), 1e-30)
+            for sh in self.shells]))
 
     def bounding_box(self, thr=1.0e-5):
         """returns lower and upper limits of box that should fully contain orbital"""

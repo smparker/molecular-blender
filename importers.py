@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 #
 #  Molecular Blender
 #  Filename: importers.py
@@ -20,18 +21,21 @@
 #  If not, see <http://www.gnu.org/licenses/>.
 #
 
-from .util import stopwatch, Timer
-from .periodictable import symbols
-from .constants import ang2bohr, bohr2ang
+"""Methods to import XYZ, Molden, and cube files."""
 
-import numpy as np
 import re
+import numpy as np
+
+from .util import stopwatch
+from .periodictable import symbols
+from .constants import bohr2ang
 
 
 class Reader(object):
     """Convenience class to read a line, store it, and throw if file is over"""
 
     def __init__(self, filename):
+        """Build a Reader out of a filename"""
         self.filename = filename
         self.f = None
         self.mark = 0
@@ -46,19 +50,24 @@ class Reader(object):
         return out
 
     def set_mark(self, label):
+        """Sets a mark of where label was found"""
         self.marks[label] = self.mark
 
     def restore_mark(self, label):
+        """Restores file to where mark was found"""
         self.f.seek(self.marks[label])
 
     def is_marked(self, label):
-        return (label in self.marks)
+        """Returns whether mark was found"""
+        return label in self.marks
 
     def __enter__(self):
+        """Call upon entrance to a with-as clause"""
         self.f = open(self.filename, "r")
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        """Call upon exit from a with-as clause"""
         self.f.__exit__(exc_type, exc_val, exc_tb)
         self.f = None
 
@@ -71,17 +80,19 @@ def molecule_from_file(filename, options):
         return molecule_from_molden(filename, options)
     elif ".cube" in filename.lower():
         return molecule_from_cube(filename, options)
-    else:  # fall back to some sort of babel import
-        return molecule_from_babel(filename, options)
+    # fall back to Babel import
+    return molecule_from_babel(filename, options)
 
 
 def make_atom_dict(symbol, position, index, charge, gradient, hidden):
+    """Build dictionary for atom"""
     return {"symbol": str(symbol).lower(), "position": [float(x) for x in position],
             "index": int(index), "charge": float(charge),
             "gradient": [float(x) for x in gradient], "trajectory": [], "hidden": hidden}
 
 
 def make_snap_dict(position, charge, gradient):
+    """Build dictionary for snapshot"""
     return {"position": [float(x) for x in position], "charge": float(charge),
             "gradient": [float(x) for x in gradient]}
 
@@ -90,44 +101,44 @@ def make_snap_dict(position, charge, gradient):
 def molecule_from_xyz(filename, options):
     """Read in xyz file and return a dictionary of results"""
     out = {"atoms": []}
-    ignore_H = options.get("ignore_hydrogen", False)
+    ignore_h = options.get("ignore_hydrogen", False)
 
-    with Reader(filename) as fh:
-        if (options.get("plot_type", "frame") == "frame"):
+    with Reader(filename) as f:
+        if options.get("plot_type", "frame") == "frame":
             # first line contains number of atoms
-            natoms = int(fh.readline().split()[0])
+            natoms = int(f.readline().split()[0])
             # second line is a comment
-            fh.readline()
+            f.readline()
 
             for iatom in range(natoms):
                 # Expecting:
                 #   <symbol> <x> <y> <z> [<charge> [<vx> <vy> <vz>]]
                 # e.g.
                 #   h 0.0 0.0 1.0 0.0 1.0 2.0 3.0
-                tmp = fh.readline().split()
+                tmp = f.readline().split()
                 symb = str(tmp[0]).lower()
                 position = [float(x) for x in tmp[1:4]]
                 charge = float(tmp[4]) if len(tmp) >= 5 else 0.0
                 gradient = [float(x) for x in tmp[5:8]] if len(
                     tmp) >= 8 else [0.0 for x in range(3)]
-                hidden = ignore_H and symb == "h"
+                hidden = ignore_h and symb == "h"
                 out["atoms"].append(make_atom_dict(
                     symb, position, iatom, charge, gradient, hidden))
 
-        elif (options.get("plot_type", "frame") == "animate"):
+        elif options.get("plot_type", "frame") == "animate":
             # first line contains number of atoms
-            natoms = int(fh.readline().split()[0])
+            natoms = int(f.readline().split()[0])
             # second line is a comment
-            fh.readline()
+            f.readline()
 
             for iatom in range(natoms):
-                tmp = fh.readline().split()
+                tmp = f.readline().split()
                 symb = str(tmp[0]).lower()
                 position = [float(x) for x in tmp[1:4]]
                 charge = float(tmp[4]) if len(tmp) >= 5 else 0.0
                 gradient = [float(x) for x in tmp[5:8]] if len(
                     tmp) >= 8 else [0.0] * 3
-                hidden = ignore_H and symb == "h"
+                hidden = ignore_h and symb == "h"
                 new_atom = make_atom_dict(
                     symb, position, iatom, charge, gradient, hidden)
                 new_atom["trajectory"] = [
@@ -135,25 +146,25 @@ def molecule_from_xyz(filename, options):
 
                 out["atoms"].append(new_atom)
 
-            while (True):
+            while True:
                 try:  # gracefully exit if at the end of a file
-                    line = fh.readline()
+                    line = f.readline()
                 except EOFError:
                     break
 
                 # painfully fail if EOF is reached when it's not expected
                 frame_atoms = int(line.split()[0])  # natoms
-                if (frame_atoms != natoms):
+                if frame_atoms != natoms:
                     raise Exception(
                         "All frames in trajectory must have the same number of atoms.")
 
-                fh.readline()  # comment line
+                f.readline()  # comment line
                 for iatom in range(natoms):
-                    tmp = fh.readline().split()
+                    tmp = f.readline().split()
                     symb = str(tmp[0]).lower()
-                    if (symb != out["atoms"][iatom]["symbol"]):
+                    if symb != out["atoms"][iatom]["symbol"]:
                         raise Exception(
-                            "The order of the atoms must be the same for each frame in the animation.")
+                            "The order of the atoms must be the same for each frame.")
                     position = [float(x) for x in tmp[1:4]]
                     charge = float(tmp[4]) if len(tmp) >= 5 else 0.0
                     gradient = [float(x) for x in tmp[5:8]] if len(
@@ -164,20 +175,20 @@ def molecule_from_xyz(filename, options):
     return out
 
 
-molden_re = re.compile(r"\[\s*molden\s+format\s*\]", flags=re.IGNORECASE)
-atoms_re = re.compile(r"\[\s*atoms\s*\]\s*(angs|au)?", flags=re.IGNORECASE)
-gto_re = re.compile(r"\[\s*gto\s*\]", flags=re.IGNORECASE)
-mo_re = re.compile(r"\[\s*mo\s*\]", flags=re.IGNORECASE)
-newsection_re = re.compile(r"\s*\[")
+MOLDEN_RE = re.compile(r"\[\s*molden\s+format\s*\]", flags=re.IGNORECASE)
+ATOMS_RE = re.compile(r"\[\s*atoms\s*\]\s*(angs|au)?", flags=re.IGNORECASE)
+GTO_RE = re.compile(r"\[\s*gto\s*\]", flags=re.IGNORECASE)
+MO_RE = re.compile(r"\[\s*mo\s*\]", flags=re.IGNORECASE)
+NEWSECTION_RE = re.compile(r"\s*\[")
 
 
-def molden_read_atoms(f, ignore_H=False):
+def molden_read_atoms(f, ignore_h=False):
     """reads [Atoms] section of molden files"""
     out = []
     f.restore_mark("atoms")
 
     line = f.readline()
-    m = atoms_re.search(line)
+    m = ATOMS_RE.search(line)
 
     # conversion factor incase atomic units are input
     factor = 1.0 if m.group(1).lower() in "angs" else bohr2ang
@@ -185,18 +196,18 @@ def molden_read_atoms(f, ignore_H=False):
     # advance until a line starts with [
     try:
         line = f.readline()
-        m = newsection_re.match(line)
-        while (not m):
-            el, index, at, x, y, z = line.split()
-            el = el.lower()
+        m = NEWSECTION_RE.match(line)
+        while not m:
+            element, index, _atom, x, y, z = line.split()
+            element = element.lower()
             index = int(index)
             pos = [factor * float(a) for a in [x, y, z]]
             charge = 0.0
             grad = [0.0, 0.0, 0.0]
-            hidden = ignore_H and el == "h"
-            out.append(make_atom_dict(el, pos, index, charge, grad, hidden))
+            hidden = ignore_h and element == "h"
+            out.append(make_atom_dict(element, pos, index, charge, grad, hidden))
             line = f.readline()
-            m = newsection_re.match(line)
+            m = NEWSECTION_RE.match(line)
     except EOFError:
         pass
 
@@ -217,11 +228,9 @@ def molden_read_gto(f):
         return out
 
     while True:
-        if newsection_re.search(line):
+        if NEWSECTION_RE.search(line):
             break
         # specifying basis for atom iatom
-        iatom = line.split()[0]
-
         atombasis = []
 
         line = f.readline()
@@ -242,7 +251,7 @@ def molden_read_gto(f):
             if shell == "sp":
                 raise Exception("sp shells not handled yet")
 
-            for i in range(nprim):
+            for _i in range(nprim):
                 if shell != "sp":
                     exp, con = f.readline().split()
                     new_shell["exponents"].append(float(exp))
@@ -290,7 +299,7 @@ def molden_read_mo(f, nmo):
         return out
 
     while True:
-        if newsection_re.search(line):
+        if NEWSECTION_RE.search(line):
             break
 
         # new MO
@@ -330,15 +339,15 @@ def molden_read_mo(f, nmo):
 
 
 @stopwatch("read molden")
-def molecule_from_molden(filename, options):
+def molecule_from_molden(filename, _options):
     """Read molden file to look for coordinates and optionally orbital data"""
     # molden format is not terribly efficient, but hopefully this doesn't matter
     out = {"atoms": []}
 
-    marks = {"molden": molden_re,
-             "atoms": atoms_re,
-             "gto": gto_re,
-             "mo": mo_re,
+    marks = {"molden": MOLDEN_RE,
+             "atoms": ATOMS_RE,
+             "gto": GTO_RE,
+             "mo": MO_RE,
              "5d": re.compile(r"\[5D\]"),
              "5d10f": re.compile(r"\[5D10F\]"),
              "5d7f": re.compile(r"\[5D7F\]"),
@@ -346,13 +355,11 @@ def molecule_from_molden(filename, options):
 
     # Molden defaults to Cartesian basis functions
     shelldegen = {"s": 1, "sp": 4, "p": 3, "d": 6, "f": 10, "g": 15}
-    sphdegen = {"s": 1, "sp": 4, "p": 3, "d": 5, "f": 7,  "g": 9}
-
-    ignore_H = options.get("ignore_hydrogen", False)
+    sphdegen = {"s": 1, "sp": 4, "p": 3, "d": 5, "f": 7, "g": 9}
 
     with Reader(filename) as f:
         try:
-            while(True):
+            while True:
                 line = f.readline()
                 for x in marks:
                     if marks[x].search(line):
@@ -380,7 +387,7 @@ def molecule_from_molden(filename, options):
             if f.is_marked("9g"):
                 make_spherical.append("g")
 
-            cartesian = len(make_spherical) == 0
+            cartesian = not make_spherical
             if not cartesian:
                 raise Exception(
                     "MolecularBlender currently can only handle cartesian d-, f-, and g-functions")
@@ -402,7 +409,7 @@ def molecule_from_cube(filename, options):
     """Read a cube file including its volumetric data"""
     out = {"atoms": [], "volume": {}}
 
-    ignore_H = options.get("ignore_hydrogen", False)
+    ignore_h = options.get("ignore_hydrogen", False)
 
     with Reader(filename) as f:
         f.readline()  # first two lines are comments
@@ -418,7 +425,7 @@ def molecule_from_cube(filename, options):
         # axes[i,:] defines the i-th axis
         axes = np.zeros([3, 3], dtype=np.float32)
 
-        # 4th, 5th, 6th lines describe the axes that define the grid with: <npoints> <axis_x> <axis_y> <axis_z>
+        # 4th, 5th, 6th lines describe the axes: <npoints> <axis_x> <axis_y> <axis_z>
         for i in range(3):
             res, vx, vy, vz = f.readline().split()
             nres[i] = int(res)
@@ -432,8 +439,8 @@ def molecule_from_cube(filename, options):
         out["volume"]["axes"] = axes
 
         # make sure axes aren't oblique
-        S = np.dot(axes.T, axes)
-        for x in (S[0, 1], S[0, 2], S[1, 2]):
+        overlap = np.dot(axes.T, axes)
+        for x in (overlap[0, 1], overlap[0, 2], overlap[1, 2]):
             if abs(x) > 1e-6:
                 raise Exception(
                     "Sheared axes are not supported with cube files!")
@@ -444,7 +451,7 @@ def molecule_from_cube(filename, options):
             ato, chg, x, y, z = f.readline().split()
             iatom = int(ato)
             position = [bohr2ang * float(xx) for xx in [x, y, z]]
-            hidden = ignore_H and symbols[iatom] == "h"
+            hidden = ignore_h and symbols[iatom] == "h"
             out["atoms"].append(make_atom_dict(
                 symbols[iatom], position, i, chg, [0.0, 0.0, 0.0], hidden))
 
@@ -454,7 +461,6 @@ def molecule_from_cube(filename, options):
         i = 0
         while True:
             line = f.readline().split()
-            ldata = np.array([float(x) for x in line])
             data[i:i + len(line)] = line
             i += len(line)
             if i == ndata:
@@ -466,5 +472,6 @@ def molecule_from_cube(filename, options):
     return out
 
 
-def molecule_from_babel(filename, options):
+def molecule_from_babel(_filename, _options):
+    """Build molecule from Babel importer (TODO)"""
     raise Exception("Importing from babel currently disabled")

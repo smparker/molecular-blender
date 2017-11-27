@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 #
 #  Molecular Blender
 #  Filename: constants.py
@@ -20,5 +21,7 @@
 #  If not, see <http://www.gnu.org/licenses/>.
 #
 
-ang2bohr = 1.8897259885789
-bohr2ang = 1.0 / ang2bohr
+"""Common constants"""
+
+ang2bohr = 1.8897259885789  # pylint: disable=invalid-name
+bohr2ang = 1.0 / ang2bohr  # pylint: disable=invalid-name
