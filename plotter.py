@@ -278,11 +278,10 @@ def PlotMolecule(context, molecule, options):
             bond.bevelname = bevnames[bond.style]
 
             to_split = plot_style.split_bond and iatom.element != jatom.element
-            bond.name = unique_name(bond.make_name(
-                molecule.name, to_split), obj_keys)
+            bond.name = [ unique_name(b, obj_keys) for b in bond.make_names(
+                molecule.name, to_split) ]
+            obj_keys.extend(bond.name)
             if to_split:
-                obj_keys.extend([x for x in bond.name])
-
                 coords = [iatom.position, jatom.position]
 
                 curves = [bpy.data.curves.new(
@@ -312,11 +311,12 @@ def PlotMolecule(context, molecule, options):
                     to_link.append(c_obj)
                     to_hook.append((iatom.name, jatom.name, cname))
             else:
-                obj_keys.append(bond.name)
-
+                assert len(bond.name) == 1
+                # Only one object should be associated with the bonds so only one name
+                bondname = bond.name[0]
                 # create curve object
                 coords = [iatom.position, jatom.position]
-                curve = bpy.data.curves.new(bond.name, type='CURVE')
+                curve = bpy.data.curves.new(bondname, type='CURVE')
                 bond_mat = bpy.data.materials[molecule.materials[iatom.element.symbol]] \
                     if plot_style.split_bond else \
                     bpy.data.materials[molecule.bond_materials[bond.style]]
@@ -330,14 +330,14 @@ def PlotMolecule(context, molecule, options):
                     p = bondline.bezier_points[i]
                     p.co = pnt - molecule_obj.location
                     p.handle_right_type = p.handle_left_type = 'AUTO'
-                curveOB = bpy.data.objects.new(bond.name, curve)
+                curveOB = bpy.data.objects.new(bondname, curve)
                 curveOB.data.bevel_object = bpy.data.objects[bond.bevelname]
                 curveOB.data.use_fill_caps = True
                 curveOB.parent = bpy.data.objects[molecule.name]
 
                 to_link.append(curveOB)
 
-                to_hook.append((iatom.name, jatom.name, bond.name))
+                to_hook.append((iatom.name, jatom.name, bondname))
 
     clock.tick_print("bond creation")
 
@@ -485,14 +485,14 @@ def AnimateMolecule(context, molecule, options):
         bondmask = molecule.bond_mask(options)
         for bond in molecule.bonds:
             i, j = bond.iatom.index, bond.jatom.index
-            bond_obj = bpy.data.objects[bond.name]
-            for (iframe, mask) in enumerate(bondmask[(i, j)]):
-                bond_obj.hide = not mask
-                bond_obj.keyframe_insert(
-                    data_path="hide", frame=iframe * kstride + 1)
-                bond_obj.hide_render = not mask
-                bond_obj.keyframe_insert(
-                    data_path="hide_render", frame=iframe * kstride + 1)
+            for bond_obj in [ bpy.data.objects[b] for b in bond.name ]:
+                for (iframe, mask) in enumerate(bondmask[(i, j)]):
+                    bond_obj.hide = not mask
+                    bond_obj.keyframe_insert(
+                        data_path="hide", frame=iframe * kstride + 1)
+                    bond_obj.hide_render = not mask
+                    bond_obj.keyframe_insert(
+                        data_path="hide_render", frame=iframe * kstride + 1)
     return
 
 

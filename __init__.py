@@ -170,7 +170,7 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         min=-5.0,
         max=5.0,
         step=0.05,
-        precision=2
+        precision=4
     )
 
     charge_factor = FloatProperty(

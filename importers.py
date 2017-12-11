@@ -102,75 +102,59 @@ def molecule_from_xyz(filename, options):
     """Read in xyz file and return a dictionary of results"""
     out = {"atoms": []}
     ignore_h = options.get("ignore_hydrogen", False)
+    animate = options.get("plot_type", "") == "animate"
 
     with Reader(filename) as f:
-        if options.get("plot_type", "frame") == "frame":
-            # first line contains number of atoms
-            natoms = int(f.readline().split()[0])
-            # second line is a comment
-            f.readline()
+        # first line contains number of atoms
+        natoms = int(f.readline().split()[0])
+        # second line is a comment
+        f.readline()
 
+        for iatom in range(natoms):
+            # Expecting:
+            #   <symbol> <x> <y> <z> [<charge> [<vx> <vy> <vz>]]
+            # e.g.
+            #   h 0.0 0.0 1.0 0.0 1.0 2.0 3.0
+            tmp = f.readline().split()
+            symb = str(tmp[0]).lower()
+            position = [float(x) for x in tmp[1:4]]
+            charge = float(tmp[4]) if len(tmp) >= 5 else 0.0
+            gradient = [float(x) for x in tmp[5:8]] if len(
+                tmp) >= 8 else [0.0 for x in range(3)]
+            hidden = ignore_h and symb == "h"
+            new_atom = make_atom_dict(symb, position, iatom, charge, gradient,
+                hidden)
+
+            if animate:
+                new_atom["trajectory"] = [make_snap_dict(position, charge, gradient)]
+
+            out["atoms"].append(new_atom)
+
+        while animate:
+            try:  # gracefully exit if at the end of a file
+                line = f.readline()
+            except EOFError:
+                break
+
+            # painfully fail if EOF is reached when it's not expected
+            frame_atoms = int(line.split()[0])  # natoms
+            if frame_atoms != natoms:
+                raise Exception(
+                    "All frames in trajectory must have the same number of atoms.")
+
+            f.readline()  # comment line
             for iatom in range(natoms):
-                # Expecting:
-                #   <symbol> <x> <y> <z> [<charge> [<vx> <vy> <vz>]]
-                # e.g.
-                #   h 0.0 0.0 1.0 0.0 1.0 2.0 3.0
                 tmp = f.readline().split()
                 symb = str(tmp[0]).lower()
+                if symb != out["atoms"][iatom]["symbol"]:
+                    raise Exception(
+                        "The order of the atoms must be the same for each frame.")
                 position = [float(x) for x in tmp[1:4]]
                 charge = float(tmp[4]) if len(tmp) >= 5 else 0.0
                 gradient = [float(x) for x in tmp[5:8]] if len(
                     tmp) >= 8 else [0.0 for x in range(3)]
-                hidden = ignore_h and symb == "h"
-                out["atoms"].append(make_atom_dict(
-                    symb, position, iatom, charge, gradient, hidden))
-
-        elif options.get("plot_type", "frame") == "animate":
-            # first line contains number of atoms
-            natoms = int(f.readline().split()[0])
-            # second line is a comment
-            f.readline()
-
-            for iatom in range(natoms):
-                tmp = f.readline().split()
-                symb = str(tmp[0]).lower()
-                position = [float(x) for x in tmp[1:4]]
-                charge = float(tmp[4]) if len(tmp) >= 5 else 0.0
-                gradient = [float(x) for x in tmp[5:8]] if len(
-                    tmp) >= 8 else [0.0] * 3
-                hidden = ignore_h and symb == "h"
-                new_atom = make_atom_dict(
-                    symb, position, iatom, charge, gradient, hidden)
-                new_atom["trajectory"] = [
-                    make_snap_dict(position, charge, gradient)]
-
-                out["atoms"].append(new_atom)
-
-            while True:
-                try:  # gracefully exit if at the end of a file
-                    line = f.readline()
-                except EOFError:
-                    break
-
-                # painfully fail if EOF is reached when it's not expected
-                frame_atoms = int(line.split()[0])  # natoms
-                if frame_atoms != natoms:
-                    raise Exception(
-                        "All frames in trajectory must have the same number of atoms.")
-
-                f.readline()  # comment line
-                for iatom in range(natoms):
-                    tmp = f.readline().split()
-                    symb = str(tmp[0]).lower()
-                    if symb != out["atoms"][iatom]["symbol"]:
-                        raise Exception(
-                            "The order of the atoms must be the same for each frame.")
-                    position = [float(x) for x in tmp[1:4]]
-                    charge = float(tmp[4]) if len(tmp) >= 5 else 0.0
-                    gradient = [float(x) for x in tmp[5:8]] if len(
-                        tmp) >= 8 else [0.0 for x in range(3)]
-                    out["atoms"][iatom]["trajectory"].append(
-                        make_snap_dict(position, charge, gradient))
+                out["atoms"][iatom]["trajectory"].append(
+                    make_snap_dict(position, charge, gradient))
 
     return out
 

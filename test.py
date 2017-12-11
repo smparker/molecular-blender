@@ -70,6 +70,42 @@ class TestAnimateBallAndSticks(unittest.TestCase):
         self.assertEqual(nkeyframe_points, 4,
                          'Incorrect number of keyframe points registered.')
 
+class TestAnimateSticksAndCharges(unittest.TestCase):
+    """Test suite for animation including charges"""
+    def setUp(self):
+        """Setup function"""
+        self.file = 'examples/tio2_excited_state.xyz'
+        self.context = bpy.context
+
+    def test_sticks_and_charges(self):
+        """Test importer for animation involving sticks/charges"""
+        mb.BlendMolecule(self.context, self.file,
+                         plot_style="sticks",
+                         plot_type="animate",
+                         animate_bonds="dynamic",
+                         ignore_hydrogen=False,
+                         charges="scale",
+                         charge_offset=0.95,
+                         charge_factor=4.0)
+
+        nneg = sum(["_neg" in x.name for x in bpy.data.objects if "tio2_excited_state" in x.name])
+        self.assertEqual(nneg, 42, 'Incorrect number of negative spheres found')
+
+        npos = sum(["_plus" in x.name for x in bpy.data.objects if "tio2_excited_state" in x.name])
+        self.assertEqual(npos, 42, 'Incorrect number of positive spheres found')
+
+        # pick some objects that have disappearing bonds and count the number of hidden frames
+        objs =  [ bpy.data.objects[x] for x in ["tio2_excited_state_Hydrogen18-Oxygen4_a",
+            "tio2_excited_state_Hydrogen18-Oxygen14_a"]]
+
+        nhidden = [ 0 for o in objs ]
+        for frame in range(120):
+            self.context.scene.frame_set(frame)
+
+            for i, o in enumerate(objs):
+                nhidden[i] += o.hide
+        self.assertEqual(nhidden, [71,47], 'Incorrect number of hidden frames found')
+
 
 class TestXYZRead(unittest.TestCase):
     """Test Suite for reading XYZ"""

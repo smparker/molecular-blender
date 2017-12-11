@@ -62,6 +62,10 @@ class Atom(object):
         self.trajectory = trajectory if trajectory is not None else []
         self.hidden = hidden
 
+    def __repr__(self):
+        """String representation"""
+        return "%s (%d keyframes)" % (self.element.symbol, len(self.trajectory))
+
     @classmethod
     def from_dict(cls, inp):
         """Build Atom from dictionary"""
@@ -93,14 +97,14 @@ class Bond(object):
             self.iatom.position - self.jatom.position).length
         return dist <= self.threshold
 
-    def make_name(self, basename, split=False):
+    def make_names(self, basename, split=False):
         """builds name for a molecule from basename and connected atoms"""
         iname = self.iatom.name.split('_')[-1]
         jname = self.jatom.name.split('_')[-1]
         if split:
-            return ("%s_%s-%s_a" % (basename, iname, jname),
-                    "%s_%s-%s_b" % (basename, iname, jname))
-        return basename + "_" + iname + "-" + jname
+            return ["%s_%s-%s_a" % (basename, iname, jname),
+                    "%s_%s-%s_b" % (basename, iname, jname)]
+        return [ basename + "_" + iname + "-" + jname ]
 
 
 class VolumeData(object):
@@ -146,7 +150,7 @@ class Molecule(object):
 
     def center_of_mass(self):
         """Computes center of mass from atoms list"""
-        total_mass = float(0.0)
+        total_mass = 0.0
         out = mathutils.Vector((0.0, 0.0, 0.0))
         for i in self.atoms:
             out += i.position * i.element.mass
@@ -175,7 +179,7 @@ class Molecule(object):
                 if bond.is_bonded(distance):
                     self.bonds.append(bond)
 
-    def bond_mask(self):
+    def bond_mask(self, options):
         """Construct mask determining whether a bond should be drawn at each frame"""
         outmask = {}
         for bond in self.bonds:
