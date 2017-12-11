@@ -30,9 +30,9 @@ import bpy
 import mathutils
 import bmesh
 
-from .molecule import Molecule, ELEMENTS
-from .periodictable import generate_table
-from .aromatics import find_planar_cycles
+from .molecule import Molecule
+from .periodictable import elements
+from .stylers import get_styler
 from .marching_cube import cube_isosurface, molden_isosurface
 
 from .util import stopwatch, Timer, unique_name
@@ -45,9 +45,20 @@ def plot_prep(molecule, options):
         molecule.chgfac = options["charge_factor"]
         molecule.chgoff = options["charge_offset"]
 
+@stopwatch("make_materials")
+def make_materials(molecule, styler, options):
+    """Make all materials to be used by plotter"""
+
+    make_atom_materials(molecule, styler, options)
+
+    if molecule.bonds:
+        make_bond_materials(molecule, styler, options)
+
+    if molecule.rings:
+        make_ring_materials(molecule, styler, options)
 
 @stopwatch("make_atom_materials")
-def make_atom_materials(molecule, options):
+def make_atom_materials(molecule, styler, options):
     """Given a molecule object, creates required materials and populates materials dictionary"""
 
     # set of new atoms to make materials for
@@ -63,10 +74,7 @@ def make_atom_materials(molecule, options):
         # get unique name for new material
         atom = unique_name(atom, bpy.data.materials.keys())
         molecule.materials[a] = atom  # store unique materials
-
-        bpy.data.materials.new(atom)  # Creates new material
-        bpy.data.materials[atom].diffuse_color = mathutils.Color(
-            ELEMENTS[a].color)  # Sets color from atom dictionary
+        styler.atom_material(atom, elements[a])
 
     if options["charges"] != "none":  # make materials used for showing charges
         pc = unique_name("pluscharge", bpy.data.materials.keys()) + "_mat"
@@ -75,14 +83,12 @@ def make_atom_materials(molecule, options):
         molecule.pluscharge_mat = pc
         molecule.negcharge_mat = nc
 
-        for ch, col in [(pc, (0, 0, 1)), (nc, (1, 0, 0))]:
-            bpy.data.materials.new(ch)
-            bpy.data.materials[ch].diffuse_color = mathutils.Color(col)
+        styler.charge_material(pc, nc, elements[a])
     return
 
 
 @stopwatch("make_bond_materials")
-def make_bond_materials(molecule, options):
+def make_bond_materials(molecule, styler, options):
     """Given a molecule object, creates the corresponding materials for the bonds"""
 
     # set of unique bond types
@@ -98,10 +104,18 @@ def make_bond_materials(molecule, options):
         # unique name for bond material
         bond = unique_name(bond, bpy.data.materials.keys())
         molecule.bond_materials[b] = bond
+        styler.bond_material(bond, b)
+    return
 
-        bpy.data.materials.new(bond)
-        bpy.data.materials[bond].diffuse_color = mathutils.Color(
-            (0.9, 0.9, 0.9))
+
+@stopwatch("make_ring_materials")
+def make_ring_materials(molecule, styler, options):
+    """Given a molecule object, creates the corresponding materials for rings"""
+    ringmat = "ring_mat"
+    if not (options["recycle_materials"] and ringmat in bpy.data.materials.keys()):
+        ringmat = unique_name(ringmat, bpy.data.materials.keys())
+        molecule.materials["ring"] = ringmat
+        styler.ring_material(ringmat)
     return
 
 
@@ -251,7 +265,7 @@ def PlotMolecule(context, molecule, options):
         for i in bond_bevels:
             rad = bond_thickness
             if not options['universal_bonds'] and plot_style.bond_size == "vdw":
-                rad = ELEMENTS[i].vdw * plot_style.bond_scaling
+                rad = elements[i].vdw * plot_style.bond_scaling
 
             bpy.ops.curve.primitive_bezier_circle_add(
                 radius=rad, location=(0, 0, 0))
@@ -262,8 +276,6 @@ def PlotMolecule(context, molecule, options):
 
             context.scene.objects.active = molecule_obj
             bpy.ops.object.parent_set(type='OBJECT', keep_transform=False)
-
-        make_bond_materials(molecule, options)
 
         for bond in molecule.bonds:  # make curves for bonds
             # deselect all
@@ -566,14 +578,9 @@ def draw_surfaces(molecule, context, options):
 @stopwatch("draw rings")
 def plot_rings(context, molecule, options):
     """Given a list of atoms and bonds, determine where aromatic rings are and plot them"""
-    planarCycles = find_planar_cycles(molecule)
+    planarCycles = molecule.rings
 
-    ringmat = "ring_mat"
-    if not (options["recycle_materials"] and ringmat in bpy.data.materials.keys()):
-        ringmat = unique_name(ringmat, bpy.data.materials.keys())
-        bpy.data.materials.new(ringmat)
-        bpy.data.materials[ringmat].diffuse_color = mathutils.Color(
-            (0.0, 0.9, 0.0))
+    ringmat = bpy.data.materials[molecule.materials["ring"]]
 
     to_parent = []
     for cycle in planarCycles:
@@ -587,7 +594,7 @@ def plot_rings(context, molecule, options):
         ringMesh.from_pydata(verts, bonds, [range(len(cycle))])
         ringMesh.update()
         ringObj = bpy.data.objects.new(objname, ringMesh)
-        ringObj.data.materials.append(bpy.data.materials[ringmat])
+        ringObj.data.materials.append(ringmat)
         ringObj.data = ringMesh
         context.scene.objects.link(ringObj)
         to_parent.append(ringObj)
@@ -659,13 +666,12 @@ def BlendMolecule(context, filename, **options):
     """basic driver that calls the appropriate plot functions"""
 
     options = process_options(filename, options)
-    global ELEMENTS  # first redefine ELEMENTS list
-    ELEMENTS.update(generate_table(options["colors"]))
     name = filename.rsplit('.', 1)[0].rsplit('/')[-1]
     molecule = Molecule.from_dict(name, molecule_from_file(filename, options))
     molecule.determine_bonding(options)
+    styler = get_styler(options)
 
-    make_atom_materials(molecule, options)
+    make_materials(molecule, styler, options)
     plot_prep(molecule, options)
 
     if options["object_type"] == "wireframe":

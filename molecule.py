@@ -27,9 +27,8 @@ import numpy as np
 import mathutils
 from .orbitals import MOData
 from .util import stopwatch
-
-
-ELEMENTS = {}  # container for ELEMENTS
+from .aromatics import find_planar_cycles
+from .periodictable import elements
 
 
 class Snapshot(object):
@@ -53,7 +52,7 @@ class Atom(object):
     def __init__(self, symbol, position, index, name="", charge=0.0, gradient=None,
                  trajectory=None, hidden=False):
         """Create Atom"""
-        self.element = ELEMENTS[symbol]
+        self.element = elements[symbol]
         self.position = mathutils.Vector(position)
         self.index = index
         self.name = name
@@ -134,6 +133,7 @@ class Molecule(object):
         self.name = name
         self.atoms = atoms
         self.bonds = []
+        self.rings = []
         self.materials = {}
         self.bond_materials = {}
         self.chgoff = 1.0
@@ -178,6 +178,9 @@ class Molecule(object):
                                     iatom, jatom in zip(atoms[i].trajectory, atoms[j].trajectory)])
                 if bond.is_bonded(distance):
                     self.bonds.append(bond)
+
+        if options["find_aromatic"]:
+            self.rings = find_planar_cycles(self)
 
     def bond_mask(self, options):
         """Construct mask determining whether a bond should be drawn at each frame"""
