@@ -417,7 +417,7 @@ def transform_triangles(triangles, origin, axes):
     return [out[i, :] + origin for i in range(coords.shape[0])]
 
 
-def cube_isosurface(data, origin, axes, isovalues):
+def cube_isosurface(data, origin, axes, isovalues, wm=None):
     """Return set of triangles from cube file"""
     triangle_sets = [{"isovalue": iso} for iso in isovalues]
 
@@ -425,6 +425,9 @@ def cube_isosurface(data, origin, axes, isovalues):
 
     z_plane_a = data[:, :, 0]
     cornervalues = np.zeros([2, 2, 2])
+
+    if wm is not None:
+        wm.progress_begin(0, data.shape[2])
 
     for k in range(1, data.shape[2]):
         z_plane_b = data[:, :, k]
@@ -449,7 +452,11 @@ def cube_isosurface(data, origin, axes, isovalues):
                     tri_list[iiso].extend(polygonise(
                         cornervalues, isoval, x, y, z, x2, y2, z2))
         z_plane_a = z_plane_b
+        if wm is not None:
+            wm.progress_update(k)
 
+    if wm is not None:
+        wm.progress_end()
     for iiso in range(len(isovalues)):
         triangle_sets[iiso]["triangles"] = transform_triangles(
             tri_list[iiso], origin, axes)
@@ -457,17 +464,17 @@ def cube_isosurface(data, origin, axes, isovalues):
     return triangle_sets
 
 
-def molden_isosurface(orbital, isovalues, resolution):
+def molden_isosurface(orbital, isovalues, resolution, wm=None):
     """Return set of triangles from Molden file"""
     p0, p1 = orbital.bounding_box(min([abs(x) for x in isovalues]) * 0.01)
     resolution = [int(round((j - i) / (resolution * ang2bohr)))
                   for i, j in zip(p0, p1)]
     axes = np.eye(3) * bohr2ang
 
-    return isosurface(p0, p1, resolution, isovalues, orbital.value, axes)
+    return isosurface(p0, p1, resolution, isovalues, orbital.value, axes, wm)
 
 
-def isosurface(p0, p1, npoints, isovalues, isofunc, axes):
+def isosurface(p0, p1, npoints, isovalues, isofunc, axes, wm=None):
     """Return set of triangles from function object"""
     r = [(x1 - x0) / sw for x0, x1, sw in zip(p0, p1, npoints)]
 
@@ -480,7 +487,11 @@ def isosurface(p0, p1, npoints, isovalues, isofunc, axes):
 
     cornervalues = [0] * 8
 
-    for z in arange(p0[2], p1[2] - r[2], r[2]):
+    nzplanes = int((p1[2] - p0[2])/r[2]) + 1
+    if wm is not None:
+        wm.progress_begin(0, nzplanes)
+
+    for k, z in enumerate(arange(p0[2], p1[2] - r[2], r[2])):
         z2 = z + r[2]
         z_plane_b = [[isofunc(x, y, z2) for y in arange(
             p0[1], p1[1], r[1])] for x in arange(p0[0], p1[0], r[0])]
@@ -506,7 +517,11 @@ def isosurface(p0, p1, npoints, isovalues, isofunc, axes):
                         cornervalues, isoval, x, y, z, x2, y2, z2))
 
         z_plane_a = z_plane_b
+        if wm is not None:
+            wm.progress_update(k)
 
+    if wm is not None:
+        wm.progress_end()
     for iiso in range(len(isovalues)):
         triangle_sets[iiso]["triangles"] = transform_triangles(
             tri_list[iiso], [0.0, 0.0, 0.0], axes)

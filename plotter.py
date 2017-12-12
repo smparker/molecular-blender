@@ -543,19 +543,20 @@ def create_geometry(verts):
 def draw_surfaces(molecule, context, options):
     """Draws isosurfaces"""
     vertex_sets = []
+    wm = context.window_manager
     if molecule.volume is not None:  # volumetric data was read
         vol = molecule.volume
         isovals = options["isovalues"]
 
         # marching cubes to make the surface
-        vertex_sets = cube_isosurface(vol.data, vol.origin, vol.axes, isovals)
+        vertex_sets = cube_isosurface(vol.data, vol.origin, vol.axes, isovals, wm)
     elif molecule.orbitals is not None:  # orbital data was read
         orbitals = molecule.orbitals
         orb = orbitals.get_orbital(options["orbital"])
         isovals = options["isovalues"]
         resolution = options["resolution"]
 
-        vertex_sets = molden_isosurface(orb, isovals, resolution)
+        vertex_sets = molden_isosurface(orb, isovals, resolution, wm)
 
     meshes = []
     for v in vertex_sets:
