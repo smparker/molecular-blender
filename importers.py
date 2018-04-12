@@ -326,6 +326,7 @@ def molden_read_mo(f, nmo):
 def molecule_from_molden(filename, _options):
     """Read molden file to look for coordinates and optionally orbital data"""
     # molden format is not terribly efficient, but hopefully this doesn't matter
+    ignore_h = _options.get("ignore_hydrogen", False)
     out = {"atoms": []}
 
     marks = {"molden": MOLDEN_RE,
@@ -358,7 +359,7 @@ def molecule_from_molden(filename, _options):
             raise Exception("Molden file is missing [Atoms] specification")
 
         # read through atoms section
-        out["atoms"] = molden_read_atoms(f)
+        out["atoms"] = molden_read_atoms(f, ignore_h)
 
         if f.is_marked("gto"):  # read through GTO section to build basis
             make_spherical = []

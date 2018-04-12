@@ -628,7 +628,7 @@ def process_options(filename, options):
                 "charges_factor": 1.0,
                 "find_aromatic": False,
                 "recycle_materials": True,
-                "isovalues": "0.1",
+                "isovalues": "",
                 "volume": "orbital",
                 "orbital": 0,
                 "resolution": 0.5,
@@ -643,7 +643,7 @@ def process_options(filename, options):
                "auto": options["plot_type"] == "animate"}
     options["hook_atoms"] = hooking[options["hook_atoms"]]
 
-    options["isosurfaces"] = ".cube" in filename or ".molden" in filename
+    options["isosurfaces"] = "isovalues" in options and options["isovalues"] != ""
     if options["isosurfaces"]:
         isovals = options["isovalues"].split(',')
         isovals = [float(x) for x in isovals]
