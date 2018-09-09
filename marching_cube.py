@@ -471,10 +471,10 @@ def molden_isosurface(orbital, isovalues, resolution, wm=None):
                   for i, j in zip(p0, p1)]
     axes = np.eye(3) * bohr2ang
 
-    return isosurface(p0, p1, resolution, isovalues, orbital.value, axes, wm)
+    return isosurface(p0, p1, resolution, isovalues, orbital.plane_values, axes, wm)
 
 
-def isosurface(p0, p1, npoints, isovalues, isofunc, axes, wm=None):
+def isosurface(p0, p1, npoints, isovalues, isoplane_func, axes, wm=None):
     """Return set of triangles from function object"""
     r = [(x1 - x0) / sw for x0, x1, sw in zip(p0, p1, npoints)]
 
@@ -482,8 +482,9 @@ def isosurface(p0, p1, npoints, isovalues, isofunc, axes, wm=None):
     tri_list = [[] for iso in isovalues]
 
     z_a = p0[2]
-    z_plane_a = [[isofunc(x, y, z_a) for y in arange(p0[1], p1[1], r[1])]
-                 for x in arange(p0[0], p1[0], r[0])]
+    def xygen(i):
+        return arange(p0[i], p1[i], r[i])
+    z_plane_a = isoplane_func(xygen(0), xygen(1), z_a)
 
     cornervalues = [0] * 8
 
@@ -493,8 +494,7 @@ def isosurface(p0, p1, npoints, isovalues, isofunc, axes, wm=None):
 
     for k, z in enumerate(arange(p0[2], p1[2] - r[2], r[2])):
         z2 = z + r[2]
-        z_plane_b = [[isofunc(x, y, z2) for y in arange(
-            p0[1], p1[1], r[1])] for x in arange(p0[0], p1[0], r[0])]
+        z_plane_b = isoplane_func(xygen(0), xygen(1), z2)
         for yi in range(len(z_plane_a[0]) - 1):
             y = p0[1] + yi * r[1]
             y2 = y + r[1]

@@ -48,7 +48,7 @@ def gamma2n_impl(i):
 # Polynomial functions
 def polynomial_s(X, Y, Z):  # pylint: disable=unused-argument
     """n/a"""
-    return 1.0
+    return np.array([1.0])
 
 def polynomial_p(X, Y, Z):
     """x, y, z"""
@@ -56,17 +56,46 @@ def polynomial_p(X, Y, Z):
 
 def polynomial_d(X, Y, Z):
     """xx, yy, zz, xy, xz, yz"""
-    return np.array([X*X, Y*Y, Z*Z, X*Y, X*Z, Y*Z])
+    return np.array([X*X, Y*Y, Z*Z, X*Y/np.sqrt(3), X*Z/np.sqrt(3), Y*Z/np.sqrt(3)])
 
 def polynomial_f(X, Y, Z):
     """xxx, yyy, zzz, xyy, xxy, xxz, xzz, yzz, yyz, xyz"""
+    raise Exception("Not Yet Implemented: f-functions")
     return np.array([X*X*X, Y*Y*Y, Z*Z*Z, X*Y*Y, X*X*Y, X*Z*Z, Y*Z*Z, Y*Y*Z, X*Y*Z])
 
 def polynomial_g(X, Y, Z):
     """xxxx yyyy zzzz xxxy xxxz yyyx yyyz zzzx zzzy xxyy xxzz yyzz xxyz yyxz zzxy"""
+    raise Exception("Not Yet Implemented: g-functions")
     return np.array([X*X*X*X, Y*Y*Y*Y, Z*Z*Z*Z, X*X*X*Y, X*X*X*Z, Y*Y*Y*X, Y*Y*Y*Z,
                      Z*Z*Z*X, Z*Z*Z*Y, X*X*Y*Y, X*X*Z*Z, Y*Y*Z*Z, X*X*Y*Z, Y*Y*X*Z, Z*Z*X*Y])
 
+# Plane polynomial functions
+def plane_polynomial_s(XX, YY, Z):  # pylint: disable=unused-argument
+    """n/a"""
+    return np.ones( [ 1 ] + list(XX.shape) )
+
+def plane_polynomial_p(XX, YY, Z):
+    """x, y, z"""
+    ZZ = np.full_like(XX, Z)
+    return np.array([XX, YY, ZZ])
+
+def plane_polynomial_d(XX, YY, Z):
+    """xx, yy, zz, xy, xz, yz"""
+    ZZ = np.full_like(XX, Z)
+    return np.asarray([XX*XX, YY*YY, ZZ*ZZ, XX*YY/np.sqrt(3), XX*ZZ/np.sqrt(3), YY*ZZ/np.sqrt(3)])
+
+def plane_polynomial_f(XX, YY, Z):
+    """xxx, yyy, zzz, xyy, xxy, xxz, xzz, yzz, yyz, xyz"""
+    raise Exception("Not YYet Implemented: f-functions")
+    ZZ = np.full_like(XX, Z)
+    return np.asarray([XX*XX*XX, YY*YY*YY, ZZ*ZZ*ZZ, XX*YY*YY, XX*XX*YY, XX*ZZ*ZZ, YY*ZZ*ZZ, YY*YY*ZZ, XX*YY*ZZ])
+
+def plane_polynomial_g(XX, YY, Z):
+    """xxxx yyyy zzzz xxxy xxxz yyyx yyyz zzzx zzzy xxyy xxzz yyzz xxyz yyxz zzxy"""
+    raise Exception("Not YYet Implemented: g-functions")
+    ZZ = np.full_like(XX, Z)
+    return np.asarray([XX*XX*XX*XX, YY*YY*YY*YY, ZZ*ZZ*ZZ*ZZ, XX*XX*XX*YY, XX*XX*XX*ZZ, YY*YY*YY*XX, YY*YY*YY*ZZ,
+                     ZZ*ZZ*ZZ*XX, ZZ*ZZ*ZZ*YY, XX*XX*YY*YY, XX*XX*ZZ*ZZ, YY*YY*ZZ*ZZ, XX*XX*YY*ZZ, YY*YY*XX*ZZ, ZZ*ZZ*XX*YY])
 
 class Shell(object):
     """Container for shell data"""
@@ -82,8 +111,12 @@ class Shell(object):
         self.size = (self.l + 1) * (self.l + 2) // 2
 
         self.norms = 1.0 / np.sqrt(self.__norms())
+        self.shellnorms = 1.0 / np.sqrt(self.__shellnorms())
+        self.denormedcoeffs = self.coeff * self.shellnorms
         self.polynomial = [polynomial_s, polynomial_p,
                            polynomial_d, polynomial_f, polynomial_g][l]
+        self.plane_polynomial = [plane_polynomial_s, plane_polynomial_p,
+                           plane_polynomial_d, plane_polynomial_f, plane_polynomial_g][l]
 
         # most diffuse exponent in shell
         imin = np.argmin(self.exponents)
@@ -115,6 +148,16 @@ class Shell(object):
 
         return out
 
+    def __shellnorms(self):
+        """
+        Returns [nexp] array of shell norms, i.e., norms of Gaussians with all angular
+        in the x-direction. For example, for L=2, norms of exp(-zeta r^2) x x.
+        """
+        out = np.zeros_like(self.exponents)
+        for ig, ex in enumerate(self.exponents):
+            out[ig] = gaussian_overlap(self.center, ex, [ self.l, 0, 0 ], self.center, ex, [ self.l, 0, 0 ])
+        return out
+
     def bounding_box_size(self, thr, logmxcoeff=0.0):
         """Returns half the edgelength of a box outside of which the shell
         is guaranteed to be below the given threshold"""
@@ -131,11 +174,29 @@ class Shell(object):
         rr = px * px + py * py + pz * pz
 
         if rr < self.logthr - logmxcoeff:
-            expz = np.exp(-1.0 * rr * self.exponents) * self.coeff
-            base = np.dot(self.norms, expz)
-            return base * self.polynomial(px, py, pz)
+            radial = np.dot(np.exp(-1.0 * rr * self.exponents), self.denormedcoeffs)
+            return radial * self.polynomial(px, py, pz)
+
         return None
 
+    def plane_values(self, xx, yy, z_a, logmxcoeff=0.0):
+        """compute values of shell on a plane of provided x and y values (each as an array)"""
+        pxx = xx - self.X
+        pyy = yy - self.Y
+        pz  = z_a - self.Z
+
+        out = np.zeros( (xx.shape[0], xx.shape[1], len(self.coeff)) )
+
+        rr = pxx*pxx + pyy*pyy + pz * pz
+        if np.any(rr < self.logthr - logmxcoeff):
+            expz = np.exp(np.einsum("xy,e->xye", -1.0*rr, self.exponents))
+            radial = np.einsum("xye,e->xy", expz, self.denormedcoeffs)
+            out = self.plane_polynomial(pxx, pyy, pz)
+            for p in range(out.shape[0]):
+                out[p,:,:] *= radial
+            return out
+        else:
+            return None
 
 def gaussian_overlap(axyz, aexp, apoly, bxyz, bexp, bpoly):
     """returns overlap integral for gaussians centered at xyz with exponents exp
@@ -221,4 +282,21 @@ class OrbitalCalculater(object):
             val = sh.value(x, y, z, logmxcoeff=lmx)
             if val is not None:
                 out += np.dot(val, self.coeff[sh.start:sh.start + sh.size])
+        return out
+
+    def plane_values(self, xgen, ygen, z_a):
+        xlist = np.array(list(xgen))
+        ylist = np.array(list(ygen))
+
+        xx = np.zeros([len(xlist), len(ylist)])
+        yy = np.zeros([len(xlist), len(ylist)])
+        for i, x in enumerate(xlist):
+            xx[i,:] = x
+            yy[i,:] = ylist[:]
+
+        out = np.zeros([len(xlist), len(ylist)])
+        for sh, lmx in zip(self.shells, self.logmxcoeff):
+            vals = sh.plane_values(xx, yy, z_a, logmxcoeff=lmx)
+            if vals is not None:
+                out += np.einsum("pxy,p->xy", vals, self.coeff[sh.start:sh.start+sh.size])
         return out
