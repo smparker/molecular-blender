@@ -257,7 +257,7 @@ def PlotMolecule(context, molecule, options):
 
     clock.tick_print("atom creation")
 
-    if molecule.bonds:  # Add the bonds
+    if plot_style.bond_size != "none":  # Add the bonds
         # Make circles the correct size for the bonds
         bevnames = {}
 
