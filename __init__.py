@@ -149,10 +149,10 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
                ('orbital', 'orbital', "Plot orbitals (positive and negative isovalues)")),
         default='orbital')
 
-    orbital = IntProperty(
+    orbital = StringProperty(
         name="Orbital",
-        description="Plot this orbital from molden file (ignored for other inputs)",
-        default=0)
+        description="Plot this orbital from molden file. Accepts comma separated list, homo-n, lumo+m. (ignored for other inputs)",
+        default="homo")
 
     resolution = FloatProperty(
         name="Resolution",

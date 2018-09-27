@@ -56,12 +56,12 @@ def polynomial_p(X, Y, Z):
 
 def polynomial_d(X, Y, Z):
     """xx, yy, zz, xy, xz, yz"""
-    return np.array([X*X, Y*Y, Z*Z, X*Y/np.sqrt(3), X*Z/np.sqrt(3), Y*Z/np.sqrt(3)])
+    return np.array([X*X, Y*Y, Z*Z, X*Y*np.sqrt(3), X*Z*np.sqrt(3), Y*Z*np.sqrt(3)])
 
 def polynomial_f(X, Y, Z):
     """xxx, yyy, zzz, xyy, xxy, xxz, xzz, yzz, yyz, xyz"""
-    raise Exception("Not Yet Implemented: f-functions")
-    return np.array([X*X*X, Y*Y*Y, Z*Z*Z, X*Y*Y, X*X*Y, X*Z*Z, Y*Z*Z, Y*Y*Z, X*Y*Z])
+    return np.array([X*X*X, Y*Y*Y, Z*Z*Z, X*Y*Y*np.sqrt(5), X*X*Y*np.sqrt(5), X*X*Z*np.sqrt(5),
+                        X*Z*Z*np.sqrt(5), Y*Z*Z*np.sqrt(5), Y*Y*Z*np.sqrt(5), X*Y*Z*np.sqrt(15)])
 
 def polynomial_g(X, Y, Z):
     """xxxx yyyy zzzz xxxy xxxz yyyx yyyz zzzx zzzy xxyy xxzz yyzz xxyz yyxz zzxy"""
@@ -82,19 +82,19 @@ def plane_polynomial_p(XX, YY, Z):
 def plane_polynomial_d(XX, YY, Z):
     """xx, yy, zz, xy, xz, yz"""
     ZZ = np.full_like(XX, Z)
-    return np.asarray([XX*XX, YY*YY, ZZ*ZZ, XX*YY/np.sqrt(3), XX*ZZ/np.sqrt(3), YY*ZZ/np.sqrt(3)])
+    return np.array([XX*XX, YY*YY, ZZ*ZZ, XX*YY/np.sqrt(3), XX*ZZ/np.sqrt(3), YY*ZZ/np.sqrt(3)])
 
 def plane_polynomial_f(XX, YY, Z):
     """xxx, yyy, zzz, xyy, xxy, xxz, xzz, yzz, yyz, xyz"""
-    raise Exception("Not YYet Implemented: f-functions")
     ZZ = np.full_like(XX, Z)
-    return np.asarray([XX*XX*XX, YY*YY*YY, ZZ*ZZ*ZZ, XX*YY*YY, XX*XX*YY, XX*ZZ*ZZ, YY*ZZ*ZZ, YY*YY*ZZ, XX*YY*ZZ])
+    return np.array([XX*XX*XX, YY*YY*YY, ZZ*ZZ*ZZ, XX*YY*YY*np.sqrt(5), XX*XX*YY*np.sqrt(5), XX*XX*ZZ*np.sqrt(5),
+                        XX*ZZ*ZZ*np.sqrt(5),YY*ZZ*ZZ*np.sqrt(5), YY*YY*ZZ*np.sqrt(5), XX*YY*ZZ*np.sqrt(15)])
 
 def plane_polynomial_g(XX, YY, Z):
     """xxxx yyyy zzzz xxxy xxxz yyyx yyyz zzzx zzzy xxyy xxzz yyzz xxyz yyxz zzxy"""
-    raise Exception("Not YYet Implemented: g-functions")
+    raise Exception("Not Yet Implemented: g-functions")
     ZZ = np.full_like(XX, Z)
-    return np.asarray([XX*XX*XX*XX, YY*YY*YY*YY, ZZ*ZZ*ZZ*ZZ, XX*XX*XX*YY, XX*XX*XX*ZZ, YY*YY*YY*XX, YY*YY*YY*ZZ,
+    return np.array([XX*XX*XX*XX, YY*YY*YY*YY, ZZ*ZZ*ZZ*ZZ, XX*XX*XX*YY, XX*XX*XX*ZZ, YY*YY*YY*XX, YY*YY*YY*ZZ,
                      ZZ*ZZ*ZZ*XX, ZZ*ZZ*ZZ*YY, XX*XX*YY*YY, XX*XX*ZZ*ZZ, YY*YY*ZZ*ZZ, XX*XX*YY*ZZ, YY*YY*XX*ZZ, ZZ*ZZ*XX*YY])
 
 class Shell(object):
@@ -220,6 +220,9 @@ class MOData(object):
         self.shells = shells
         self.coeff = coeff
         self.nocc = nocc
+
+    def homo(self):
+        return self.nocc
 
     def get_orbital(self, iorb):
         """Returns OrbitalCalculater for orbital"""

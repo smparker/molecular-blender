@@ -417,9 +417,9 @@ def transform_triangles(triangles, origin, axes):
     return [out[i, :] + origin for i in range(coords.shape[0])]
 
 
-def cube_isosurface(data, origin, axes, isovalues, wm=None):
+def cube_isosurface(data, origin, axes, isovalues, name="cube", wm=None):
     """Return set of triangles from cube file"""
-    triangle_sets = [{"isovalue": iso} for iso in isovalues]
+    triangle_sets = [{"isovalue": iso, "name" : name} for iso in isovalues]
 
     tri_list = [[] for iso in isovalues]
 
@@ -464,21 +464,21 @@ def cube_isosurface(data, origin, axes, isovalues, wm=None):
     return triangle_sets
 
 
-def molden_isosurface(orbital, isovalues, resolution, wm=None):
+def molden_isosurface(orbital, isovalues, resolution, name="iso", wm=None):
     """Return set of triangles from Molden file"""
     p0, p1 = orbital.bounding_box(min([abs(x) for x in isovalues]) * 0.01)
     resolution = [int(round((j - i) / (resolution * ang2bohr)))
                   for i, j in zip(p0, p1)]
     axes = np.eye(3) * bohr2ang
 
-    return isosurface(p0, p1, resolution, isovalues, orbital.plane_values, axes, wm)
+    return isosurface(p0, p1, resolution, isovalues, orbital.plane_values, axes, name, wm)
 
 
-def isosurface(p0, p1, npoints, isovalues, isoplane_func, axes, wm=None):
+def isosurface(p0, p1, npoints, isovalues, isoplane_func, axes, name, wm=None):
     """Return set of triangles from function object"""
     r = [(x1 - x0) / sw for x0, x1, sw in zip(p0, p1, npoints)]
 
-    triangle_sets = [{"isovalue": iso} for iso in isovalues]
+    triangle_sets = [{"isovalue": iso, "name" : name} for iso in isovalues]
     tri_list = [[] for iso in isovalues]
 
     z_a = p0[2]

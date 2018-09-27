@@ -25,6 +25,7 @@
 
 from collections import namedtuple
 from itertools import chain
+import re
 
 import bpy
 import mathutils
@@ -549,19 +550,50 @@ def draw_surfaces(molecule, context, options):
         isovals = options["isovalues"]
 
         # marching cubes to make the surface
-        vertex_sets = cube_isosurface(vol.data, vol.origin, vol.axes, isovals, wm)
+        vsets = cube_isosurface(vol.data, vol.origin, vol.axes, isovals, wm)
+        vertex_sets.extend(vsets)
     elif molecule.orbitals is not None:  # orbital data was read
         orbitals = molecule.orbitals
-        orb = orbitals.get_orbital(options["orbital"])
+        homo = orbitals.homo()
+        lumo = homo+1
+        orbnames = [ x.strip() for x in options["orbital"].split(',') ]
+        orblist = []
+        for o in orbnames:
+            neworb = None
+
+            if o == "homo":
+                neworb = homo
+            elif o == "lumo":
+                neworb = lumo
+
+            mh = re.search(r"homo\s*-\s*([0-9]+)", o)
+            if mh:
+                neworb = homo - int(mh.group(1))
+            ml = re.search(r"lumo\s*\+\s*([0-9]+)", o)
+            if ml:
+                neworb = lumo + int(ml.group(1))
+
+            try:
+                neworb = int(o)
+            except ValueError:
+                pass
+
+            if neworb is None:
+                raise Exception("Could not understand orbital list!")
+            orblist.append(neworb)
+
         isovals = options["isovalues"]
         resolution = options["resolution"]
 
-        vertex_sets = molden_isosurface(orb, isovals, resolution, wm)
+        for orbname, orbnumber in zip(orbnames, orblist):
+            orb = orbitals.get_orbital(orbnumber)
+            vset = molden_isosurface(orb, isovals, resolution, orbname, wm)
+            vertex_sets.extend(vset)
 
     meshes = []
     for v in vertex_sets:
         # add surfaces to the scene
-        name = molecule.name + "_iso_" + "%f" % v["isovalue"]
+        name = "{0}_{1}_{2}".format(molecule.name, v["name"], v["isovalue"])
         verts, faces = create_geometry(v["triangles"])
         meshes.append(create_mesh(name, verts, faces))
 
