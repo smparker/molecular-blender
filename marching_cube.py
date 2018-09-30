@@ -466,7 +466,7 @@ def cube_isosurface(data, origin, axes, isovalues, name="cube", wm=None):
 
 def molden_isosurface(orbital, isovalues, resolution, name="iso", wm=None):
     """Return set of triangles from Molden file"""
-    p0, p1 = orbital.bounding_box(min([abs(x) for x in isovalues]) * 0.01)
+    p0, p1 = orbital.bounding_box(min([abs(x) for x in isovalues]) * 0.001)
     resolution = [int(round((j - i) / (resolution * ang2bohr)))
                   for i, j in zip(p0, p1)]
     axes = np.eye(3) * bohr2ang

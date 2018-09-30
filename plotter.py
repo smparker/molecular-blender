@@ -509,7 +509,7 @@ def AnimateMolecule(context, molecule, options):
     return
 
 
-def create_mesh(name, verts, faces):
+def create_mesh(name, verts, faces, context, remesh=True):
     """Some black magic to make a mesh with the given name, verts, and faces"""
     me = bpy.data.meshes.new(name)  # create a new mesh
     me.from_pydata(verts, [], faces)
@@ -522,6 +522,15 @@ def create_mesh(name, verts, faces):
 
     ob = bpy.data.objects.new(name, me)  # create a new object
     ob.data = me          # link the mesh data to the object
+
+    if remesh:
+        mod = ob.modifiers.new('Remesh', 'REMESH')
+        mod.mode = 'SMOOTH'
+        mod.octree_depth = 8
+        mod.scale = 0.99
+        mod.use_smooth_shade = True
+        mod.use_remove_disconnected = False
+
     return ob
 
 
@@ -595,7 +604,7 @@ def draw_surfaces(molecule, context, options):
         # add surfaces to the scene
         name = "{0}_{1}_{2}".format(molecule.name, v["name"], v["isovalue"])
         verts, faces = create_geometry(v["triangles"])
-        meshes.append(create_mesh(name, verts, faces))
+        meshes.append(create_mesh(name, verts, faces, context, options["remesh"]))
 
     mol_obj = bpy.data.objects[molecule.name]
     for m in meshes:
@@ -663,6 +672,7 @@ def process_options(filename, options):
                 "isovalues": "",
                 "volume": "orbital",
                 "orbital": 0,
+                "remesh" : True,
                 "resolution": 0.5,
                 "colors": "default"
                }
