@@ -157,9 +157,9 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     resolution = FloatProperty(
         name="Resolution",
         description="Desired spacing between points in isosurface (Angstrom)",
-        default=0.1,
+        default=0.05,
         min=0.001,
-        max=1.0,
+        max=0.5,
         step=0.01,
         precision=3)
 

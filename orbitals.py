@@ -287,17 +287,14 @@ class OrbitalCalculater(object):
                 out += np.dot(val, self.coeff[sh.start:sh.start + sh.size])
         return out
 
-    def plane_values(self, xgen, ygen, z_a):
-        xlist = np.array(list(xgen))
-        ylist = np.array(list(ygen))
-
-        xx = np.zeros([len(xlist), len(ylist)])
-        yy = np.zeros([len(xlist), len(ylist)])
-        for i, x in enumerate(xlist):
+    def plane_values(self, xvals, yvals, z_a):
+        xx = np.zeros([len(xvals), len(yvals)])
+        yy = np.zeros([len(xvals), len(yvals)])
+        for i, x in enumerate(xvals):
             xx[i,:] = x
-            yy[i,:] = ylist[:]
+            yy[i,:] = yvals[:]
 
-        out = np.zeros([len(xlist), len(ylist)])
+        out = np.zeros([len(xvals), len(yvals)])
         for sh, lmx in zip(self.shells, self.logmxcoeff):
             vals = sh.plane_values(xx, yy, z_a, logmxcoeff=lmx)
             if vals is not None:

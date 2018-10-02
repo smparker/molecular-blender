@@ -45,6 +45,7 @@ __email__ = "smparker@uci.edu"
 __status__ = "alpha"
 
 import numpy as np
+import math
 from .constants import ang2bohr, bohr2ang
 
 edgetable = (0x0, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c,
@@ -339,6 +340,26 @@ tritable = [[-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
            ]
 
 
+def active_box(cornervalues, isolevels):
+    """Determines whether any isovalues are crossed based on given corner values"""
+    for isolevel in isolevels:
+        cubeindex = 0
+
+        if cornervalues[0] < isolevel: cubeindex |= 1
+        if cornervalues[1] < isolevel: cubeindex |= 2
+        if cornervalues[2] < isolevel: cubeindex |= 4
+        if cornervalues[3] < isolevel: cubeindex |= 8
+        if cornervalues[4] < isolevel: cubeindex |= 16
+        if cornervalues[5] < isolevel: cubeindex |= 32
+        if cornervalues[6] < isolevel: cubeindex |= 64
+        if cornervalues[7] < isolevel: cubeindex |= 128
+
+        if edgetable[cubeindex] != 0:
+            return True
+
+    return False
+
+
 def polygonise(cornervalues, isolevel, x1, y1, z1, x2, y2, z2):
     """Determine the index into the edge table which
     tells us which vertices are inside of the surface"""
@@ -399,15 +420,6 @@ def vertexinterp(isolevel, p1, p2, valp1, valp2):
 
     return x, y, z
 
-
-def arange(start, stop, step):
-    """Generator for range"""
-    r = start
-    while r < stop:
-        yield r
-        r += step
-
-
 def transform_triangles(triangles, origin, axes):
     """Transforms and translates set of triangles to match input origin/axes"""
     if not triangles:
@@ -464,61 +476,173 @@ def cube_isosurface(data, origin, axes, isovalues, name="cube", wm=None):
     return triangle_sets
 
 
-def molden_isosurface(orbital, isovalues, resolution, name="iso", wm=None):
+def molden_isosurface(orbital, isovalues, resolution, name="iso", wm=None, method="adaptive", rough_resolution=0.2*ang2bohr):
     """Return set of triangles from Molden file"""
     p0, p1 = orbital.bounding_box(min([abs(x) for x in isovalues]) * 0.001)
-    resolution = [int(round((j - i) / (resolution * ang2bohr)))
-                  for i, j in zip(p0, p1)]
     axes = np.eye(3) * bohr2ang
 
-    return isosurface(p0, p1, resolution, isovalues, orbital.plane_values, axes, name, wm)
+    return isosurface(p0, p1, resolution, isovalues, orbital.plane_values, axes, name, wm, rough_resolution=rough_resolution)
 
 
-def isosurface(p0, p1, npoints, isovalues, isoplane_func, axes, name, wm=None):
-    """Return set of triangles from function object"""
-    r = [(x1 - x0) / sw for x0, x1, sw in zip(p0, p1, npoints)]
+def isosurface_outline(p0, p1, npoints, isovalues, isoplane_func, axes, name, wm=None):
+    """Returns low resolution outline of an isosurface"""
+    xvals, xstep = np.linspace(p0[0], p1[0], num=npoints[0], retstep=True, endpoint=True)
+    yvals, ystep = np.linspace(p0[1], p1[1], num=npoints[1], retstep=True, endpoint=True)
+    zvals, zstep = np.linspace(p0[2], p1[2], num=npoints[2], retstep=True, endpoint=True)
+    nx, ny, nz = npoints
+    r = (xstep, ystep, zstep)
 
-    triangle_sets = [{"isovalue": iso, "name" : name} for iso in isovalues]
-    tri_list = [[] for iso in isovalues]
-
-    z_a = p0[2]
-    def xygen(i):
-        return arange(p0[i], p1[i], r[i])
-    z_plane_a = isoplane_func(xygen(0), xygen(1), z_a)
+    outlines = [ ]
+    z = p0[2]
+    plane_values_1 = isoplane_func(xvals, yvals, z)
 
     cornervalues = [0] * 8
 
-    nzplanes = int((p1[2] - p0[2])/r[2]) + 1
     if wm is not None:
-        wm.progress_begin(0, nzplanes)
+        wm.progress_begin(0, nz)
 
-    for k, z in enumerate(arange(p0[2], p1[2] - r[2], r[2])):
-        z2 = z + r[2]
-        z_plane_b = isoplane_func(xygen(0), xygen(1), z2)
-        for yi in range(len(z_plane_a[0]) - 1):
-            y = p0[1] + yi * r[1]
-            y2 = y + r[1]
-            for xi in range(len(z_plane_a) - 1):
-                x = p0[0] + xi * r[0]
-                x2 = x + r[0]
+    for zi in range(1, nz):
+        z = zvals[zi-1]
+        z2 = zvals[zi]
+        plane_values_2 = isoplane_func(xvals, yvals, z2)
+        for yi in range(ny-1):
+            y = yvals[yi]
+            y2 = yvals[yi+1]
+            for xi in range(nx-1):
+                x = xvals[xi]
+                x2 = xvals[xi+1]
                 cornervalues = [
-                    z_plane_a[xi][yi],
-                    z_plane_a[xi][yi + 1],
-                    z_plane_a[xi + 1][yi + 1],
-                    z_plane_a[xi + 1][yi],
-                    z_plane_b[xi][yi],
-                    z_plane_b[xi][yi + 1],
-                    z_plane_b[xi + 1][yi + 1],
-                    z_plane_b[xi + 1][yi],
+                    plane_values_1[xi][yi],
+                    plane_values_1[xi][yi + 1],
+                    plane_values_1[xi + 1][yi + 1],
+                    plane_values_1[xi + 1][yi],
+                    plane_values_2[xi][yi],
+                    plane_values_2[xi][yi + 1],
+                    plane_values_2[xi + 1][yi + 1],
+                    plane_values_2[xi + 1][yi],
+                ]
+
+                if active_box(cornervalues, isovalues):
+                    outlines.append( ( (x, y, z), (x2, y2, z2) ) )
+
+        plane_values_1 = plane_values_2
+
+        if wm is not None:
+            wm.progress_update(zi)
+
+    if wm is not None:
+        wm.progress_end()
+
+    return outlines
+
+
+def isosurface(p0, p1, resolution, isovalues, isoplane_func, axes, name, wm=None, method="adaptive",
+        rough_resolution=0.2*ang2bohr, max_subdivide=4):
+    """Return set of triangles from function object"""
+
+    if method == "adaptive":
+        return isosurface_adaptive(p0, p1, rough_resolution, resolution, max_subdivide, isovalues, isoplane_func, axes, name, wm)
+    else:
+        npoints = [ int(math.ceil((b-a)/(resolution*ang2bohr))) for a, b in zip(p0, p1) ]
+        return isosurface_simple(p0, p1, npoints, isovalues, isoplane_func, axes, name, wm)
+
+
+def isosurface_adaptive(p0, p1, resolution_start, resolution_end, max_subdivide, isovalues, isoplane_func, axes, name, wm=None):
+    """Return set of triangles from function object from multi-pass adaptive algorithm"""
+
+    # let's start by finding the nearest integer that provides a rough layer of at least 0.25 A
+    np_start = [ int(math.ceil((b - a)/resolution_start)) for a, b in zip(p0, p1) ]
+    np_min_end = [ int(math.ceil((b - a)/resolution_end)) for a, b in zip(p0, p1) ]
+
+    subdivide = [ max_subdivide for x in range(3) ]
+
+    print('start: ', np_start)
+
+    outlines = isosurface_outline(p0, p1, np_start, isovalues, isoplane_func, axes, name, wm)
+
+    # np_now is the effective number of points that would be produced by the final pass
+    np_now = [ a * s for a, s in zip(np_start, subdivide) ]
+
+    while not all([now > want for now, want in zip(np_now, np_min_end)]):
+        print(np_now)
+        new_outlines = []
+        for pp0, pp1 in outlines:
+            o = isosurface_outline(pp0, pp1, subdivide, isovalues, isoplane_func, axes, name, wm)
+            new_outlines.extend(o)
+
+        outlines = new_outlines
+
+        np_now = [ a * s for a, s in zip(np_now, subdivide) ]
+    print('end: ', np_now)
+
+    # now build actual triangles from the list of active boxes from above
+    triangles = None
+    if wm is not None:
+        wm.progress_begin(0, len(outlines))
+
+    for box, (pp0, pp1) in enumerate(outlines):
+        verts = isosurface_simple(pp0, pp1, subdivide, isovalues, isoplane_func, axes, name)
+
+        if triangles is None:
+            triangles = verts
+        else:
+            for i in range(len(verts)):
+                triangles[i]["triangles"].extend(verts[i]["triangles"])
+
+        if wm is not None:
+            wm.progress_update(box)
+
+    return triangles
+
+def isosurface_simple(p0, p1, npoints, isovalues, isoplane_func, axes, name, wm=None):
+    """Return set of triangles from function object in single pass algorithm"""
+    triangle_sets = [{"isovalue": iso, "name" : name} for iso in isovalues]
+    tri_list = [[] for iso in isovalues]
+
+    xvals, xstep = np.linspace(p0[0], p1[0], num=npoints[0], retstep=True, endpoint=True)
+    yvals, ystep = np.linspace(p0[1], p1[1], num=npoints[1], retstep=True, endpoint=True)
+    zvals, zstep = np.linspace(p0[2], p1[2], num=npoints[2], retstep=True, endpoint=True)
+    nx, ny, nz = npoints
+    r = (xstep, ystep, zstep)
+
+    z = p0[2]
+    plane_values_1 = isoplane_func(xvals, yvals, z)
+
+    cornervalues = [0] * 8
+
+    if wm is not None:
+        wm.progress_begin(0, nz)
+
+    for zi in range(1, nz):
+        z = zvals[zi-1]
+        z2 = zvals[zi]
+
+        plane_values_2 = isoplane_func(xvals, yvals, z2)
+        for yi in range(ny-1):
+            y = yvals[yi]
+            y2 = yvals[yi+1]
+            for xi in range(nx-1):
+                x = xvals[xi]
+                x2 = xvals[xi+1]
+                cornervalues = [
+                    plane_values_1[xi][yi],
+                    plane_values_1[xi][yi + 1],
+                    plane_values_1[xi + 1][yi + 1],
+                    plane_values_1[xi + 1][yi],
+                    plane_values_2[xi][yi],
+                    plane_values_2[xi][yi + 1],
+                    plane_values_2[xi + 1][yi + 1],
+                    plane_values_2[xi + 1][yi],
                 ]
 
                 for iiso, isoval in enumerate(isovalues):
                     tri_list[iiso].extend(polygonise(
                         cornervalues, isoval, x, y, z, x2, y2, z2))
 
-        z_plane_a = z_plane_b
+        plane_values_1 = plane_values_2
+
         if wm is not None:
-            wm.progress_update(k)
+            wm.progress_update(zi)
 
     if wm is not None:
         wm.progress_end()
