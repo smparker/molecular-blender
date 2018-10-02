@@ -5,12 +5,14 @@ quantum chemistry
 ## Capabilities
 
 - imports using linked objects making rapid changes to the aesthetics feasible
-- basic styling (VDW, ball and stick, wireframe)
+- basic styling (stick model, VDW, ball and stick, wireframe) and sensible
+  defaults
 - support for animations (input as multiframe .xyz files) including dynamically
   drawing bonds
 - find and fill in aromatic rings
 - draw spheres sitting on atoms to represent atomic charges and dynamically
   scale them during an animation
+- draw molecular orbital isosurfaces with .cube files or .molden files
 
 ## Installation
 There are two basic ways to install Molecular Blender, either through
