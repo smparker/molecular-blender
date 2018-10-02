@@ -129,11 +129,13 @@ def make_iso_materials(molecule, styler, vertex_sets, options):
     out = {}
     for o in orbitals:
         for mat in ["orbital_mat_plus", "orbital_mat_minus" ]:
+            key = "%s_%s" % (o, mat)
             if not (options["recycle_materials"] and mat in bpy.data.materials.keys()):
                 imat = unique_name(mat, bpy.data.materials.keys())
-                key = "%s_%s" % (o, mat)
                 material = styler.isosurface_material(imat)
                 out[key] = material
+            else:
+                out[key] = bpy.data.materials.get(mat)
 
     return out
 
@@ -548,7 +550,7 @@ def create_mesh(name, verts, faces, material, context, remesh=True):
     if remesh:
         mod = ob.modifiers.new('Remesh', 'REMESH')
         mod.mode = 'SMOOTH'
-        mod.octree_depth = 8
+        mod.octree_depth = 7
         mod.scale = 0.99
         mod.use_smooth_shade = True
         mod.use_remove_disconnected = False
