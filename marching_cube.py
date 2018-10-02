@@ -44,6 +44,7 @@ __maintainer__ = "Shane Parker"
 __email__ = "smparker@uci.edu"
 __status__ = "alpha"
 
+import multiprocessing
 import numpy as np
 import math
 from .constants import ang2bohr, bohr2ang
@@ -577,20 +578,17 @@ def isosurface_adaptive(p0, p1, resolution_start, resolution_end, max_subdivide,
 
     # now build actual triangles from the list of active boxes from above
     triangles = None
-    if wm is not None:
-        wm.progress_begin(0, len(outlines))
+    vertlist = None
+    with multiprocessing.Pool() as pool:
+        boxgen = ( (pp0, pp1, subdivide, isovalues, isoplane_func, axes, name) for pp0, pp1 in outlines )
+        vertlist = pool.starmap(isosurface_simple, boxgen)
 
-    for box, (pp0, pp1) in enumerate(outlines):
-        verts = isosurface_simple(pp0, pp1, subdivide, isovalues, isoplane_func, axes, name)
-
+    for verts in vertlist:
         if triangles is None:
             triangles = verts
         else:
             for i in range(len(verts)):
                 triangles[i]["triangles"].extend(verts[i]["triangles"])
-
-        if wm is not None:
-            wm.progress_update(box)
 
     return triangles
 
