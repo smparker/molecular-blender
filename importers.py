@@ -38,24 +38,24 @@ class Reader(object):
         """Build a Reader out of a filename"""
         self.filename = filename
         self.f = None
-        self.mark = 0
         self.marks = {}
 
     def readline(self):
         """Ignores blanks"""
-        self.mark = self.f.tell()
         out = self.f.readline()
         if out == "":
             raise EOFError
         return out
 
-    def set_mark(self, label):
+    def set_mark(self, label, line):
         """Sets a mark of where label was found"""
-        self.marks[label] = self.mark
+        self.marks[label] = (self.f.tell(), line)
 
     def restore_mark(self, label):
         """Restores file to where mark was found"""
-        self.f.seek(self.marks[label])
+        mark, line = self.marks[label]
+        self.f.seek(mark)
+        return line
 
     def is_marked(self, label):
         """Returns whether mark was found"""
@@ -159,6 +159,7 @@ def molecule_from_xyz(filename, options):
     return out
 
 
+ANY_RE = re.compile(r"\[[a-zA-Z0-9 ]*\]")
 MOLDEN_RE = re.compile(r"\[\s*molden\s+format\s*\]", flags=re.IGNORECASE)
 ATOMS_RE = re.compile(r"\[\s*atoms\s*\]\s*(angs|au)?", flags=re.IGNORECASE)
 GTO_RE = re.compile(r"\[\s*gto\s*\]", flags=re.IGNORECASE)
@@ -169,9 +170,7 @@ NEWSECTION_RE = re.compile(r"\s*\[")
 def molden_read_atoms(f, ignore_h=False):
     """reads [Atoms] section of molden files"""
     out = []
-    f.restore_mark("atoms")
-
-    line = f.readline()
+    line = f.restore_mark("atoms")
     m = ATOMS_RE.search(line)
 
     # conversion factor incase atomic units are input
@@ -200,9 +199,7 @@ def molden_read_atoms(f, ignore_h=False):
 
 def molden_read_gto(f):
     """reads through GTO section to collect basis information"""
-    f.restore_mark("gto")
-
-    line = f.readline()  # should just say GTO
+    line = f.restore_mark("gto")
 
     out = []
 
@@ -264,7 +261,7 @@ def molden_read_gto(f):
 
 def molden_read_mo(f, nmo):
     """reads through [MO] section to collect MO coefficient information"""
-    f.restore_mark("mo")
+    line = f.restore_mark("mo")
 
     moinf = {"sym": re.compile(r"\s*sym\s*=\s*(\S+)", flags=re.IGNORECASE),
              "ene": re.compile(r"\s*ene\s*=\s*(\S+)", flags=re.IGNORECASE),
@@ -272,8 +269,6 @@ def molden_read_mo(f, nmo):
              "occup": re.compile(r"\s*occup\s*=\s*(\S+)", flags=re.IGNORECASE)}
 
     re_coef = re.compile(r"\s*(\d+)\s+(\S+)", flags=re.IGNORECASE)
-
-    line = f.readline()  # should just say MO
 
     out = []
 
@@ -346,9 +341,10 @@ def molecule_from_molden(filename, _options):
         try:
             while True:
                 line = f.readline()
-                for x in marks:
-                    if marks[x].search(line):
-                        f.set_mark(x)
+                if ANY_RE.search(line):
+                    for x in marks:
+                        if marks[x].search(line):
+                            f.set_mark(x, line)
         except EOFError:
             pass
 
