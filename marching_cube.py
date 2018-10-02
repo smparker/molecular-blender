@@ -557,15 +557,12 @@ def isosurface_adaptive(p0, p1, resolution_start, resolution_end, max_subdivide,
 
     subdivide = [ max_subdivide for x in range(3) ]
 
-    print('start: ', np_start)
-
     outlines = isosurface_outline(p0, p1, np_start, isovalues, isoplane_func, axes, name, wm)
 
     # np_now is the effective number of points that would be produced by the final pass
     np_now = [ a * s for a, s in zip(np_start, subdivide) ]
 
     while not all([now > want for now, want in zip(np_now, np_min_end)]):
-        print(np_now)
         new_outlines = []
         for pp0, pp1 in outlines:
             o = isosurface_outline(pp0, pp1, subdivide, isovalues, isoplane_func, axes, name, wm)
@@ -574,7 +571,6 @@ def isosurface_adaptive(p0, p1, resolution_start, resolution_end, max_subdivide,
         outlines = new_outlines
 
         np_now = [ a * s for a, s in zip(np_now, subdivide) ]
-    print('end: ', np_now)
 
     # now build actual triangles from the list of active boxes from above
     triangles = None

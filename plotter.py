@@ -120,6 +120,24 @@ def make_ring_materials(molecule, styler, options):
     return
 
 
+@stopwatch("make_iso_materials")
+def make_iso_materials(molecule, styler, vertex_sets, options):
+    """Given a molecule and an isosurface list, creates the materials for the isosurfaces"""
+
+    orbitals = set([ v["name"] for v in vertex_sets ])
+
+    out = {}
+    for o in orbitals:
+        for mat in ["orbital_mat_plus", "orbital_mat_minus" ]:
+            if not (options["recycle_materials"] and mat in bpy.data.materials.keys()):
+                imat = unique_name(mat, bpy.data.materials.keys())
+                key = "%s_%s" % (o, mat)
+                material = styler.isosurface_material(imat)
+                out[key] = material
+
+    return out
+
+
 @stopwatch("PlotMolecule")
 def PlotMolecule(context, molecule, options):
     """Plots the given molecule object to the specified context"""
@@ -509,7 +527,7 @@ def AnimateMolecule(context, molecule, options):
     return
 
 
-def create_mesh(name, verts, faces, context, remesh=True):
+def create_mesh(name, verts, faces, material, context, remesh=True):
     """Some black magic to make a mesh with the given name, verts, and faces"""
     me = bpy.data.meshes.new(name)  # create a new mesh
     me.from_pydata(verts, [], faces)
@@ -522,6 +540,10 @@ def create_mesh(name, verts, faces, context, remesh=True):
 
     ob = bpy.data.objects.new(name, me)  # create a new object
     ob.data = me          # link the mesh data to the object
+    if ob.data.materials:
+        ob.data.materials[0] = material
+    else:
+        ob.data.materials.append(material)
 
     if remesh:
         mod = ob.modifiers.new('Remesh', 'REMESH')
@@ -550,7 +572,7 @@ def create_geometry(verts):
 
 
 @stopwatch("draw surfaces")
-def draw_surfaces(molecule, context, options):
+def draw_surfaces(molecule, styler, context, options):
     """Draws isosurfaces"""
     vertex_sets = []
     wm = context.window_manager
@@ -600,11 +622,14 @@ def draw_surfaces(molecule, context, options):
             vertex_sets.extend(vset)
 
     meshes = []
+    materials = make_iso_materials(molecule, styler, vertex_sets, options)
+
     for v in vertex_sets:
         # add surfaces to the scene
         name = "{0}_{1}_{2}".format(molecule.name, v["name"], v["isovalue"])
+        matname = "{0}_orbital_mat_{1}".format(v["name"], "plus" if v["isovalue"] > 0 else "minus")
         verts, faces = create_geometry(v["triangles"])
-        meshes.append(create_mesh(name, verts, faces, context, options["remesh"]))
+        meshes.append(create_mesh(name, verts, faces, materials[matname], context, options["remesh"]))
 
     mol_obj = bpy.data.objects[molecule.name]
     for m in meshes:
@@ -730,4 +755,4 @@ def BlendMolecule(context, filename, **options):
         plot_rings(context, molecule, options)
 
     if options["isosurfaces"]:
-        draw_surfaces(molecule, context, options)
+        draw_surfaces(molecule, styler, context, options)

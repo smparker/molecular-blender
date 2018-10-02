@@ -33,6 +33,8 @@ class PaletteElementStyler(object):
     ringcolor = (0.0, 0.9, 0.0)
     chargeminuscolor = (1.0, 0.0, 0.0)
     chargepluscolor = (1.0, 0.0, 0.0)
+    isominuscolor = (0.0, 1.0, 0.0)
+    isopluscolor = (1.0, 0.0, 1.0)
 
     def atom_material(self, name, element):
         """Return atom material"""
@@ -61,6 +63,13 @@ class PaletteElementStyler(object):
         mmat.diffuse_color = mathutils.Color(self.chargeminuscolor)
 
         return pmat, mmat
+
+    def isosurface_material(self, isoname):
+        """Return isosurface material"""
+        out = bpy.data.materials.new(isoname)
+        out.diffuse_color = mathutils.Color(self.isopluscolor if "plus" in isoname else self.isominuscolor)
+
+        return out
 
     def element_color(self, element):
         """Returns RGB triple for element"""
