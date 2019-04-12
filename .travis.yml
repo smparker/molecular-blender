@@ -1,4 +1,5 @@
 language: python
+dist: xenial
 
 before_install:
   # update apt-gets repository sources
