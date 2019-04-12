@@ -8,10 +8,10 @@ before_install:
 
 install:
   # manually install recent blender off mirror
-  - export BLENDER_VERSION=2.79
+  - export BLENDER_VERSION=2.80
   - echo "Installing Blender ${BLENDER_VERSION}"
-  - export BNAME="blender-${BLENDER_VERSION}-linux-glibc219-x86_64"
-  - wget "http://mirror.cs.umn.edu/blender.org/release/Blender${BLENDER_VERSION}/${BNAME}.tar.bz2"
+  - export BNAME="blender-2.80-d1cda823e0a8-linux-glibc224-x86_64"
+    wget "https://builder.blender.org/download/blender-2.80-d1cda823e0a8-linux-glibc224-x86_64.tar.bz2"
   - tar -xjf ${BNAME}.tar.bz2
 
   # set up path to use this blender
