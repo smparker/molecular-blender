@@ -36,22 +36,27 @@ class PaletteElementStyler(object):
     isominuscolor = (0.0, 1.0, 0.0)
     isopluscolor = (1.0, 0.0, 1.0)
 
+    def make_diffuse_color(self, color):
+        r, g, b = color
+        a = 1.0
+        return (r, g, b, a)
+
     def atom_material(self, name, element):
         """Return atom material"""
         mat = bpy.data.materials.new(name)
-        mat.diffuse_color = mathutils.Color(self.element_color(element))
+        mat.diffuse_color = self.make_diffuse_color(self.element_color(element))
         return mat
 
     def bond_material(self, name, bond):
         """Return bond material"""
         mat = bpy.data.materials.new(name)
-        mat.diffuse_color = mathutils.Color(self.bondcolor)
+        mat.diffuse_color = self.make_diffuse_color(self.bondcolor)
         return mat
 
     def ring_material(self, name):
         """Return ring material"""
         mat = bpy.data.materials.new(name)
-        mat.diffuse_color = mathutils.Color(self.ringcolor)
+        mat.diffuse_color = self.make_diffuse_color(self.ringcolor)
         return mat
 
     def charge_material(self, pname, mname, element):
@@ -59,15 +64,15 @@ class PaletteElementStyler(object):
         pmat = bpy.data.materials.new(pname)
         mmat = bpy.data.materials.new(mname)
 
-        pmat.diffuse_color = mathutils.Color(self.chargepluscolor)
-        mmat.diffuse_color = mathutils.Color(self.chargeminuscolor)
+        pmat.diffuse_color = self.make_diffuse_color(self.chargepluscolor)
+        mmat.diffuse_color = self.make_diffuse_color(self.chargeminuscolor)
 
         return pmat, mmat
 
     def isosurface_material(self, isoname):
         """Return isosurface material"""
         out = bpy.data.materials.new(isoname)
-        out.diffuse_color = mathutils.Color(self.isopluscolor if "plus" in isoname else self.isominuscolor)
+        out.diffuse_color = self.make_diffuse_color(self.isopluscolor if "plus" in isoname else self.isominuscolor)
 
         return out
 

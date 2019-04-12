@@ -103,7 +103,7 @@ class TestAnimateSticksAndCharges(unittest.TestCase):
             self.context.scene.frame_set(frame)
 
             for i, o in enumerate(objs):
-                nhidden[i] += o.hide
+                nhidden[i] += o.hide_viewport
         self.assertEqual(nhidden, [71,47], 'Incorrect number of hidden frames found')
 
 

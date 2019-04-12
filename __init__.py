@@ -31,8 +31,9 @@ from .plotter import BlendMolecule
 bl_info = {  # pylint: disable=invalid-name
     "name": "Molecular Blender",
     "author": "Shane Parker and Josh Szekely",
-    "version": (0, 1, 0),
+    "version": (0, 2, 0),
     "location": "File > Import",
+    "blender" : (2, 80, 0),
     "description": "Import XYZ files",
     "category": "Import-Export"
 }
@@ -41,13 +42,14 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     """A class designed to conveniently import molecules to blender"""
     bl_idname = "import.molecular_blender"
     bl_label = "Molecular Blender"
+    bl_category = "Import"
 
     # in the template, we'll figure it out later
-    filter_glob = StringProperty(
+    filter_glob: StringProperty(
         default="*.xyz;*.molden;*.cube",
         options={'HIDDEN'})
 
-    object_type = EnumProperty(
+    object_type: EnumProperty(
         name="Object type",
         description="Object type to use to draw atoms",
         items=(('meta', "Metaballs", "Metaballs"),
@@ -56,14 +58,14 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
                ('wireframe', "Wireframe", "Wireframe")),
         default='mesh')
 
-    plot_type = EnumProperty(
+    plot_type: EnumProperty(
         name="Type",
         description="What to draw",
         items=(('frame', "Single Frame", "Plot a single frame from an XYZ"),
                ('animate', "Animation", "Animate from an XYZ")),
         default='frame')
 
-    plot_style = EnumProperty(
+    plot_style: EnumProperty(
         name="Style",
         description="Plot style",
         items=(('vdw', "Van der Waals", "Plot using VDW radii"),
@@ -74,7 +76,7 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
                ('sticks', "Stick model", "Just sticks")),
         default='fixedbs')
 
-    bond_thickness = FloatProperty(
+    bond_thickness: FloatProperty(
         name="Thickness of bonds",
         description="Determine overall thickness of bonds (0.0 turns bonds off)",
         default=0.15,
@@ -83,7 +85,7 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         step=0.05,
         precision=4)
 
-    hook_atoms = EnumProperty(
+    hook_atoms: EnumProperty(
         name="Hook bonds",
         description="Hook bonds to atoms to make bonds follow manual manipulation of the atoms",
         items=(('auto', "Automatic", "Off for single frames, on for animations"),
@@ -92,12 +94,12 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
                 " blender will not move the bonds alongside)")),
         default='auto')
 
-    keystride = IntProperty(
+    keystride: IntProperty(
         name="Keystride",
         description="Striding between keyframes in animation",
         default=2)
 
-    animate_bonds = EnumProperty(
+    animate_bonds: EnumProperty(
         name="Animate bonds",
         description="Determine how the bonds are handled for an animation",
         items=(('staticfirst', "Static: first frame", "Use bonds from only the first frame"),
@@ -108,27 +110,27 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
               ),
         default='staticfirst')
 
-    universal_bonds = BoolProperty(
+    universal_bonds: BoolProperty(
         name="Universal bonds",
         description="Use one bond type for whole plot",
         default=True)
 
-    ignore_hydrogen = BoolProperty(
+    ignore_hydrogen: BoolProperty(
         name="Ignore Hydrogens",
         description="Ignores Hydrogen atoms for cleaner images",
         default=False)
 
-    find_aromatic = BoolProperty(
+    find_aromatic: BoolProperty(
         name="Plot Aromatics",
         description="Find closed rings and if planar, fill in with object",
         default=False)
 
-    gradient = BoolProperty(
+    gradient: BoolProperty(
         name="Plot gradient",
         description="Draw arrows for data found in gradients column",
         default=False)
 
-    charges = EnumProperty(
+    charges: EnumProperty(
         name="Plot charges",
         description="Style in which to plot atomic charges",
         items=(('none', 'none', 'No charges plotted'),
@@ -137,24 +139,24 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
               ),
         default='none')
 
-    isovalues = StringProperty(
+    isovalues: StringProperty(
         name="Isovalues to plot",
         description="List of isovalues to plot densities or orbitals",
         default="")
 
-    volume = EnumProperty(
+    volume: EnumProperty(
         name="Volume",
         description="Type of volume to plot",
         items=(('density', 'density', "Density"),
                ('orbital', 'orbital', "Plot orbitals (positive and negative isovalues)")),
         default='orbital')
 
-    orbital = StringProperty(
+    orbital: StringProperty(
         name="Orbital",
         description="Plot this orbital from molden file. Accepts comma separated list, homo-n, lumo+m. (ignored for other inputs)",
         default="homo")
 
-    resolution = FloatProperty(
+    resolution: FloatProperty(
         name="Resolution",
         description="Desired spacing between points in isosurface (Angstrom)",
         default=0.05,
@@ -163,7 +165,7 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         step=0.01,
         precision=3)
 
-    charge_offset = FloatProperty(
+    charge_offset: FloatProperty(
         name="chgoff",
         description="Use chgfac*(charge + chgoff) to control visibility of charges",
         default=0.9,
@@ -173,7 +175,7 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         precision=4
     )
 
-    charge_factor = FloatProperty(
+    charge_factor: FloatProperty(
         name="chgfac",
         description="Use chgfac*(charge + chgoff) to control visibility of charges",
         default=1.0,
@@ -183,12 +185,12 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         precision=2
     )
 
-    recycle_materials = BoolProperty(
+    recycle_materials: BoolProperty(
         name="Recycle materials",
         description="Re-use materials generated for previously imported molecules",
         default=True)
 
-    colors = EnumProperty(
+    colors: EnumProperty(
         name="Colors",
         description="Palette of colors to use",
         items=(('default', 'default', 'Colors defined by molecular blender'),
@@ -229,14 +231,15 @@ def menu_func_import(self, _context):
     self.layout.operator(MolecularBlender.bl_idname,
                          text="Molecular Blender (Import XYZ)")
 
-
 def register():
-    """Register class with Blender on load"""
-    bpy.utils.register_class(MolecularBlender)
-    bpy.types.INFO_MT_file_import.append(menu_func_import)
-
+    from bpy.utils import register_class
+    register_class(MolecularBlender)
+    bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
 
 def unregister():
-    """Unregister class with Blender on exit"""
-    bpy.utils.unregister_class(MolecularBlender)
-    bpy.types.INFO_MT_file_import.remove(menu_func_import)
+    from bpy.utils import unregister_class
+    unregister_class(MolecularBlender)
+    bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
+
+if __name__ == "__main__":
+    register()

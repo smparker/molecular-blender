@@ -232,7 +232,7 @@ def PlotMolecule(context, molecule, options):
                     type='BALL', radius=radius, location=atom.position)
             else:
                 bpy.ops.mesh.primitive_uv_sphere_add(
-                    location=atom.position, size=radius)
+                    location=atom.position, radius=radius)
             context.object.name = ref_atom
             context.object.data.name = ref_atom
             obj_keys.append(ref_atom)
@@ -245,7 +245,7 @@ def PlotMolecule(context, molecule, options):
             bpy.ops.object.shade_smooth()
 
             # make parent active
-            context.scene.objects.active = molecule_obj
+            context.view_layer.objects.active = molecule_obj
             bpy.ops.object.parent_set(type='OBJECT', keep_transform=False)
 
         if options["charges"] != "none":  # set a sphere on top of atom that will show charge
@@ -295,7 +295,7 @@ def PlotMolecule(context, molecule, options):
             bevnames[i] = bevelname
             context.object.name = bevelname
 
-            context.scene.objects.active = molecule_obj
+            context.view_layer.objects.active = molecule_obj
             bpy.ops.object.parent_set(type='OBJECT', keep_transform=False)
 
         for bond in molecule.bonds:  # make curves for bonds
@@ -376,8 +376,9 @@ def PlotMolecule(context, molecule, options):
 
     # finalize by linking in objects and updating scene
     scn = context.scene
+    coll = context.view_layer.active_layer_collection.collection
     for ob in to_link:  # link in objects
-        scn.objects.link(ob)
+        coll.objects.link(ob)
 
     clock.tick_print("link objects")
 
@@ -390,9 +391,9 @@ def PlotMolecule(context, molecule, options):
         for iatom, jatom, bond in to_hook:
             # Hook to atom1
             bpy.ops.object.select_all(action='DESELECT')
-            bpy.data.objects[iatom].select = True
-            bpy.data.objects[bond].select = True
-            context.scene.objects.active = bpy.data.objects[bond]
+            bpy.data.objects[iatom].select_set(True)
+            bpy.data.objects[bond].select_set(True)
+            context.view_layer.objects.active = bpy.data.objects[bond]
             bpy.ops.object.mode_set(mode='EDIT')
             bpy.ops.curve.de_select_first()
             bpy.ops.object.hook_add_selob()
@@ -400,9 +401,9 @@ def PlotMolecule(context, molecule, options):
 
             # Hook to atom2
             bpy.ops.object.select_all(action='DESELECT')
-            bpy.data.objects[jatom].select = True
-            bpy.data.objects[bond].select = True
-            context.scene.objects.active = bpy.data.objects[bond]
+            bpy.data.objects[jatom].select_set(True)
+            bpy.data.objects[bond].select_set(True)
+            context.view_layer.objects.active = bpy.data.objects[bond]
             bpy.ops.object.mode_set(mode='EDIT')
             bpy.ops.curve.de_select_first()
             bpy.ops.curve.de_select_last()
@@ -413,8 +414,8 @@ def PlotMolecule(context, molecule, options):
 
     for child, parent in to_parent:
         bpy.ops.object.select_all(action='DESELECT')
-        child.select = True
-        context.scene.objects.active = parent
+        child.select_set(True)
+        context.view_layer.objects.active = parent
         bpy.ops.object.parent_set(type='OBJECT', keep_transform=False)
 
     clock.tick_print("set parentage")
@@ -438,10 +439,10 @@ def PlotMolecule(context, molecule, options):
                 curveOB = bpy.data.objects.new(atom.name + "_gradient", curve)
 
                 curveOB.data.use_fill_caps = True
-                context.scene.objects.link(curveOB)
-                context.scene.objects.active = curveOB
-                curveOB.select = True
-                context.scene.objects.active = bpy.data.objects[molecule.name]
+                context.collection.objects.link(curveOB)
+                context.view_layer.objects.active = curveOB
+                curveOB.select_set(True)
+                context.view_layer.objects.active = bpy.data.objects[molecule.name]
                 bpy.ops.object.parent_set(type='OBJECT', keep_transform=False)
 
     return
@@ -450,7 +451,7 @@ def PlotMolecule(context, molecule, options):
 def PlotWireFrame(context, molecule, _options):
     """driver for wireframe plotter"""
     for item in context.selectable_objects:
-        item.select = False
+        item.select_set(False)
 
     verts = [atom.position for atom in molecule.atoms]
     bonds = [(b.iatom.index, b.jatom.index) for b in molecule.bonds]
@@ -460,9 +461,9 @@ def PlotWireFrame(context, molecule, _options):
     molec_mesh.update()
     molec_obj = bpy.data.objects.new(molecule.name, molec_mesh)
     molec_obj.data = molec_mesh
-    context.scene.objects.link(molec_obj)
-    molec_obj.select = True
-    context.scene.objects.active = bpy.data.objects[molecule.name]
+    context.collection.objects.link(molec_obj)
+    molec_obj.select_set(True)
+    context.view_layer.objects.active = bpy.data.objects[molecule.name]
     bpy.ops.object.convert(target='CURVE')
     context.object.data.fill_mode = 'FULL'
     context.object.data.render_resolution_u = 12
@@ -492,7 +493,7 @@ def AnimateMolecule(context, molecule, options):
 
         # deselect everything for good measure
         for item in context.selectable_objects:
-            item.select = False
+            item.select_set(False)
 
         atom_obj = bpy.data.objects[atom.name]
         pluscharge = bpy.data.objects[atom.plus_charge] if (
@@ -520,9 +521,9 @@ def AnimateMolecule(context, molecule, options):
             i, j = bond.iatom.index, bond.jatom.index
             for bond_obj in [ bpy.data.objects[b] for b in bond.name ]:
                 for (iframe, mask) in enumerate(bondmask[(i, j)]):
-                    bond_obj.hide = not mask
+                    bond_obj.hide_viewport = not mask
                     bond_obj.keyframe_insert(
-                        data_path="hide", frame=iframe * kstride + 1)
+                        data_path="hide_viewport", frame=iframe * kstride + 1)
                     bond_obj.hide_render = not mask
                     bond_obj.keyframe_insert(
                         data_path="hide_render", frame=iframe * kstride + 1)
@@ -635,12 +636,12 @@ def draw_surfaces(molecule, styler, context, options):
 
     mol_obj = bpy.data.objects[molecule.name]
     for m in meshes:
-        context.scene.objects.link(m)
-        m.select = True
+        context.collection.objects.link(m)
+        m.select_set(True)
 
-    mol_obj.select = True
+    mol_obj.select_set(True)
     # parent them
-    context.scene.objects.active = mol_obj
+    context.view_layer.objects.active = mol_obj
     bpy.ops.object.parent_set(type='OBJECT', keep_transform=False)
 
 
@@ -665,14 +666,14 @@ def plot_rings(context, molecule, options):
         ringObj = bpy.data.objects.new(objname, ringMesh)
         ringObj.data.materials.append(ringmat)
         ringObj.data = ringMesh
-        context.scene.objects.link(ringObj)
+        context.collection.objects.link(ringObj)
         to_parent.append(ringObj)
 
     molecule_obj = bpy.data.objects[molecule.name]
     for child in to_parent:
         bpy.ops.object.select_all(action='DESELECT')
-        child.select = True
-        context.scene.objects.active = molecule_obj
+        child.select_set(True)
+        context.view_layer.objects.active = molecule_obj
         bpy.ops.object.parent_set(type="OBJECT", keep_transform=False)
 
 
