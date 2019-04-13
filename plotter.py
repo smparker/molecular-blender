@@ -582,6 +582,8 @@ def draw_surfaces(molecule, styler, context, options):
     if molecule.volume is not None:  # volumetric data was read
         vol = molecule.volume
         isovals = options["isovalues"]
+        if options["cumulative"]:
+            isovals = vol.isovalue_containing_proportion(isovals)
 
         # marching cubes to make the surface
         vsets = cube_isosurface(vol.data, vol.origin, vol.axes, isovals, wm)
@@ -621,7 +623,9 @@ def draw_surfaces(molecule, styler, context, options):
 
         for orbname, orbnumber in zip(orbnames, orblist):
             orb = orbitals.get_orbital(orbnumber)
-            vset = molden_isosurface(orb, isovals, resolution, orbname, wm)
+            if options["cumulative"]:
+                orbital_isovals = orb.isovalue_containing_proportion(isovals)
+            vset = molden_isosurface(orb, orbital_isovals, resolution, orbname, wm)
             vertex_sets.extend(vset)
 
     meshes = []

@@ -29,6 +29,7 @@ from .orbitals import MOData
 from .util import stopwatch
 from .aromatics import find_planar_cycles
 from .periodictable import elements
+from .containing_isovalues import isovalue_containing_proportion
 
 
 class Snapshot(object):
@@ -118,6 +119,10 @@ class VolumeData(object):
 
         self.axis_norms = np.array(
             [np.linalg.norm(self.axes[:, i]) for i in range(3)])
+        self.dvol = np.prod(self.axis_norms)
+
+    def isovalue_containing_proportion(self, values=[0.90]):
+        return isovalue_containing_proportion(values, self.data, dvol)
 
     @classmethod
     def from_dict(cls, inp):

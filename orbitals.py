@@ -24,7 +24,9 @@
 """Classes and functions to compute orbital values in real space."""
 
 import numpy as np
+import math
 from .constants import ang2bohr
+from .containing_isovalues import isovalue_containing_proportion
 
 
 def gamma2n(i):
@@ -267,7 +269,7 @@ class OrbitalCalculater(object):
             for sh in self.shells]))
 
     def bounding_box(self, thr=1.0e-5):
-        """returns lower and upper limits of box that should fully contain orbital"""
+        """returns lower and upper limits of box (in bohr) that should fully contain orbital"""
         # find lower bounds
         p0 = [np.min([sh.center[ixyz] - sh.bounding_box_size(thr, lmx)
                       for sh, lmx in zip(self.shells, self.logmxcoeff)]) for ixyz in range(3)]
@@ -300,3 +302,23 @@ class OrbitalCalculater(object):
             if vals is not None:
                 out += np.einsum("pxy,p->xy", vals, self.coeff[sh.start:sh.start+sh.size])
         return out
+
+    def box_values(self, xvals, yvals, zvals):
+        out = np.zeros([len(xvals), len(yvals), len(zvals)])
+
+        for k, z_a in enumerate(zvals):
+            out[:,:,k] = self.plane_values(xvals, yvals, z_a)
+
+        return out
+
+    def isovalue_containing_proportion(self, values=[0.90], resolution=0.2*ang2bohr, box=None):
+        if box is None:
+            p0, p1 = self.bounding_box(1e-4)
+
+        npoints = [ int(math.ceil((b - a)/resolution)) for a, b in zip(p0, p1) ]
+
+        xvals, yvals, zvals = [ np.linspace(a, b, num=n, endpoint=True ) for a, b, n in zip(p0, p1, npoints) ]
+        dV = (xvals[1] - xvals[0]) * (yvals[1] - yvals[0]) * (zvals[1] - zvals[0])
+        boxvalues = self.box_values(xvals, yvals, zvals).reshape(-1)
+
+        return isovalue_containing_proportion(values, boxvalues, dV)

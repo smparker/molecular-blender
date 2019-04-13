@@ -482,6 +482,8 @@ def molden_isosurface(orbital, isovalues, resolution, name="iso", wm=None, metho
     p0, p1 = orbital.bounding_box(min([abs(x) for x in isovalues]) * 0.001)
     axes = np.eye(3) * bohr2ang
 
+    containing_isovals = orbital.isovalue_containing_proportion()
+
     return isosurface(p0, p1, resolution, isovalues, orbital.plane_values, axes, name, wm, rough_resolution=rough_resolution)
 
 

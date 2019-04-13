@@ -142,7 +142,12 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     isovalues: StringProperty(
         name="Isovalues to plot",
         description="List of isovalues to plot densities or orbitals",
-        default="")
+        default="0.8,0.95")
+
+    cumulative: BoolProperty(
+        name="Cumulative isovalues",
+        description="Set isovalues so they contain given proportion of the total density",
+        default=True)
 
     volume: EnumProperty(
         name="Volume",
@@ -218,6 +223,7 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
                       find_aromatic=self.find_aromatic,
                       recycle_materials=self.recycle_materials,
                       isovalues=self.isovalues,
+                      cumulative=self.cumulative,
                       volume=self.volume,
                       orbital=self.orbital,
                       resolution=self.resolution,
