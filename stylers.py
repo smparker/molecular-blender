@@ -43,31 +43,43 @@ class PaletteElementStyler(object):
         a = 1.0
         return (r, g, b, a)
 
+    def make_diffuse_material(self, name, color):
+        mat = bpy.data.materials.new(name)
+        mat.use_nodes = True
+        mat.diffuse_color = color
+        nodes = mat.node_tree.nodes
+        nodes.clear()
+        links = mat.node_tree.links
+
+        material_output = nodes.new('ShaderNodeOutputMaterial')
+
+        diffuse = nodes.new('ShaderNodeBsdfDiffuse')
+        diffuse.inputs['Color'].default_value = color
+        diffuse.inputs['Roughness'].default_value = 0.3
+
+        links.new(diffuse.outputs['BSDF'], material_output.inputs['Surface'])
+
+        arrange_nodes(nodes, "socket")
+
+        return mat
+
     def atom_material(self, name, element):
         """Return atom material"""
-        mat = bpy.data.materials.new(name)
-        mat.diffuse_color = self.make_diffuse_color(self.element_color(element))
-        return mat
+        color = self.make_diffuse_color(self.element_color(element))
+        return self.make_diffuse_material(name, color)
 
     def bond_material(self, name, bond):
         """Return bond material"""
-        mat = bpy.data.materials.new(name)
-        mat.diffuse_color = self.make_diffuse_color(self.bondcolor)
-        return mat
+        return self.make_diffuse_material(name, self.make_diffuse_color(self.bondcolor))
 
     def ring_material(self, name):
         """Return ring material"""
-        mat = bpy.data.materials.new(name)
-        mat.diffuse_color = self.make_diffuse_color(self.ringcolor)
-        return mat
+        return self.make_diffuse_material(name, self.make_diffuse_color(self.ringcolor))
 
     def charge_material(self, pname, mname, element):
         """Return charge material"""
-        pmat = bpy.data.materials.new(pname)
-        mmat = bpy.data.materials.new(mname)
-
-        pmat.diffuse_color = self.make_diffuse_color(self.chargepluscolor)
-        mmat.diffuse_color = self.make_diffuse_color(self.chargeminuscolor)
+        pmat = self.make_diffuse_material(pname, self.make_diffuse_color(self.chargepluscolor))
+        mmat = self.make_diffuse_material(mname, self.make_diffuse_color(self.chargeminuscolor))
 
         return pmat, mmat
 
@@ -85,6 +97,7 @@ class PaletteElementStyler(object):
         mat = bpy.data.materials.new(isoname)
         mat.use_nodes = True
         mat.blend_method = 'BLEND'
+        mat.diffuse_color = base_color
         nodes = mat.node_tree.nodes
         nodes.clear() # remove defaults
         links = mat.node_tree.links
