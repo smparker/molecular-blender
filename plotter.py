@@ -122,20 +122,55 @@ def make_ring_materials(molecule, styler, options):
 
 @stopwatch("make_iso_materials")
 def make_iso_materials(molecule, styler, vertex_sets, options):
-    """Given a molecule and an isosurface list, creates the materials for the isosurfaces"""
+    """
+    Given a molecule and an isosurface list, creates the materials
+    for the isosurfaces and adds keys under "material" to each vertex set
+    """
 
     orbitals = set([ v["name"] for v in vertex_sets ])
 
+    # returns dict of materials created
     out = {}
+
     for o in orbitals:
-        for mat in ["orbital_mat_plus", "orbital_mat_minus" ]:
-            key = "%s_%s" % (o, mat)
-            if not (options["recycle_materials"] and mat in bpy.data.materials.keys()):
-                imat = unique_name(mat, bpy.data.materials.keys())
-                material = styler.isosurface_material(imat)
-                out[key] = material
+        all_surfaces = [ v for v in vertex_sets if v["name"] == o ]
+
+        # list of positive and negative isovalue surfaces
+        positive_surfaces = [ v for v in all_surfaces if v["isovalue"] >= 0.0 ]
+        negative_surfaces = [ v for v in all_surfaces if v["isovalue"] < 0.0 ]
+
+        # sort surface lists by magnitude
+        positive_surfaces.sort(key=lambda v: abs(v["isovalue"]), reverse=True)
+        negative_surfaces.sort(key=lambda v: abs(v["isovalue"]), reverse=True)
+
+        for surf_list, mat_basename in [ (positive_surfaces, "orbital_mat_plus"), (negative_surfaces, "orbital_mat_negative") ]:
+            if not surf_list:
+                continue
+
+            # should be at least one element in surf_list, and this one gets the
+            # "inner" material
+            vset = surf_list.pop(0)
+            iv = vertex_sets.index(vset)
+            matname = "{orbital}_{type}_inner".format(orbital=o, type=mat_basename)
+            if not (options["recycle_materials"] and matname in bpy.data.materials.keys()):
+                matname = unique_name(matname, bpy.data.materials.keys())
+                material = styler.isosurface_material(matname)
             else:
-                out[key] = bpy.data.materials.get(mat)
+                material = bpy.data.materials.get(matname)
+            out[matname] = material
+            vertex_sets[iv]["material"] = material
+
+            # any remaining elements get the "outer" material
+            for surf in surf_list:
+                matname = "{orbital}_{type}_outer".format(orbital=o, type=mat_basename)
+                iv = vertex_sets.index(surf)
+                if not (options["recycle_materials"] and matname in bpy.data.materials.keys()):
+                    matname = unique_name(matname, bpy.data.materials.keys())
+                    material = styler.outer_isosurface_material(matname)
+                else:
+                    material = bpy.data.materials.get(matname)
+                out[matname] = material
+                vertex_sets[iv]["material"] = material
 
     return out
 
@@ -586,7 +621,7 @@ def draw_surfaces(molecule, styler, context, options):
             isovals = vol.isovalue_containing_proportion(isovals)
 
         # marching cubes to make the surface
-        vsets = cube_isosurface(vol.data, vol.origin, vol.axes, isovals, wm)
+        vsets = cube_isosurface(vol.data, vol.origin, vol.axes, isovals, name="cube", wm=wm)
         vertex_sets.extend(vsets)
     elif molecule.orbitals is not None:  # orbital data was read
         orbitals = molecule.orbitals
@@ -634,9 +669,8 @@ def draw_surfaces(molecule, styler, context, options):
     for v in vertex_sets:
         # add surfaces to the scene
         name = "{0}_{1}_{2}".format(molecule.name, v["name"], v["isovalue"])
-        matname = "{0}_orbital_mat_{1}".format(v["name"], "plus" if v["isovalue"] > 0 else "minus")
         verts, faces = create_geometry(v["triangles"])
-        meshes.append(create_mesh(name, verts, faces, materials[matname], context, options["remesh"]))
+        meshes.append(create_mesh(name, verts, faces, v["material"], context, options["remesh"]))
 
     mol_obj = bpy.data.objects[molecule.name]
     for m in meshes:

@@ -26,6 +26,8 @@
 import bpy
 import mathutils
 
+from .nodes import arrange_nodes
+
 class PaletteElementStyler(object):
     """Base class to color atom based on element"""
 
@@ -75,6 +77,44 @@ class PaletteElementStyler(object):
         out.diffuse_color = self.make_diffuse_color(self.isopluscolor if "plus" in isoname else self.isominuscolor)
 
         return out
+
+    def outer_isosurface_material(self, isoname):
+        """Return isosurface material"""
+        base_color = self.make_diffuse_color(self.isopluscolor if "plus" in isoname else self.isominuscolor)
+
+        mat = bpy.data.materials.new(isoname)
+        mat.use_nodes = True
+        mat.blend_method = 'BLEND'
+        nodes = mat.node_tree.nodes
+        nodes.clear() # remove defaults
+        links = mat.node_tree.links
+
+        material_output = nodes.new('ShaderNodeOutputMaterial')
+
+        mix = nodes.new('ShaderNodeMixShader')
+        links.new(mix.outputs['Shader'], material_output.inputs['Surface'])
+
+        layerweight = nodes.new('ShaderNodeLayerWeight')
+        layerweight.inputs['Blend'].default_value = 0.7
+
+        power = nodes.new('ShaderNodeMath')
+        power.operation = 'POWER'
+        power.inputs[1].default_value = 8.0
+        links.new(layerweight.outputs['Facing'], power.inputs[0])
+        links.new(power.outputs['Value'], mix.inputs['Fac'])
+
+        transparent = nodes.new('ShaderNodeBsdfTransparent')
+        links.new(transparent.outputs['BSDF'], mix.inputs[1])
+
+        emission = nodes.new('ShaderNodeEmission')
+        emission.inputs[0].default_value = base_color
+        emission.inputs[1].default_value = 1.0
+        links.new(emission.outputs['Emission'], mix.inputs[2])
+
+        # arrange nodes
+        arrange_nodes(nodes, "socket")
+
+        return mat
 
     def element_color(self, element):
         """Returns RGB triple for element"""
