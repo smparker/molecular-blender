@@ -32,18 +32,18 @@ class PaletteElementStyler(object):
     """Base class to color atom based on element"""
 
     bondcolor = (0.9, 0.9, 0.9)
-    ringcolor = (0.0, 0.9, 0.0)
+    ringcolor = (0.137, 0.523, 0.120)
     chargeminuscolor = (1.0, 0.0, 0.0)
     chargepluscolor = (1.0, 0.0, 0.0)
-    isominuscolor = (0.0, 1.0, 0.0)
-    isopluscolor = (1.0, 0.0, 1.0)
+    isominuscolor = (0.023153, 0.527115, 0.102242)
+    isopluscolor = (0.40724, 0.088656, 1.0)
 
     def make_diffuse_color(self, color):
         r, g, b = color
         a = 1.0
         return (r, g, b, a)
 
-    def make_diffuse_material(self, name, color):
+    def make_diffuse_material(self, name, color, roughness=0.3):
         mat = bpy.data.materials.new(name)
         mat.use_nodes = True
         mat.diffuse_color = color
@@ -55,7 +55,7 @@ class PaletteElementStyler(object):
 
         diffuse = nodes.new('ShaderNodeBsdfDiffuse')
         diffuse.inputs['Color'].default_value = color
-        diffuse.inputs['Roughness'].default_value = 0.3
+        diffuse.inputs['Roughness'].default_value = roughness
 
         links.new(diffuse.outputs['BSDF'], material_output.inputs['Surface'])
 
@@ -70,11 +70,30 @@ class PaletteElementStyler(object):
 
     def bond_material(self, name, bond):
         """Return bond material"""
-        return self.make_diffuse_material(name, self.make_diffuse_color(self.bondcolor))
+        return self.make_diffuse_material(name, self.make_diffuse_color(self.bondcolor), roughness=1.0)
 
     def ring_material(self, name):
         """Return ring material"""
-        return self.make_diffuse_material(name, self.make_diffuse_color(self.ringcolor))
+        mat = bpy.data.materials.new(name)
+        mat.use_nodes = True
+        mat.diffuse_color = self.make_diffuse_color(self.ringcolor)
+        mat.blend_method = 'BLEND'
+        mat.use_screen_refraction = True
+        mat.refraction_depth = 0.1
+        mat.shadow_method = 'CLIP'
+        nodes = mat.node_tree.nodes
+        nodes.clear()
+        links = mat.node_tree.links
+
+        material_output = nodes.new('ShaderNodeOutputMaterial')
+
+        glass = nodes.new('ShaderNodeBsdfGlass')
+        glass.inputs['Color'].default_value = self.make_diffuse_color(self.ringcolor)
+        glass.inputs['Roughness'].default_value = 0.2
+        glass.inputs['IOR'].default_value = 1.250
+        links.new(glass.outputs['BSDF'], material_output.inputs['Surface'])
+
+        return mat
 
     def charge_material(self, pname, mname, element):
         """Return charge material"""
@@ -144,7 +163,7 @@ class DefaultElementStyler(PaletteElementStyler):
             'li': (0.800, 0.502, 1.000),
             'be': (0.761, 1.000, 0.000),
             'b': (1.000, 0.710, 0.710),
-            'c': (0.565, 0.565, 0.565),
+            'c': (0.210, 0.210, 0.210),
             'n': (0.188, 0.314, 0.973),
             'o': (1.000, 0.051, 0.051),
             'f': (0.565, 0.878, 0.314),
