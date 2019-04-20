@@ -31,17 +31,57 @@ from .nodes import arrange_nodes
 class PaletteElementStyler(object):
     """Base class to color atom based on element"""
 
-    bondcolor = (0.9, 0.9, 0.9)
-    ringcolor = (0.137, 0.523, 0.120)
-    chargeminuscolor = (1.0, 0.0, 0.0)
-    chargepluscolor = (1.0, 0.0, 0.0)
-    isominuscolor = (0.023153, 0.527115, 0.102242)
-    isopluscolor = (0.40724, 0.088656, 1.0)
+    bond_color = (0.9, 0.9, 0.9, 1.0)
+    ring_color = (0.137, 0.523, 0.120, 1.0)
+    charge_minus_color = (1.0, 0.0, 0.0, 1.0)
+    charge_plus_color = (1.0, 0.0, 0.0, 1.0)
+    iso_minus_color = (0.023153, 0.527115, 0.102242, 1.0)
+    iso_plus_color = (0.40724, 0.088656, 1.0, 1.0)
 
-    def make_diffuse_color(self, color):
-        r, g, b = color
-        a = 1.0
-        return (r, g, b, a)
+    def make_principled_material(self, name, base_color=(1.0, 0.0, 0.0, 1.0),
+            subsurface=0.0, subsurface_color=(1.0, 1.0, 1.0, 1.0),
+            metallic=0.0, specular=0.5, specular_tint = 0.0,
+            roughness=0.0, anisotropic=0.0, anisotropic_rotation=0.0,
+            sheen=0.0, sheen_tint=0.0, clearcoat=0.0, clearcoat_roughness=0.0,
+            IOR=1.45, transmission=0.0, transmission_roughness=0.0):
+
+        mat = bpy.data.materials.new(name)
+        mat.use_nodes = True
+        mat.diffuse_color = base_color
+
+        options = {
+            'Base Color' : base_color,
+            'Subsurface' : subsurface,
+            'Subsurface Color' : subsurface_color,
+            'Metallic' : metallic,
+            'Specular' : specular,
+            'Specular Tint' : specular_tint,
+            'Roughness'  : roughness,
+            'Anisotropic' : anisotropic,
+            'Anisotropic Rotation' : anisotropic_rotation,
+            'Sheen'      : sheen,
+            'Sheen Tint' : sheen_tint,
+            'Clearcoat'  : clearcoat,
+            'Clearcoat Roughness' : clearcoat_roughness,
+            'IOR' : IOR,
+            'Transmission' : transmission,
+            'Transmission Roughness' : transmission_roughness
+        }
+
+        nodes = mat.node_tree.nodes
+        nodes.clear()
+        links = mat.node_tree.links
+
+        material_output = nodes.new('ShaderNodeOutputMaterial')
+
+        principled = nodes.new('ShaderNodeBsdfPrincipled')
+        for o in options:
+            principled.inputs[o].default_value = options[o]
+        links.new(principled.outputs['BSDF'], material_output.inputs['Surface'])
+
+        arrange_nodes(nodes, "socket")
+
+        return mat
 
     def make_diffuse_material(self, name, color, roughness=0.3):
         mat = bpy.data.materials.new(name)
@@ -65,53 +105,46 @@ class PaletteElementStyler(object):
 
     def atom_material(self, name, element):
         """Return atom material"""
-        color = self.make_diffuse_color(self.element_color(element))
+        color = self.element_color(element)
         return self.make_diffuse_material(name, color)
 
     def bond_material(self, name, bond):
         """Return bond material"""
-        return self.make_diffuse_material(name, self.make_diffuse_color(self.bondcolor), roughness=1.0)
+        return self.make_diffuse_material(name, self.bond_color, roughness=1.0)
 
     def ring_material(self, name):
         """Return ring material"""
-        mat = bpy.data.materials.new(name)
-        mat.use_nodes = True
-        mat.diffuse_color = self.make_diffuse_color(self.ringcolor)
+        mat = self.make_principled_material(name,
+            base_color=self.ring_color,
+            clearcoat=1.0,
+            clearcoat_roughness=0.2,
+            transmission=1.0,
+            transmission_roughness=0.2,
+            IOR=1.25)
         mat.blend_method = 'BLEND'
         mat.use_screen_refraction = True
         mat.refraction_depth = 0.1
         mat.shadow_method = 'CLIP'
-        nodes = mat.node_tree.nodes
-        nodes.clear()
-        links = mat.node_tree.links
-
-        material_output = nodes.new('ShaderNodeOutputMaterial')
-
-        glass = nodes.new('ShaderNodeBsdfGlass')
-        glass.inputs['Color'].default_value = self.make_diffuse_color(self.ringcolor)
-        glass.inputs['Roughness'].default_value = 0.2
-        glass.inputs['IOR'].default_value = 1.250
-        links.new(glass.outputs['BSDF'], material_output.inputs['Surface'])
 
         return mat
 
     def charge_material(self, pname, mname, element):
         """Return charge material"""
-        pmat = self.make_diffuse_material(pname, self.make_diffuse_color(self.chargepluscolor))
-        mmat = self.make_diffuse_material(mname, self.make_diffuse_color(self.chargeminuscolor))
+        pmat = self.make_diffuse_material(pname, self.charge_plus_color)
+        mmat = self.make_diffuse_material(mname, self.charge_minus_color)
 
         return pmat, mmat
 
     def isosurface_material(self, isoname):
         """Return isosurface material"""
         out = bpy.data.materials.new(isoname)
-        out.diffuse_color = self.make_diffuse_color(self.isopluscolor if "plus" in isoname else self.isominuscolor)
+        out.diffuse_color = self.iso_plus_color if "plus" in isoname else self.iso_minus_color
 
         return out
 
     def outer_isosurface_material(self, isoname):
         """Return isosurface material"""
-        base_color = self.make_diffuse_color(self.isopluscolor if "plus" in isoname else self.isominuscolor)
+        base_color = self.iso_plus_color if "plus" in isoname else self.iso_minus_color
 
         mat = bpy.data.materials.new(isoname)
         mat.use_nodes = True
@@ -150,7 +183,9 @@ class PaletteElementStyler(object):
 
     def element_color(self, element):
         """Returns RGB triple for element"""
-        return self.palette[element.symbol]
+        r, g, b = self.palette[element.symbol]
+        a = 1.0
+        return (r, g, b, a)
 
 class DefaultElementStyler(PaletteElementStyler):
     """Color elements with Molecular Blender defaults"""
