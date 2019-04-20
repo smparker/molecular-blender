@@ -17,8 +17,8 @@ class TestBlendSticksRings(unittest.TestCase):
     def setUp(self):
         """Setup function"""
         self.file = 'examples/tetracene_dimer.xyz'
-        self.atom_re = re.compile(r"^tetracene_dimer_Carbon\d+$")
-        self.bond_re = re.compile(r"^tetracene_dimer_Carbon\d+-Carbon\d+$")
+        self.atom_re = re.compile(r"^tetracene_dimer_c\d+$")
+        self.bond_re = re.compile(r"^tetracene_dimer_c\d+-c\d+$")
         self.context = bpy.context
 
     def test_sticks_and_rings_import(self):
@@ -40,7 +40,7 @@ class TestBlendSticksRings(unittest.TestCase):
         self.assertEqual(ncc, 42, 'Incorrect number of Carbon-Carbon bonds.')
 
         nobj = sum(["tetracene_dimer" in x.name for x in bpy.data.objects])
-        self.assertEqual(nobj, 88, 'Incorrect number of objects created.')
+        self.assertEqual(nobj, 87, 'Incorrect number of objects created.')
 
 
 class TestAnimateBallAndSticks(unittest.TestCase):
@@ -61,7 +61,7 @@ class TestAnimateBallAndSticks(unittest.TestCase):
             ["benzopentyl_twist" in action.name for action in bpy.data.actions])
         self.assertEqual(nact, 11, 'Incorrect number of actions registered.')
 
-        action = bpy.data.actions["benzopentyl_twist_Carbon5Action"]
+        action = bpy.data.actions["benzopentyl_twist_c5Action"]
         nfcurves = len(action.fcurves)
         self.assertEqual(
             nfcurves, 3, 'Incorrect number of fcurves registered.')
@@ -95,8 +95,8 @@ class TestAnimateSticksAndCharges(unittest.TestCase):
         self.assertEqual(npos, 42, 'Incorrect number of positive spheres found')
 
         # pick some objects that have disappearing bonds and count the number of hidden frames
-        objs =  [ bpy.data.objects[x] for x in ["tio2_excited_state_Hydrogen18-Oxygen4_a",
-            "tio2_excited_state_Hydrogen18-Oxygen14_a"]]
+        objs =  [ bpy.data.objects[x] for x in ["tio2_excited_state_h18-o4_a",
+            "tio2_excited_state_h18-o14_a"]]
 
         nhidden = [ 0 for o in objs ]
         for frame in range(120):

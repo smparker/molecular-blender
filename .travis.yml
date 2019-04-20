@@ -11,7 +11,7 @@ install:
   # manually install recent blender off mirror
   - export BLENDER_VERSION=2.80
   - echo "Installing Blender ${BLENDER_VERSION}"
-  - export BNAME="blender-2.80-638938e5a8c3-linux-glibc224-x86_64"
+  - export BNAME="blender-2.80-bc8b884e5325-linux-glibc224-x86_64"
   - wget "https://builder.blender.org/download/${BNAME}.tar.bz2"
   - tar -xjf ${BNAME}.tar.bz2
 
