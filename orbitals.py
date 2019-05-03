@@ -67,9 +67,10 @@ def polynomial_f(X, Y, Z):
 
 def polynomial_g(X, Y, Z):
     """xxxx yyyy zzzz xxxy xxxz yyyx yyyz zzzx zzzy xxyy xxzz yyzz xxyz yyxz zzxy"""
-    raise Exception("Not Yet Implemented: g-functions")
-    return np.array([X*X*X*X, Y*Y*Y*Y, Z*Z*Z*Z, X*X*X*Y, X*X*X*Z, Y*Y*Y*X, Y*Y*Y*Z,
-                     Z*Z*Z*X, Z*Z*Z*Y, X*X*Y*Y, X*X*Z*Z, Y*Y*Z*Z, X*X*Y*Z, Y*Y*X*Z, Z*Z*X*Y])
+    return np.array([X*X*X*X, Y*Y*Y*Y, Z*Z*Z*Z,
+            X*X*X*Y*np.sqrt(35/5), X*X*X*Z*np.sqrt(35/5), Y*Y*Y*X*np.sqrt(35/5), Y*Y*Y*Z*np.sqrt(35/5),
+            Z*Z*Z*X*np.sqrt(35/5), Z*Z*Z*Y*np.sqrt(35/5), X*X*Y*Y*np.sqrt(35/3), X*X*Z*Z*np.sqrt(35/3), Y*Y*Z*Z*np.sqrt(35/3),
+            X*X*Y*Z*np.sqrt(35), Y*Y*X*Z*np.sqrt(35), Z*Z*X*Y*np.sqrt(35)])
 
 # Plane polynomial functions
 def plane_polynomial_s(XX, YY, Z):  # pylint: disable=unused-argument
@@ -84,7 +85,7 @@ def plane_polynomial_p(XX, YY, Z):
 def plane_polynomial_d(XX, YY, Z):
     """xx, yy, zz, xy, xz, yz"""
     ZZ = np.full_like(XX, Z)
-    return np.array([XX*XX, YY*YY, ZZ*ZZ, XX*YY/np.sqrt(3), XX*ZZ/np.sqrt(3), YY*ZZ/np.sqrt(3)])
+    return np.array([XX*XX, YY*YY, ZZ*ZZ, XX*YY*np.sqrt(3), XX*ZZ*np.sqrt(3), YY*ZZ*np.sqrt(3)])
 
 def plane_polynomial_f(XX, YY, Z):
     """xxx, yyy, zzz, xyy, xxy, xxz, xzz, yzz, yyz, xyz"""
@@ -94,10 +95,11 @@ def plane_polynomial_f(XX, YY, Z):
 
 def plane_polynomial_g(XX, YY, Z):
     """xxxx yyyy zzzz xxxy xxxz yyyx yyyz zzzx zzzy xxyy xxzz yyzz xxyz yyxz zzxy"""
-    raise Exception("Not Yet Implemented: g-functions")
     ZZ = np.full_like(XX, Z)
-    return np.array([XX*XX*XX*XX, YY*YY*YY*YY, ZZ*ZZ*ZZ*ZZ, XX*XX*XX*YY, XX*XX*XX*ZZ, YY*YY*YY*XX, YY*YY*YY*ZZ,
-                     ZZ*ZZ*ZZ*XX, ZZ*ZZ*ZZ*YY, XX*XX*YY*YY, XX*XX*ZZ*ZZ, YY*YY*ZZ*ZZ, XX*XX*YY*ZZ, YY*YY*XX*ZZ, ZZ*ZZ*XX*YY])
+    return np.array([XX*XX*XX*XX, YY*YY*YY*YY, ZZ*ZZ*ZZ*ZZ,
+            XX*XX*XX*YY*np.sqrt(35/5), XX*XX*XX*ZZ*np.sqrt(35/5), YY*YY*YY*XX*np.sqrt(35/5), YY*YY*YY*ZZ*np.sqrt(35/5),
+            ZZ*ZZ*ZZ*XX*np.sqrt(35/5), ZZ*ZZ*ZZ*YY*np.sqrt(35/5), XX*XX*YY*YY*np.sqrt(35/3), XX*XX*ZZ*ZZ*np.sqrt(35/3), YY*YY*ZZ*ZZ*np.sqrt(35/3),
+            XX*XX*YY*ZZ*np.sqrt(35), YY*YY*XX*ZZ*np.sqrt(35), ZZ*ZZ*XX*YY*np.sqrt(35)])
 
 class Shell(object):
     """Container for shell data"""

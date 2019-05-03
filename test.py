@@ -176,6 +176,23 @@ class TestMoldenRead(unittest.TestCase):
 
         self.assertAlmostEqual(integration, -0.0010284808822276, places=6)
 
+class TestMoldenFunctions(unittest.TestCase):
+    """Test Suite for reading molden files"""
+    def setUp(self):
+        """Setup function"""
+        self.geo = mb.importers.molecule_from_file(
+            'examples/fake-atom.molden', {})
+        self.orbitals = mb.orbitals.MOData.from_dict(self.geo)
+        self.xyz = np.linspace(-30, 30, 100)
+        self.dvol = (self.xyz[1] - self.xyz[0])**3
+
+    def test_orbital_norms(self):
+        """Test to verify orbital norm"""
+
+        for i in range(1,25+1):
+            orb = self.orbitals.get_orbital(i)
+            integration = np.sum(orb.box_values(self.xyz, self.xyz, self.xyz)**2) * self.dvol
+            self.assertAlmostEqual(integration, 1.00, places=1)
 
 def blender_argv(argv):
     """Processes argv to process the Blender specific parts"""
