@@ -668,6 +668,8 @@ def draw_surfaces(molecule, styler, context, options):
             orb = orbitals.get_orbital(orbnumber)
             if options["cumulative"]:
                 orbital_isovals = orb.isovalue_containing_proportion(isovals)
+            else:
+                orbital_isovals = isovals
             vset = molden_isosurface(orb, orbital_isovals, resolution, orbname, wm)
             vertex_sets.extend(vset)
 

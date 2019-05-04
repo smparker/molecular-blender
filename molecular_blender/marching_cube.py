@@ -45,6 +45,7 @@ __email__ = "smparker@uci.edu"
 __status__ = "alpha"
 
 import multiprocessing
+from itertools import starmap
 import numpy as np
 import math
 from .constants import ang2bohr, bohr2ang
@@ -482,8 +483,6 @@ def molden_isosurface(orbital, isovalues, resolution, name="iso", wm=None, metho
     p0, p1 = orbital.bounding_box(min([abs(x) for x in isovalues]) * 0.001)
     axes = np.eye(3) * bohr2ang
 
-    containing_isovals = orbital.isovalue_containing_proportion()
-
     return isosurface(p0, p1, resolution, isovalues, orbital.plane_values, axes, name, wm, rough_resolution=rough_resolution)
 
 
@@ -566,20 +565,25 @@ def isosurface_adaptive(p0, p1, resolution_start, resolution_end, max_subdivide,
 
     while not all([now > want for now, want in zip(np_now, np_min_end)]):
         new_outlines = []
-        for pp0, pp1 in outlines:
-            o = isosurface_outline(pp0, pp1, subdivide, isovalues, isoplane_func, axes, name, wm)
-            new_outlines.extend(o)
+        boxgen = ( (pp0, pp1, subdivide, isovalues, isoplane_func, axes, name, wm) for pp0, pp1 in outlines )
+        #with multiprocessing.Pool(processes=1) as pool:
+        new_outlines = starmap(isosurface_outline, boxgen)
 
-        outlines = new_outlines
+        outlines = sum(new_outlines, [])
+        #for pp0, pp1 in outlines:
+        #    o = isosurface_outline(pp0, pp1, subdivide, isovalues, isoplane_func, axes, name, wm)
+        #    new_outlines.extend(o)
+
+        #outlines = new_outlines
 
         np_now = [ a * s for a, s in zip(np_now, subdivide) ]
 
     # now build actual triangles from the list of active boxes from above
     triangles = None
     vertlist = None
-    with multiprocessing.Pool() as pool:
-        boxgen = ( (pp0, pp1, subdivide, isovalues, isoplane_func, axes, name) for pp0, pp1 in outlines )
-        vertlist = pool.starmap(isosurface_simple, boxgen)
+    boxgen = ( (pp0, pp1, subdivide, isovalues, isoplane_func, axes, name) for pp0, pp1 in outlines )
+    #with multiprocessing.Pool() as pool:
+    vertlist = starmap(isosurface_simple, boxgen)
 
     for verts in vertlist:
         if triangles is None:

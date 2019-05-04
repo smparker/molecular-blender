@@ -78,7 +78,7 @@ class Atom(object):
 class Bond(object):
     """Join two atoms in a bond"""
 
-    def __init__(self, iatom, jatom, style="", name=""):
+    def __init__(self, iatom, jatom, style="", name="", mapping_function="erf"):
         """Create Bond"""
         self.iatom = iatom
         self.jatom = jatom
@@ -90,6 +90,11 @@ class Bond(object):
         else:
             self.style = style
         self.threshold = 1.2 * (iatom.element.covalent + jatom.element.covalent)
+
+        if mapping_function == "erf":
+            def f(x):
+                return math.erfc((x-1)*15*self.threshold)/2
+        self.mapping_function = f
 
     def is_bonded(self, distance=None):
         """Returns whether the pair of atoms are bonded at given distance"""
