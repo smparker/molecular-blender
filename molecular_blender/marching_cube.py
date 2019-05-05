@@ -50,6 +50,8 @@ import numpy as np
 import math
 from .constants import ang2bohr, bohr2ang
 
+DTYPE = np.float32
+
 edgetable = (0x0, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c,
              0x80c, 0x905, 0xa0f, 0xb06, 0xc0a, 0xd03, 0xe09, 0xf00,
              0x190, 0x99, 0x393, 0x29a, 0x596, 0x49f, 0x795, 0x69c,
@@ -426,7 +428,7 @@ def transform_triangles(triangles, origin, axes):
     """Transforms and translates set of triangles to match input origin/axes"""
     if not triangles:
         return triangles
-    coords = np.array(triangles)
+    coords = np.array(triangles, dtype=DTYPE)
     out = np.dot(coords, axes)
     return [out[i, :] + origin for i in range(coords.shape[0])]
 
@@ -438,7 +440,7 @@ def cube_isosurface(data, origin, axes, isovalues, name="cube", wm=None):
     tri_list = [[] for iso in isovalues]
 
     z_plane_a = data[:, :, 0]
-    cornervalues = np.zeros([2, 2, 2])
+    cornervalues = np.zeros([2, 2, 2], dtype=DTYPE)
 
     if wm is not None:
         wm.progress_begin(0, data.shape[2])
@@ -481,16 +483,16 @@ def cube_isosurface(data, origin, axes, isovalues, name="cube", wm=None):
 def molden_isosurface(orbital, isovalues, resolution, name="iso", wm=None, method="adaptive", rough_resolution=0.2*ang2bohr):
     """Return set of triangles from Molden file"""
     p0, p1 = orbital.bounding_box(min([abs(x) for x in isovalues]) * 0.001)
-    axes = np.eye(3) * bohr2ang
+    axes = np.eye(3, dtype=DTYPE) * bohr2ang
 
     return isosurface(p0, p1, resolution, isovalues, orbital.plane_values, axes, name, wm, rough_resolution=rough_resolution)
 
 
 def isosurface_outline(p0, p1, npoints, isovalues, isoplane_func, axes, name, wm=None):
     """Returns low resolution outline of an isosurface"""
-    xvals, xstep = np.linspace(p0[0], p1[0], num=npoints[0], retstep=True, endpoint=True)
-    yvals, ystep = np.linspace(p0[1], p1[1], num=npoints[1], retstep=True, endpoint=True)
-    zvals, zstep = np.linspace(p0[2], p1[2], num=npoints[2], retstep=True, endpoint=True)
+    xvals, xstep = np.linspace(p0[0], p1[0], num=npoints[0], retstep=True, endpoint=True, dtype=DTYPE)
+    yvals, ystep = np.linspace(p0[1], p1[1], num=npoints[1], retstep=True, endpoint=True, dtype=DTYPE)
+    zvals, zstep = np.linspace(p0[2], p1[2], num=npoints[2], retstep=True, endpoint=True, dtype=DTYPE)
     nx, ny, nz = npoints
     r = (xstep, ystep, zstep)
 
@@ -599,9 +601,9 @@ def isosurface_simple(p0, p1, npoints, isovalues, isoplane_func, axes, name, wm=
     triangle_sets = [{"isovalue": iso, "name" : name} for iso in isovalues]
     tri_list = [[] for iso in isovalues]
 
-    xvals, xstep = np.linspace(p0[0], p1[0], num=npoints[0], retstep=True, endpoint=True)
-    yvals, ystep = np.linspace(p0[1], p1[1], num=npoints[1], retstep=True, endpoint=True)
-    zvals, zstep = np.linspace(p0[2], p1[2], num=npoints[2], retstep=True, endpoint=True)
+    xvals, xstep = np.linspace(p0[0], p1[0], num=npoints[0], retstep=True, endpoint=True, dtype=DTYPE)
+    yvals, ystep = np.linspace(p0[1], p1[1], num=npoints[1], retstep=True, endpoint=True, dtype=DTYPE)
+    zvals, zstep = np.linspace(p0[2], p1[2], num=npoints[2], retstep=True, endpoint=True, dtype=DTYPE)
     nx, ny, nz = npoints
     r = (xstep, ystep, zstep)
 

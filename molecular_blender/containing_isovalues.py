@@ -6,7 +6,7 @@ from .util import round_sigfigs
 
 def isovalue_containing_proportion(values, volume_data, dV):
     cumulative = 0.0
-    data = np.zeros([len(volume_data), 2])
+    data = np.zeros([len(volume_data), 2], dtype=np.float32)
     for i, v in enumerate(sorted(volume_data, key=lambda x: x*x, reverse=True)):
         data[i,0] = abs(v)
         data[i,1] = cumulative

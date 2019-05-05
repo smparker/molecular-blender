@@ -438,7 +438,7 @@ def molecule_from_cube(filename, options):
 
         # and finally the volumetric data comes, 6 elements per line in z, y, x order
         ndata = np.prod(nres)
-        data = np.zeros(ndata)
+        data = np.zeros(ndata, dtype=np.float32)
         i = 0
         while True:
             line = f.readline().split()

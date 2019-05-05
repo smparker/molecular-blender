@@ -1,3 +1,4 @@
+# cython: profile=True
 # -*- coding: utf-8 -*-
 #
 #  Molecular Blender
@@ -23,99 +24,133 @@
 
 """Classes and functions to compute orbital values in real space."""
 
+# cython: profile=True
+
+
+cimport cython
+
 import numpy as np
+cimport numpy as np
+
+from numpy cimport ndarray
+from libc.math cimport sqrt, exp
+
+DTYPE = np.float32
+ctypedef np.float32_t DTYPE_t
+
 import math
-#from .constants import ang2bohr
 
-ang2bohr = 1.8897259885789  # pylint: disable=invalid-name
+from .constants import ang2bohr
 
-def gamma2n(i):
+cdef gamma2n(i):
     """Returns Gamma(n/2), only for half-integers"""
     return np.array([gamma2n_impl(int(round(x))) for x in i])
 
-
-def gamma2n_impl(i):
+cdef gamma2n_impl(i):
     """Returns gamma2n_impl(n) where n is input as 2*n=i"""
     if i <= 0:
         raise Exception("gamma2n_impl function cannot accept negative numbers")
     elif i == 2:
         return 1
     elif i == 1:
-        return np.sqrt(np.pi)
+        return sqrt(np.pi)
     else:
         return (0.5 * i - 1.) * gamma2n_impl(i - 2)
 
-
-
 # Polynomial functions
-def polynomial_s(X, Y, Z):  # pylint: disable=unused-argument
+cpdef polynomial_s(float X, float Y, float Z):  # pylint: disable=unused-argument
     """n/a"""
-    return np.array([1.0])
+    cdef np.ndarray[DTYPE_t, ndim=1] out = np.ones([1], dtype=DTYPE)
+    return out
 
-def polynomial_p(X, Y, Z):
+cpdef polynomial_p(float X, float Y, float Z):
     """x, y, z"""
-    return np.array([X, Y, Z])
+    cdef np.ndarray[DTYPE_t, ndim=1] out = np.array([X, Y, Z], dtype=DTYPE)
+    return out
 
-def polynomial_d(X, Y, Z):
+cpdef polynomial_d(float X, float Y, float Z):
     """xx, yy, zz, xy, xz, yz"""
-    return np.array([X*X, Y*Y, Z*Z, X*Y*np.sqrt(3), X*Z*np.sqrt(3), Y*Z*np.sqrt(3)])
+    cdef DTYPE_t sqrt3 = sqrt(3)
+    cdef np.ndarray[DTYPE_t, ndim=1] out = np.array([X*X, Y*Y, Z*Z, X*Y*sqrt3, X*Z*sqrt3, Y*Z*sqrt3], dtype=DTYPE)
+    return out
 
-def polynomial_f(X, Y, Z):
+cpdef polynomial_f(float X, float Y, float Z):
     """xxx, yyy, zzz, xyy, xxy, xxz, xzz, yzz, yyz, xyz"""
-    return np.array([X*X*X, Y*Y*Y, Z*Z*Z, X*Y*Y*np.sqrt(5), X*X*Y*np.sqrt(5), X*X*Z*np.sqrt(5),
-                        X*Z*Z*np.sqrt(5), Y*Z*Z*np.sqrt(5), Y*Y*Z*np.sqrt(5), X*Y*Z*np.sqrt(15)])
+    cdef DTYPE_t sqrt5 = sqrt(5)
+    cdef DTYPE_t sqrt15 = sqrt(15)
+    cdef np.ndarray[DTYPE_t, ndim=1] out = np.array([X*X*X, Y*Y*Y, Z*Z*Z, X*Y*Y*sqrt5, X*X*Y*sqrt5, X*X*Z*sqrt5,
+                        X*Z*Z*sqrt5, Y*Z*Z*sqrt5, Y*Y*Z*sqrt5, X*Y*Z*sqrt15], dtype=DTYPE)
 
-def polynomial_g(X, Y, Z):
+cpdef polynomial_g(float X, float Y, float Z):
     """xxxx yyyy zzzz xxxy xxxz yyyx yyyz zzzx zzzy xxyy xxzz yyzz xxyz yyxz zzxy"""
-    return np.array([X*X*X*X, Y*Y*Y*Y, Z*Z*Z*Z,
-            X*X*X*Y*np.sqrt(35/5), X*X*X*Z*np.sqrt(35/5), Y*Y*Y*X*np.sqrt(35/5), Y*Y*Y*Z*np.sqrt(35/5),
-            Z*Z*Z*X*np.sqrt(35/5), Z*Z*Z*Y*np.sqrt(35/5), X*X*Y*Y*np.sqrt(35/3), X*X*Z*Z*np.sqrt(35/3), Y*Y*Z*Z*np.sqrt(35/3),
-            X*X*Y*Z*np.sqrt(35), Y*Y*X*Z*np.sqrt(35), Z*Z*X*Y*np.sqrt(35)])
+    cdef DTYPE_t sqrt_35_5 = sqrt(35/5)
+    cdef DTYPE_t sqrt_35_3 = sqrt(35/3)
+    cdef DTYPE_t sqrt_35_1 = sqrt(35/1)
+    cdef np.ndarray[DTYPE_t, ndim=1] out = np.array([X*X*X*X, Y*Y*Y*Y, Z*Z*Z*Z,
+            X*X*X*Y*sqrt_35_5, X*X*X*Z*sqrt_35_5, Y*Y*Y*X*sqrt_35_5, Y*Y*Y*Z*sqrt_35_5,
+            Z*Z*Z*X*sqrt_35_5, Z*Z*Z*Y*sqrt_35_5, X*X*Y*Y*sqrt_35_3, X*X*Z*Z*sqrt_35_3, Y*Y*Z*Z*sqrt_35_3,
+            X*X*Y*Z*sqrt_35_1, Y*Y*X*Z*sqrt_35_1, Z*Z*X*Y*sqrt_35_1], dtype=DTYPE)
 
 # Plane polynomial functions
-def plane_polynomial_s(XX, YY, Z):  # pylint: disable=unused-argument
+cdef plane_polynomial_s(ndarray[DTYPE_t, ndim=2] XX, ndarray[DTYPE_t, ndim=2] YY,
+        ndarray[DTYPE_t, ndim=2] ZZ):  # pylint: disable=unused-argument
     """n/a"""
-    return np.ones( [ 1 ] + list(XX.shape) )
+    cdef np.ndarray[DTYPE_t, ndim=3] out = np.ones( [ 1, XX.shape[0], XX.shape[1] ], dtype=DTYPE )
+    return out
 
-def plane_polynomial_p(XX, YY, Z):
+cdef plane_polynomial_p(np.ndarray[DTYPE_t, ndim=2] XX, np.ndarray[DTYPE_t, ndim=2] YY,
+        ndarray[DTYPE_t, ndim=2] ZZ):
     """x, y, z"""
-    ZZ = np.full_like(XX, Z)
-    return np.array([XX, YY, ZZ])
+    cdef np.ndarray[DTYPE_t, ndim=3] out = np.array([ XX, YY, ZZ ], dtype=DTYPE)
+    return out
 
-def plane_polynomial_d(XX, YY, Z):
+cdef plane_polynomial_d(np.ndarray[DTYPE_t, ndim=2] XX, np.ndarray[DTYPE_t, ndim=2] YY,
+        ndarray[DTYPE_t, ndim=2] ZZ):
     """xx, yy, zz, xy, xz, yz"""
-    ZZ = np.full_like(XX, Z)
-    return np.array([XX*XX, YY*YY, ZZ*ZZ, XX*YY*np.sqrt(3), XX*ZZ*np.sqrt(3), YY*ZZ*np.sqrt(3)])
+    cdef DTYPE_t sqrt3 = sqrt(3)
+    cdef np.ndarray[DTYPE_t, ndim=3] out = np.array([XX*XX, YY*YY, ZZ*ZZ, XX*YY*sqrt3, XX*ZZ*sqrt3, YY*ZZ*sqrt3], dtype=DTYPE)
+    return out
 
-def plane_polynomial_f(XX, YY, Z):
+cdef plane_polynomial_f(np.ndarray[DTYPE_t, ndim=2] XX, np.ndarray[DTYPE_t, ndim=2] YY,
+        ndarray[DTYPE_t, ndim=2] ZZ):
     """xxx, yyy, zzz, xyy, xxy, xxz, xzz, yzz, yyz, xyz"""
-    ZZ = np.full_like(XX, Z)
-    return np.array([XX*XX*XX, YY*YY*YY, ZZ*ZZ*ZZ, XX*YY*YY*np.sqrt(5), XX*XX*YY*np.sqrt(5), XX*XX*ZZ*np.sqrt(5),
-                        XX*ZZ*ZZ*np.sqrt(5),YY*ZZ*ZZ*np.sqrt(5), YY*YY*ZZ*np.sqrt(5), XX*YY*ZZ*np.sqrt(15)])
+    cdef DTYPE_t sqrt5 = sqrt(5)
+    cdef DTYPE_t sqrt15 = sqrt(15)
+    cdef np.ndarray[DTYPE_t, ndim=3] out = np.array([XX*XX*XX, YY*YY*YY, ZZ*ZZ*ZZ, XX*YY*YY*sqrt5, XX*XX*YY*sqrt5, XX*XX*ZZ*sqrt5,
+                        XX*ZZ*ZZ*sqrt5,YY*ZZ*ZZ*sqrt5, YY*YY*ZZ*sqrt5, XX*YY*ZZ*sqrt15], dtype=DTYPE)
+    return out
 
-def plane_polynomial_g(XX, YY, Z):
+cdef plane_polynomial_g(np.ndarray[DTYPE_t, ndim=2] XX, np.ndarray[DTYPE_t, ndim=2] YY,
+        ndarray[DTYPE_t, ndim=2] ZZ):
     """xxxx yyyy zzzz xxxy xxxz yyyx yyyz zzzx zzzy xxyy xxzz yyzz xxyz yyxz zzxy"""
-    ZZ = np.full_like(XX, Z)
-    return np.array([XX*XX*XX*XX, YY*YY*YY*YY, ZZ*ZZ*ZZ*ZZ,
-            XX*XX*XX*YY*np.sqrt(35/5), XX*XX*XX*ZZ*np.sqrt(35/5), YY*YY*YY*XX*np.sqrt(35/5), YY*YY*YY*ZZ*np.sqrt(35/5),
-            ZZ*ZZ*ZZ*XX*np.sqrt(35/5), ZZ*ZZ*ZZ*YY*np.sqrt(35/5), XX*XX*YY*YY*np.sqrt(35/3), XX*XX*ZZ*ZZ*np.sqrt(35/3), YY*YY*ZZ*ZZ*np.sqrt(35/3),
-            XX*XX*YY*ZZ*np.sqrt(35), YY*YY*XX*ZZ*np.sqrt(35), ZZ*ZZ*XX*YY*np.sqrt(35)])
+    cdef DTYPE_t sqrt_35_5 = sqrt(35/5)
+    cdef DTYPE_t sqrt_35_3 = sqrt(35/3)
+    cdef DTYPE_t sqrt_35_1 = sqrt(35/1)
+    cdef np.ndarray[DTYPE_t, ndim=3] out = np.array([XX*XX*XX*XX, YY*YY*YY*YY, ZZ*ZZ*ZZ*ZZ,
+            XX*XX*XX*YY*sqrt_35_5, XX*XX*XX*ZZ*sqrt_35_5, YY*YY*YY*XX*sqrt_35_5, YY*YY*YY*ZZ*sqrt_35_5,
+            ZZ*ZZ*ZZ*XX*sqrt_35_5, ZZ*ZZ*ZZ*YY*sqrt_35_5, XX*XX*YY*YY*sqrt_35_3, XX*XX*ZZ*ZZ*sqrt_35_3, YY*YY*ZZ*ZZ*sqrt_35_3,
+            XX*XX*YY*ZZ*sqrt_35_1, YY*YY*XX*ZZ*sqrt_35_1, ZZ*ZZ*XX*YY*sqrt_35_1], dtype=DTYPE)
+    return out
 
 class Shell(object):
     """Container for shell data"""
+    #cdef float X, Y, Z
+    #cdef int l, start, size
 
     def __init__(self, center, l, exponents, coeff, start=0, thr=1e-6, mxx=1.0):
-        self.center = np.array(center)
-        self.X, self.Y, self.Z = center[0], center[1], center[2]
+        self.center = np.array(center, dtype=DTYPE)
+        self.X = center[0]
+        self.Y = center[1]
+        self.Z = center[2]
         self.l = int(l)
-        self.exponents = np.array(exponents)
-        self.coeff = np.array(coeff)
+        self.exponents = np.array(exponents, dtype=DTYPE)
+        self.coeff = np.array(coeff, dtype=DTYPE)
 
         self.start = start
         self.size = (self.l + 1) * (self.l + 2) // 2
 
-        self.norms = 1.0 / np.sqrt(self.__norms())
-        self.shellnorms = 1.0 / np.sqrt(self.__shellnorms())
+        self.norms = 1.0 / np.sqrt(self.__norms(), dtype=DTYPE)
+        self.shellnorms = 1.0 / np.sqrt(self.__shellnorms(), dtype=DTYPE)
         self.denormedcoeffs = self.coeff * self.shellnorms
         self.polynomial = [polynomial_s, polynomial_p,
                            polynomial_d, polynomial_f, polynomial_g][l]
@@ -126,7 +161,7 @@ class Shell(object):
         imin = np.argmin(self.exponents)
         self.mxx = mxx  # save max x just for use later
         self.diffuse = np.min(self.exponents)
-        self.logthr = np.log(thr * mxx**self.l)
+        self.logthr = np.log(thr * mxx**self.l, dtype=DTYPE)
         self.mxnorm = np.max(self.norms[:, imin]) * abs(self.coeff[imin])
 
         self.logthr -= np.log(self.mxnorm)
@@ -143,7 +178,7 @@ class Shell(object):
 
     def __norms(self):
         """Returns [nL, nexp] array of norms"""
-        out = np.zeros([self.size, len(self.exponents)])
+        out = np.zeros([self.size, len(self.exponents)], dtype=DTYPE)
         for ixyz, xyz in enumerate(self.shorder[self.l]):
             cxyz = [xyz.count("x"), xyz.count("y"), xyz.count("z")]
             for ig, ex in enumerate(self.exponents):
@@ -157,7 +192,7 @@ class Shell(object):
         Returns [nexp] array of shell norms, i.e., norms of Gaussians with all angular
         in the x-direction. For example, for L=2, norms of exp(-zeta r^2) x x.
         """
-        out = np.zeros_like(self.exponents)
+        out = np.zeros_like(self.exponents, dtype=DTYPE)
         for ig, ex in enumerate(self.exponents):
             out[ig] = gaussian_overlap(self.center, ex, [ self.l, 0, 0 ], self.center, ex, [ self.l, 0, 0 ])
         return out
@@ -168,7 +203,7 @@ class Shell(object):
         xx = self.l * (np.log(self.mxx) - np.log(thr / self.mxnorm) + logmxcoeff) / self.diffuse
         if xx < 0:
             return 0.0
-        return np.sqrt(xx)
+        return np.sqrt(xx, dtype=DTYPE)
 
     def value(self, x, y, z, logmxcoeff=0.0):
         """compute values of shell at point, screening out contributions below shell threshold"""
@@ -178,29 +213,142 @@ class Shell(object):
         rr = px * px + py * py + pz * pz
 
         if rr < self.logthr - logmxcoeff:
-            radial = np.dot(np.exp(-1.0 * rr * self.exponents), self.denormedcoeffs)
+            radial = np.dot(np.exp(-1.0 * rr * self.exponents, dtype=DTYPE), self.denormedcoeffs)
             return radial * self.polynomial(px, py, pz)
 
         return None
 
-    def plane_values(self, xx, yy, z_a, logmxcoeff=0.0):
+    def plane_values(self, ndarray[DTYPE_t, ndim=2] xx, ndarray[DTYPE_t, ndim=2] yy,
+            ndarray[DTYPE_t, ndim=2] zz, float logmxcoeff=0.0):
         """compute values of shell on a plane of provided x and y values (each as an array)"""
         pxx = xx - self.X
         pyy = yy - self.Y
-        pz  = z_a - self.Z
+        pzz = zz - self.Z
 
-        out = np.zeros( (xx.shape[0], xx.shape[1], len(self.coeff)) )
+        out = np.zeros( (xx.shape[0], xx.shape[1], len(self.coeff)), dtype=DTYPE )
 
-        rr = pxx*pxx + pyy*pyy + pz * pz
+        rr = pxx*pxx + pyy*pyy + pzz * pzz
         if np.any(rr < self.logthr - logmxcoeff):
-            expz = np.exp(np.einsum("xy,e->xye", -1.0*rr, self.exponents))
+            expz = np.exp(np.einsum("xy,e->xye", -1.0*rr, self.exponents), dtype=DTYPE)
             radial = np.einsum("xye,e->xy", expz, self.denormedcoeffs)
-            out = self.plane_polynomial(pxx, pyy, pz)
+            out = self.plane_polynomial(pxx, pyy, pzz)
             for p in range(out.shape[0]):
                 out[p,:,:] *= radial
             return out
         else:
             return None
+
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    def add_plane_values(self, ndarray[DTYPE_t, ndim=2] xx,
+            ndarray[DTYPE_t, ndim=2] yy, ndarray[DTYPE_t, ndim=2] zz,
+            ndarray[DTYPE_t, ndim=1] coeff,
+            ndarray[DTYPE_t, ndim=2] target, float logmxcoeff=0.0):
+
+        cdef float X = self.X
+        cdef float Y = self.Y
+        cdef float Z = self.Z
+
+        cdef float sqrt3 = sqrt(3.0)
+        cdef float sqrt5 = sqrt(5.0)
+        cdef float sqrt15 = sqrt(15.0)
+        cdef float sqrt_35_5 = sqrt(35.0/5.0)
+        cdef float sqrt_35_3 = sqrt(35.0/3.0)
+        cdef float sqrt_35_1 = sqrt(35.0/1.0)
+
+        cdef float logthresh = self.logthr
+
+        cdef int nx = xx.shape[0]
+        cdef int ny = xx.shape[1]
+
+        cdef int nexp = len(self.exponents)
+
+        cdef int l = self.l
+        cdef int shellsize = self.size
+
+        # check the four corners to find a max value
+        cdef float x0 = xx[0,0]
+        cdef float x1 = xx[nx-1,0]
+        cdef float y0 = yy[0,0]
+        cdef float y1 = yy[0,ny-1]
+
+        cdef float min_x = min(abs(x0),abs(x1))
+        if (x0*x1 < 0):
+            min_x = 0.0
+        cdef float min_y = min(abs(y0),abs(y1))
+        if (y0*y1 < 0):
+            min_y = 0.0
+        cdef float min_z = zz[0,0]
+
+        cdef float min_rr = min_x*min_x + min_y*min_y + min_z*min_z
+
+        cdef float dx, dy, dz, rr, radial
+
+        cdef ndarray[DTYPE_t, ndim=1] exponents = self.exponents
+        cdef ndarray[DTYPE_t, ndim=1] denormed_coeffs = self.denormedcoeffs
+
+        #if min_rr >= logthresh - logmxcoeff:
+        if False:
+            return
+
+        for ix in range(nx):
+            for iy in range(ny):
+                dx = xx[ix,iy] - X
+                dy = yy[ix,iy] - Y
+                dz = zz[ix,iy] - Z
+                rr = dx*dx + dy*dy + dz*dz
+
+                radial = 0.0
+                for iexp in range(nexp):
+                    radial += denormed_coeffs[iexp] * exp(-exponents[iexp]*rr)
+
+                if l == 0:
+                    target[ix,iy] += radial * coeff[0]
+                elif l == 1:
+                    target[ix,iy] += radial * (
+                              coeff[0] * dx
+                            + coeff[1] * dy
+                            + coeff[2] * dz)
+                elif l == 2:
+                    target[ix,iy] += radial * (
+                              coeff[0] * dx*dx
+                            + coeff[1] * dy*dy
+                            + coeff[2] * dz*dz
+                            + coeff[3] * dx*dy * sqrt3
+                            + coeff[4] * dx*dz * sqrt3
+                            + coeff[5] * dy*dz * sqrt3
+                            )
+                elif l == 3:
+                    target[ix,iy] += radial * (
+                              coeff[0] * dx*dx*dx
+                            + coeff[1] * dy*dy*dy
+                            + coeff[2] * dz*dz*dz
+                            + coeff[3] * dx*dy*dy * sqrt5
+                            + coeff[4] * dx*dx*dy * sqrt5
+                            + coeff[5] * dx*dx*dz * sqrt5
+                            + coeff[6] * dx*dz*dz * sqrt5
+                            + coeff[7] * dy*dz*dz * sqrt5
+                            + coeff[8] * dy*dy*dz * sqrt5
+                            + coeff[9] * dx*dy*dz * sqrt15
+                            )
+                elif l == 4:
+                    target[ix,iy] += radial * (
+                              coeff[0] * dx*dx*dx*dx
+                            + coeff[1] * dy*dy*dy*dy
+                            + coeff[2] * dz*dz*dz*dz
+                            + coeff[3] * dx*dx*dx*dy * sqrt_35_5
+                            + coeff[4] * dx*dx*dx*dz * sqrt_35_5
+                            + coeff[5] * dy*dy*dy*dx * sqrt_35_5
+                            + coeff[6] * dy*dy*dy*dz * sqrt_35_5
+                            + coeff[7] * dz*dz*dz*dx * sqrt_35_5
+                            + coeff[8] * dz*dz*dz*dy * sqrt_35_5
+                            + coeff[9] * dx*dx*dy*dy * sqrt_35_3
+                            + coeff[10] * dx*dx*dz*dz * sqrt_35_3
+                            + coeff[11] * dy*dy*dz*dz * sqrt_35_3
+                            + coeff[12] * dx*dx*dy*dz * sqrt_35_1
+                            + coeff[13] * dy*dy*dx*dz * sqrt_35_1
+                            + coeff[14] * dz*dz*dx*dy * sqrt_35_1
+                            )
 
 def gaussian_overlap(axyz, aexp, apoly, bxyz, bexp, bpoly):
     """returns overlap integral for gaussians centered at xyz with exponents exp
@@ -209,8 +357,8 @@ def gaussian_overlap(axyz, aexp, apoly, bxyz, bexp, bpoly):
     abpoly = [k + n for k, n in zip(apoly, bpoly)]
     if any([i % 2 == 1 for i in abpoly]):
         return 0.0
-    abpoly = np.array(abpoly) + 1.
-    fac = np.power(aexp + bexp, -0.5 * abpoly)
+    abpoly = np.array(abpoly, dtype=DTYPE) + 1.
+    fac = np.power(aexp + bexp, -0.5 * abpoly, dtype=DTYPE)
     gam = gamma2n(abpoly)
     return np.prod(fac * gam)
 
@@ -251,7 +399,7 @@ class MOData(object):
         nmo = len(geo["mo"])
         nao = sum([sh.size for sh in shells])
 
-        coeff = np.zeros([nmo, nao])
+        coeff = np.zeros([nmo, nao], dtype=DTYPE)
         for i in range(nmo):
             coeff[i, :] = geo["mo"][i]["coeff"]
 
@@ -268,7 +416,7 @@ class OrbitalCalculater(object):
         # use very small number to replace zeros
         self.logmxcoeff = np.log(np.array([
             max(np.max(abs(self.coeff[sh.start:sh.start + sh.size])), 1e-30)
-            for sh in self.shells]))
+            for sh in self.shells], dtype=DTYPE))
 
     def bounding_box(self, thr=1.0e-5):
         """returns lower and upper limits of box (in bohr) that should fully contain orbital"""
@@ -292,21 +440,24 @@ class OrbitalCalculater(object):
         return out
 
     def plane_values(self, xvals, yvals, z_a):
-        xx = np.zeros([len(xvals), len(yvals)])
-        yy = np.zeros([len(xvals), len(yvals)])
+        xx = np.zeros([len(xvals), len(yvals)], dtype=DTYPE)
+        yy = np.zeros([len(xvals), len(yvals)], dtype=DTYPE)
         for i, x in enumerate(xvals):
             xx[i,:] = x
             yy[i,:] = yvals[:]
+        zz = np.full_like(xx, z_a, dtype=DTYPE)
 
-        out = np.zeros([len(xvals), len(yvals)])
+        out = np.zeros([len(xvals), len(yvals)], dtype=DTYPE)
         for sh, lmx in zip(self.shells, self.logmxcoeff):
-            vals = sh.plane_values(xx, yy, z_a, logmxcoeff=lmx)
-            if vals is not None:
-                out += np.einsum("pxy,p->xy", vals, self.coeff[sh.start:sh.start+sh.size])
+            #vals = sh.plane_values(xx, yy, zz, logmxcoeff=lmx)
+            #if vals is not None:
+            #    out += np.einsum("pxy,p->xy", vals, self.coeff[sh.start:sh.start+sh.size])
+            sh.add_plane_values(xx, yy, zz, self.coeff[sh.start:sh.start+sh.size],
+                    out, logmxcoeff=lmx)
         return out
 
     def box_values(self, xvals, yvals, zvals):
-        out = np.zeros([len(xvals), len(yvals), len(zvals)])
+        out = np.zeros([len(xvals), len(yvals), len(zvals)], dtype=DTYPE)
 
         for k, z_a in enumerate(zvals):
             out[:,:,k] = self.plane_values(xvals, yvals, z_a)
@@ -319,7 +470,7 @@ class OrbitalCalculater(object):
 
         npoints = [ int(math.ceil((b - a)/resolution)) for a, b in zip(p0, p1) ]
 
-        xvals, yvals, zvals = [ np.linspace(a, b, num=n, endpoint=True ) for a, b, n in zip(p0, p1, npoints) ]
+        xvals, yvals, zvals = [ np.linspace(a, b, num=n, endpoint=True, dtype=DTYPE) for a, b, n in zip(p0, p1, npoints) ]
         dV = (xvals[1] - xvals[0]) * (yvals[1] - yvals[0]) * (zvals[1] - zvals[0])
         boxvalues = self.box_values(xvals, yvals, zvals).reshape(-1)
 

@@ -123,7 +123,7 @@ class VolumeData(object):
         self.data = data
 
         self.axis_norms = np.array(
-            [np.linalg.norm(self.axes[:, i]) for i in range(3)])
+            [np.linalg.norm(self.axes[:, i]) for i in range(3)], dtype=np.float32)
         self.dvol = np.prod(self.axis_norms)
 
     def isovalue_containing_proportion(self, values=[0.90]):

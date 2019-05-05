@@ -4,6 +4,7 @@ import sys
 import glob
 import time
 from . generic import *
+import numpy as np
 
 def execute_Compile(setupInfoList, addonDirectory):
     printHeader("Compile")
@@ -35,6 +36,7 @@ def iterFilesToCompile(addonDirectory):
 
 def iterCustomIncludeDirs(setupInfoList):
     fName = "getIncludeDirs"
+    yield np.get_include()
     for setupInfo in setupInfoList:
         if fName in setupInfo:
             for name in setupInfo[fName]():
