@@ -235,7 +235,7 @@ cdef class Shell:
         cdef float sqrt_35_3 = sqrt(35.0/3.0)
         cdef float sqrt_35_1 = sqrt(35.0/1.0)
 
-        cdef float logthresh = self.logthr
+        cdef float logthresh = self.logthr - logmxcoeff
 
         cdef int nx = len(xx)
         cdef int ny = len(yy)
@@ -260,7 +260,7 @@ cdef class Shell:
         cdef float min_z = z_a
 
         cdef float min_rr = min_x*min_x + min_y*min_y + min_z*min_z
-        if min_rr >= logthresh - logmxcoeff:
+        if min_rr >= logthresh:
             return
 
         cdef float dx, dy, dz, rr, radial
@@ -284,6 +284,9 @@ cdef class Shell:
 
             for iy in range(ny):
                 dy = yy[iy] - Y
+
+                if (dx*dx + dy*dy + dz*dz >= logthresh):
+                    continue
 
                 radial = 0.0
                 for iexp in range(nexp):
@@ -337,6 +340,140 @@ cdef class Shell:
                             + coeff[14] * dz*dz*dx*dy * sqrt_35_1
                             )
 
+
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    cpdef add_box_values(self, ndarray[DTYPE_t, ndim=1] xx,
+            ndarray[DTYPE_t, ndim=1] yy,
+            ndarray[DTYPE_t, ndim=1] zz,
+            ndarray[DTYPE_t, ndim=1] coeff,
+            ndarray[DTYPE_t, ndim=3] target, float logmxcoeff=0.0):
+
+        cdef float X = self.X
+        cdef float Y = self.Y
+        cdef float Z = self.Z
+
+        cdef float sqrt3 = sqrt(3.0)
+        cdef float sqrt5 = sqrt(5.0)
+        cdef float sqrt15 = sqrt(15.0)
+        cdef float sqrt_35_5 = sqrt(35.0/5.0)
+        cdef float sqrt_35_3 = sqrt(35.0/3.0)
+        cdef float sqrt_35_1 = sqrt(35.0/1.0)
+
+        cdef float logthresh = self.logthr
+
+        cdef int nx = len(xx)
+        cdef int ny = len(yy)
+        cdef int nz = len(zz)
+
+        cdef int nexp = len(self.exponents)
+
+        cdef int l = self.l
+        cdef int shellsize = self.size
+
+        # check the four corners to find a max value
+        cdef float x0 = xx[0]
+        cdef float x1 = xx[nx-1]
+        cdef float y0 = yy[0]
+        cdef float y1 = yy[ny-1]
+        cdef float z0 = zz[0]
+        cdef float z1 = zz[nz-1]
+
+        cdef float min_x = min(abs(x0),abs(x1))
+        if (x0*x1 < 0):
+            min_x = 0.0
+        cdef float min_y = min(abs(y0),abs(y1))
+        if (y0*y1 < 0):
+            min_y = 0.0
+        cdef float min_z = min(abs(z0),abs(z1))
+        if (z0*z1 < 0):
+            min_z = 0.0
+
+        cdef float min_rr = min_x*min_x + min_y*min_y + min_z*min_z
+        if min_rr >= logthresh - logmxcoeff:
+            return
+
+        cdef float dx, dy, dz, rr, radial
+
+        cdef DTYPE_t[:] denormed_coeffs = self.denormed_coeffs
+        cdef DTYPE_t[:] exponents = self.exponents
+
+        cdef ndarray[DTYPE_t, ndim=2] expzz = np.zeros([nz, nexp], dtype=DTYPE)
+        cdef ndarray[DTYPE_t, ndim=2] expyy = np.zeros([ny, nexp], dtype=DTYPE)
+        cdef ndarray[DTYPE_t, ndim=1] expxx = np.zeros([nexp], dtype=DTYPE)
+
+        for iy in range(ny):
+            dy = yy[iy] - Y
+            for iexp in range(nexp):
+                expyy[iy,iexp] = exp(-exponents[iexp]*dy*dy)
+
+        for iz in range(nz):
+            dz = zz[iz] - Z
+            for iexp in range(nexp):
+                expzz[iz,iexp] = exp(-exponents[iexp]*dz*dz)
+
+        for ix in range(nx):
+            dx = xx[ix] - X
+            for iexp in range(nexp):
+                expxx[iexp] = exp(-exponents[iexp] * dx*dx) * denormed_coeffs[iexp]
+
+            for iy in range(ny):
+                dy = yy[iy] - Y
+
+                for iz in range(nz):
+                    dz = zz[iz] - Z
+
+                    radial = 0.0
+                    for iexp in range(nexp):
+                        radial += expxx[iexp] * expyy[iy,iexp] * expzz[iz,iexp]
+
+                    if l == 0:
+                        target[ix,iy,iz] += radial * coeff[0]
+                    elif l == 1:
+                        target[ix,iy,iz] += radial * (
+                                  coeff[0] * dx
+                                + coeff[1] * dy
+                                + coeff[2] * dz)
+                    elif l == 2:
+                        target[ix,iy,iz] += radial * (
+                                  coeff[0] * dx*dx
+                                + coeff[1] * dy*dy
+                                + coeff[2] * dz*dz
+                                + coeff[3] * dx*dy * sqrt3
+                                + coeff[4] * dx*dz * sqrt3
+                                + coeff[5] * dy*dz * sqrt3
+                                )
+                    elif l == 3:
+                        target[ix,iy,iz] += radial * (
+                                  coeff[0] * dx*dx*dx
+                                + coeff[1] * dy*dy*dy
+                                + coeff[2] * dz*dz*dz
+                                + coeff[3] * dx*dy*dy * sqrt5
+                                + coeff[4] * dx*dx*dy * sqrt5
+                                + coeff[5] * dx*dx*dz * sqrt5
+                                + coeff[6] * dx*dz*dz * sqrt5
+                                + coeff[7] * dy*dz*dz * sqrt5
+                                + coeff[8] * dy*dy*dz * sqrt5
+                                + coeff[9] * dx*dy*dz * sqrt15
+                                )
+                    elif l == 4:
+                        target[ix,iy,iz] += radial * (
+                                  coeff[0] * dx*dx*dx*dx
+                                + coeff[1] * dy*dy*dy*dy
+                                + coeff[2] * dz*dz*dz*dz
+                                + coeff[3] * dx*dx*dx*dy * sqrt_35_5
+                                + coeff[4] * dx*dx*dx*dz * sqrt_35_5
+                                + coeff[5] * dy*dy*dy*dx * sqrt_35_5
+                                + coeff[6] * dy*dy*dy*dz * sqrt_35_5
+                                + coeff[7] * dz*dz*dz*dx * sqrt_35_5
+                                + coeff[8] * dz*dz*dz*dy * sqrt_35_5
+                                + coeff[9] * dx*dx*dy*dy * sqrt_35_3
+                                + coeff[10] * dx*dx*dz*dz * sqrt_35_3
+                                + coeff[11] * dy*dy*dz*dz * sqrt_35_3
+                                + coeff[12] * dx*dx*dy*dz * sqrt_35_1
+                                + coeff[13] * dy*dy*dx*dz * sqrt_35_1
+                                + coeff[14] * dz*dz*dx*dy * sqrt_35_1
+                                )
 
 def gaussian_overlap(axyz, aexp, apoly, bxyz, bexp, bpoly):
     """returns overlap integral for gaussians centered at xyz with exponents exp
@@ -435,8 +572,9 @@ class OrbitalCalculater(object):
     def box_values(self, xvals, yvals, zvals):
         out = np.zeros([len(xvals), len(yvals), len(zvals)], dtype=DTYPE)
 
-        for k, z_a in enumerate(zvals):
-            out[:,:,k] = self.plane_values(xvals, yvals, z_a)
+        for sh, lmx in zip(self.shells, self.logmxcoeff):
+            sh.add_box_values(xvals, yvals, zvals, self.coeff[sh.start:sh.start+sh.size],
+                    out, logmxcoeff=lmx)
 
         return out
 
