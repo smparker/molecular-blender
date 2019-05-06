@@ -219,7 +219,7 @@ cdef class Shell:
 
     @cython.boundscheck(False)
     @cython.wraparound(False)
-    def add_plane_values(self, ndarray[DTYPE_t, ndim=1] xx,
+    cpdef add_plane_values(self, ndarray[DTYPE_t, ndim=1] xx,
             ndarray[DTYPE_t, ndim=1] yy, float z_a,
             ndarray[DTYPE_t, ndim=1] coeff,
             ndarray[DTYPE_t, ndim=2] target, float logmxcoeff=0.0):
@@ -260,8 +260,7 @@ cdef class Shell:
         cdef float min_z = z_a
 
         cdef float min_rr = min_x*min_x + min_y*min_y + min_z*min_z
-        #if min_rr >= logthresh - logmxcoeff:
-        if False:
+        if min_rr >= logthresh - logmxcoeff:
             return
 
         cdef float dx, dy, dz, rr, radial
@@ -269,16 +268,26 @@ cdef class Shell:
         cdef DTYPE_t[:] denormed_coeffs = self.denormed_coeffs
         cdef DTYPE_t[:] exponents = self.exponents
 
+        cdef ndarray[DTYPE_t, ndim=2] expyy = np.zeros([ny, nexp], dtype=DTYPE)
+        cdef ndarray[DTYPE_t, ndim=1] expxx = np.zeros(nexp, dtype=DTYPE)
+
+        for iy in range(ny):
+            dy = yy[iy] - Y
+            for iexp in range(nexp):
+                expyy[iy,iexp] = exp(-exponents[iexp]*dy*dy)
+
+        dz = z_a - Z
         for ix in range(nx):
+            dx = xx[ix] - X
+            for iexp in range(nexp):
+                expxx[iexp] = exp(-exponents[iexp] * (dx*dx + dz*dz)) * denormed_coeffs[iexp]
+
             for iy in range(ny):
-                dx = xx[ix] - X
                 dy = yy[iy] - Y
-                dz = z_a - Z
-                rr = dx*dx + dy*dy + dz*dz
 
                 radial = 0.0
                 for iexp in range(nexp):
-                    radial += denormed_coeffs[iexp] * exp(-exponents[iexp]*rr)
+                    radial += expxx[iexp] * expyy[iy,iexp]
 
                 if l == 0:
                     target[ix,iy] += radial * coeff[0]
@@ -414,8 +423,6 @@ class OrbitalCalculater(object):
         for sh, lmx in zip(self.shells, self.logmxcoeff):
             val = sh.value(x, y, z, self.coeff[sh.start:sh.start+sh.size], logmxcoeff=lmx)
             out += val
-            #if val is not None:
-            #    out += np.dot(val, self.coeff[sh.start:sh.start + sh.size])
         return out
 
     def plane_values(self, xvals, yvals, z_a):
