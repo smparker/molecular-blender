@@ -183,7 +183,7 @@ class TestMoldenFunctions(unittest.TestCase):
         self.geo = mb.importers.molecule_from_file(
             'examples/fake-atom.molden', {})
         self.orbitals = mb.orbitals.MOData.from_dict(self.geo)
-        self.xyz = np.linspace(-30, 30, 100)
+        self.xyz = np.linspace(-30, 30, 100, dtype=np.float32)
         self.dvol = (self.xyz[1] - self.xyz[0])**3
 
     def test_orbital_norms(self):
