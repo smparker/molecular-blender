@@ -12,28 +12,9 @@ import numpy as np
 import math
 
 from .constants import ang2bohr, bohr2ang
-from .marching_cube import marching_cube_box, edgetable
+from .marching_cube import marching_cube_box, marching_cube_outline
 
 DTYPE = np.float32
-
-def active_box(cornervalues, isolevels):
-    """Determines whether any isovalues are crossed based on given corner values"""
-    for isolevel in isolevels:
-        cubeindex = 0
-
-        if cornervalues[0] < isolevel: cubeindex |= 1
-        if cornervalues[1] < isolevel: cubeindex |= 2
-        if cornervalues[2] < isolevel: cubeindex |= 4
-        if cornervalues[3] < isolevel: cubeindex |= 8
-        if cornervalues[4] < isolevel: cubeindex |= 16
-        if cornervalues[5] < isolevel: cubeindex |= 32
-        if cornervalues[6] < isolevel: cubeindex |= 64
-        if cornervalues[7] < isolevel: cubeindex |= 128
-
-        if edgetable[cubeindex] != 0:
-            return True
-
-    return False
 
 def transform_triangles(triangles, origin, axes):
     """Transforms and translates set of triangles to match input origin/axes"""
@@ -126,53 +107,10 @@ def isosurface_outline(p0, p1, npoints, isovalues, box_func, axes, name, wm=None
     xvals, xstep = np.linspace(p0[0], p1[0], num=npoints[0], retstep=True, endpoint=True, dtype=DTYPE)
     yvals, ystep = np.linspace(p0[1], p1[1], num=npoints[1], retstep=True, endpoint=True, dtype=DTYPE)
     zvals, zstep = np.linspace(p0[2], p1[2], num=npoints[2], retstep=True, endpoint=True, dtype=DTYPE)
-    nx, ny, nz = npoints
-    r = (xstep, ystep, zstep)
 
-    outlines = [ ]
-    z = p0[2]
     box_values = box_func(xvals, yvals, zvals)
+    return marching_cube_outline(box_values, xvals, yvals, zvals, isovalues)
 
-    plane_values_1 = box_values[:,:,0]
-
-    cornervalues = [0] * 8
-
-    if wm is not None:
-        wm.progress_begin(0, nz)
-
-    for zi in range(1, nz):
-        z = zvals[zi-1]
-        z2 = zvals[zi]
-        plane_values_2 = box_values[:,:,zi]
-        for yi in range(ny-1):
-            y = yvals[yi]
-            y2 = yvals[yi+1]
-            for xi in range(nx-1):
-                x = xvals[xi]
-                x2 = xvals[xi+1]
-                cornervalues = [
-                    plane_values_1[xi][yi],
-                    plane_values_1[xi][yi + 1],
-                    plane_values_1[xi + 1][yi + 1],
-                    plane_values_1[xi + 1][yi],
-                    plane_values_2[xi][yi],
-                    plane_values_2[xi][yi + 1],
-                    plane_values_2[xi + 1][yi + 1],
-                    plane_values_2[xi + 1][yi],
-                ]
-
-                if active_box(cornervalues, isovalues):
-                    outlines.append( ( (x, y, z), (x2, y2, z2) ) )
-
-        plane_values_1 = plane_values_2
-
-        if wm is not None:
-            wm.progress_update(zi)
-
-    if wm is not None:
-        wm.progress_end()
-
-    return outlines
 
 def isosurface_simple(p0, p1, npoints, isovalues, box_func, axes, name, wm=None):
     """Return set of triangles from function object in single pass algorithm"""

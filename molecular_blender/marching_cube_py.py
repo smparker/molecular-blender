@@ -405,6 +405,28 @@ def vertexinterp(isolevel, p1, p2, valp1, valp2):
     return x, y, z
 
 
+def active_box(cornervalues, isolevels):
+    """Determines whether any isovalues are crossed based on given corner values"""
+    global edgetable
+
+    for isolevel in isolevels:
+        cubeindex = 0
+
+        if cornervalues[0] < isolevel: cubeindex |= 1
+        if cornervalues[1] < isolevel: cubeindex |= 2
+        if cornervalues[2] < isolevel: cubeindex |= 4
+        if cornervalues[3] < isolevel: cubeindex |= 8
+        if cornervalues[4] < isolevel: cubeindex |= 16
+        if cornervalues[5] < isolevel: cubeindex |= 32
+        if cornervalues[6] < isolevel: cubeindex |= 64
+        if cornervalues[7] < isolevel: cubeindex |= 128
+
+        if edgetable[cubeindex] != 0:
+            return True
+
+    return False
+
+
 def marching_cube_box(data, isovalues):
     """Return set of triangles from cube file"""
     tri_list = [[] for iso in isovalues]
@@ -437,3 +459,43 @@ def marching_cube_box(data, isovalues):
         z_plane_a = z_plane_b
 
     return tri_list
+
+def marching_cube_outline(data, xvals, yvals, zvals, isovalues):
+    """
+    Return [ (pp0, pp1) ] where pp0 and pp1 are lower and upper bounds
+    of active boxes.
+    """
+
+    plane_values_1 = data[:,:,0]
+
+    cornervalues = [0] * 8
+
+    outlines = []
+
+    for zi in range(1, nz):
+        z = zvals[zi-1]
+        z2 = zvals[zi]
+        plane_values_2 = data[:,:,zi]
+        for yi in range(ny-1):
+            y = yvals[yi]
+            y2 = yvals[yi+1]
+            for xi in range(nx-1):
+                x = xvals[xi]
+                x2 = xvals[xi+1]
+                cornervalues = [
+                    plane_values_1[xi][yi],
+                    plane_values_1[xi][yi + 1],
+                    plane_values_1[xi + 1][yi + 1],
+                    plane_values_1[xi + 1][yi],
+                    plane_values_2[xi][yi],
+                    plane_values_2[xi][yi + 1],
+                    plane_values_2[xi + 1][yi + 1],
+                    plane_values_2[xi + 1][yi],
+                ]
+
+                if active_box(cornervalues, isovalues):
+                    outlines.append( ( (x, y, z), (x2, y2, z2) ) )
+
+        plane_values_1 = plane_values_2
+
+    return outlines

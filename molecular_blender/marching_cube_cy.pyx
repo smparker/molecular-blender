@@ -16,40 +16,7 @@ ctypedef np.float32_t DTYPE_t
 
 DEF CYDEBUG = False
 
-edgetable = (0x0, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c,
-             0x80c, 0x905, 0xa0f, 0xb06, 0xc0a, 0xd03, 0xe09, 0xf00,
-             0x190, 0x99, 0x393, 0x29a, 0x596, 0x49f, 0x795, 0x69c,
-             0x99c, 0x895, 0xb9f, 0xa96, 0xd9a, 0xc93, 0xf99, 0xe90,
-             0x230, 0x339, 0x33, 0x13a, 0x636, 0x73f, 0x435, 0x53c,
-             0xa3c, 0xb35, 0x83f, 0x936, 0xe3a, 0xf33, 0xc39, 0xd30,
-             0x3a0, 0x2a9, 0x1a3, 0xaa, 0x7a6, 0x6af, 0x5a5, 0x4ac,
-             0xbac, 0xaa5, 0x9af, 0x8a6, 0xfaa, 0xea3, 0xda9, 0xca0,
-             0x460, 0x569, 0x663, 0x76a, 0x66, 0x16f, 0x265, 0x36c,
-             0xc6c, 0xd65, 0xe6f, 0xf66, 0x86a, 0x963, 0xa69, 0xb60,
-             0x5f0, 0x4f9, 0x7f3, 0x6fa, 0x1f6, 0xff, 0x3f5, 0x2fc,
-             0xdfc, 0xcf5, 0xfff, 0xef6, 0x9fa, 0x8f3, 0xbf9, 0xaf0,
-             0x650, 0x759, 0x453, 0x55a, 0x256, 0x35f, 0x55, 0x15c,
-             0xe5c, 0xf55, 0xc5f, 0xd56, 0xa5a, 0xb53, 0x859, 0x950,
-             0x7c0, 0x6c9, 0x5c3, 0x4ca, 0x3c6, 0x2cf, 0x1c5, 0xcc,
-             0xfcc, 0xec5, 0xdcf, 0xcc6, 0xbca, 0xac3, 0x9c9, 0x8c0,
-             0x8c0, 0x9c9, 0xac3, 0xbca, 0xcc6, 0xdcf, 0xec5, 0xfcc,
-             0xcc, 0x1c5, 0x2cf, 0x3c6, 0x4ca, 0x5c3, 0x6c9, 0x7c0,
-             0x950, 0x859, 0xb53, 0xa5a, 0xd56, 0xc5f, 0xf55, 0xe5c,
-             0x15c, 0x55, 0x35f, 0x256, 0x55a, 0x453, 0x759, 0x650,
-             0xaf0, 0xbf9, 0x8f3, 0x9fa, 0xef6, 0xfff, 0xcf5, 0xdfc,
-             0x2fc, 0x3f5, 0xff, 0x1f6, 0x6fa, 0x7f3, 0x4f9, 0x5f0,
-             0xb60, 0xa69, 0x963, 0x86a, 0xf66, 0xe6f, 0xd65, 0xc6c,
-             0x36c, 0x265, 0x16f, 0x66, 0x76a, 0x663, 0x569, 0x460,
-             0xca0, 0xda9, 0xea3, 0xfaa, 0x8a6, 0x9af, 0xaa5, 0xbac,
-             0x4ac, 0x5a5, 0x6af, 0x7a6, 0xaa, 0x1a3, 0x2a9, 0x3a0,
-             0xd30, 0xc39, 0xf33, 0xe3a, 0x936, 0x83f, 0xb35, 0xa3c,
-             0x53c, 0x435, 0x73f, 0x636, 0x13a, 0x33, 0x339, 0x230,
-             0xe90, 0xf99, 0xc93, 0xd9a, 0xa96, 0xb9f, 0x895, 0x99c,
-             0x69c, 0x795, 0x49f, 0x596, 0x29a, 0x393, 0x99, 0x190,
-             0xf00, 0xe09, 0xd03, 0xc0a, 0xb06, 0xa0f, 0x905, 0x80c,
-             0x70c, 0x605, 0x50f, 0x406, 0x30a, 0x203, 0x109, 0x0)
-
-cdef int *c_edgetable=[0x0, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c,
+cdef int *edgetable=[0x0, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c,
                                 0x80c, 0x905, 0xa0f, 0xb06, 0xc0a, 0xd03, 0xe09, 0xf00,
                                 0x190, 0x99 , 0x393, 0x29a, 0x596, 0x49f, 0x795, 0x69c,
                                 0x99c, 0x895, 0xb9f, 0xa96, 0xd9a, 0xc93, 0xf99, 0xe90,
@@ -351,6 +318,10 @@ cdef struct triangle:
     point p1
     point p2
 
+cdef struct box:
+    point p0
+    point p1
+
 ctypedef vector[triangle] triangle_vec
 ctypedef vector[triangle_vec] iso_triangles
 
@@ -361,7 +332,7 @@ ctypedef vector[triangle_vec] iso_triangles
 cdef void polygonise(triangle_vec* tri_list, const DTYPE_t* cornervalues,
         const DTYPE_t* cornerpos,
         float isolevel) nogil:
-    global c_edgetable, tritable
+    global edgetable, tritable
 
     cdef point[12] vertlist
 
@@ -378,28 +349,28 @@ cdef void polygonise(triangle_vec* tri_list, const DTYPE_t* cornervalues,
     if cornervalues[7] < isolevel: cubeindex = cubeindex | 128
 
     # Cube is entirely in/out of the surface
-    if c_edgetable[cubeindex] == 0: return
+    if edgetable[cubeindex] == 0: return
 
-    if (c_edgetable[cubeindex] & 1):    vertex_interp(&vertlist[ 0], isolevel, &cornerpos[0*3], &cornerpos[1*3], cornervalues[0], cornervalues[1])
-    if (c_edgetable[cubeindex] & 2):    vertex_interp(&vertlist[ 1], isolevel, &cornerpos[1*3], &cornerpos[2*3], cornervalues[1], cornervalues[2])
-    if (c_edgetable[cubeindex] & 4):    vertex_interp(&vertlist[ 2], isolevel, &cornerpos[2*3], &cornerpos[3*3], cornervalues[2], cornervalues[3])
-    if (c_edgetable[cubeindex] & 8):    vertex_interp(&vertlist[ 3], isolevel, &cornerpos[3*3], &cornerpos[0*3], cornervalues[3], cornervalues[0])
-    if (c_edgetable[cubeindex] & 16):   vertex_interp(&vertlist[ 4], isolevel, &cornerpos[4*3], &cornerpos[5*3], cornervalues[4], cornervalues[5])
-    if (c_edgetable[cubeindex] & 32):   vertex_interp(&vertlist[ 5], isolevel, &cornerpos[5*3], &cornerpos[6*3], cornervalues[5], cornervalues[6])
-    if (c_edgetable[cubeindex] & 64):   vertex_interp(&vertlist[ 6], isolevel, &cornerpos[6*3], &cornerpos[7*3], cornervalues[6], cornervalues[7])
-    if (c_edgetable[cubeindex] & 128):  vertex_interp(&vertlist[ 7], isolevel, &cornerpos[7*3], &cornerpos[4*3], cornervalues[7], cornervalues[4])
-    if (c_edgetable[cubeindex] & 256):  vertex_interp(&vertlist[ 8], isolevel, &cornerpos[0*3], &cornerpos[4*3], cornervalues[0], cornervalues[4])
-    if (c_edgetable[cubeindex] & 512):  vertex_interp(&vertlist[ 9], isolevel, &cornerpos[1*3], &cornerpos[5*3], cornervalues[1], cornervalues[5])
-    if (c_edgetable[cubeindex] & 1024): vertex_interp(&vertlist[10], isolevel, &cornerpos[2*3], &cornerpos[6*3], cornervalues[2], cornervalues[6])
-    if (c_edgetable[cubeindex] & 2048): vertex_interp(&vertlist[11], isolevel, &cornerpos[3*3], &cornerpos[7*3], cornervalues[3], cornervalues[7])
+    if (edgetable[cubeindex] & 1):    vertex_interp(&vertlist[ 0], isolevel, &cornerpos[0*3], &cornerpos[1*3], cornervalues[0], cornervalues[1])
+    if (edgetable[cubeindex] & 2):    vertex_interp(&vertlist[ 1], isolevel, &cornerpos[1*3], &cornerpos[2*3], cornervalues[1], cornervalues[2])
+    if (edgetable[cubeindex] & 4):    vertex_interp(&vertlist[ 2], isolevel, &cornerpos[2*3], &cornerpos[3*3], cornervalues[2], cornervalues[3])
+    if (edgetable[cubeindex] & 8):    vertex_interp(&vertlist[ 3], isolevel, &cornerpos[3*3], &cornerpos[0*3], cornervalues[3], cornervalues[0])
+    if (edgetable[cubeindex] & 16):   vertex_interp(&vertlist[ 4], isolevel, &cornerpos[4*3], &cornerpos[5*3], cornervalues[4], cornervalues[5])
+    if (edgetable[cubeindex] & 32):   vertex_interp(&vertlist[ 5], isolevel, &cornerpos[5*3], &cornerpos[6*3], cornervalues[5], cornervalues[6])
+    if (edgetable[cubeindex] & 64):   vertex_interp(&vertlist[ 6], isolevel, &cornerpos[6*3], &cornerpos[7*3], cornervalues[6], cornervalues[7])
+    if (edgetable[cubeindex] & 128):  vertex_interp(&vertlist[ 7], isolevel, &cornerpos[7*3], &cornerpos[4*3], cornervalues[7], cornervalues[4])
+    if (edgetable[cubeindex] & 256):  vertex_interp(&vertlist[ 8], isolevel, &cornerpos[0*3], &cornerpos[4*3], cornervalues[0], cornervalues[4])
+    if (edgetable[cubeindex] & 512):  vertex_interp(&vertlist[ 9], isolevel, &cornerpos[1*3], &cornerpos[5*3], cornervalues[1], cornervalues[5])
+    if (edgetable[cubeindex] & 1024): vertex_interp(&vertlist[10], isolevel, &cornerpos[2*3], &cornerpos[6*3], cornervalues[2], cornervalues[6])
+    if (edgetable[cubeindex] & 2048): vertex_interp(&vertlist[11], isolevel, &cornerpos[3*3], &cornerpos[7*3], cornervalues[3], cornervalues[7])
 
     #Create the triangle
     cdef int i=0
     cdef triangle tri_dummy
     while tritable[cubeindex][i] != -1:
-        tri_dummy.p0 = cpp_vertlist[tritable[cubeindex][i  ]]
-        tri_dummy.p1 = cpp_vertlist[tritable[cubeindex][i+1]]
-        tri_dummy.p2 = cpp_vertlist[tritable[cubeindex][i+2]]
+        tri_dummy.p0 = vertlist[tritable[cubeindex][i  ]]
+        tri_dummy.p1 = vertlist[tritable[cubeindex][i+1]]
+        tri_dummy.p2 = vertlist[tritable[cubeindex][i+2]]
         tri_list.push_back(tri_dummy)
         i+=3
 
@@ -431,6 +402,36 @@ cdef void vertex_interp(point* vert_out, float isolevel, const DTYPE_t* p1, cons
     vert_out.z = p1[2] + mu * (p2[2] - p1[2]);
 
     return
+
+
+@cython.boundscheck(CYDEBUG)
+@cython.wraparound(CYDEBUG)
+@cython.initializedcheck(CYDEBUG)
+@cython.nonecheck(CYDEBUG)
+cdef bint active_box(const DTYPE_t* cornervalues, const int niso, const DTYPE_t* isolevels) nogil:
+    """Determines whether any isovalues are crossed based on given corner values"""
+    global edgetable
+
+    cdef int iiso
+    cdef int cubeindex
+    cdef float isolevel
+    for iiso in range(niso):
+        isolevel = isolevels[iiso]
+        cubeindex = 0
+
+        if cornervalues[0] < isolevel: cubeindex |= 1
+        if cornervalues[1] < isolevel: cubeindex |= 2
+        if cornervalues[2] < isolevel: cubeindex |= 4
+        if cornervalues[3] < isolevel: cubeindex |= 8
+        if cornervalues[4] < isolevel: cubeindex |= 16
+        if cornervalues[5] < isolevel: cubeindex |= 32
+        if cornervalues[6] < isolevel: cubeindex |= 64
+        if cornervalues[7] < isolevel: cubeindex |= 128
+
+        if edgetable[cubeindex] != 0:
+            return True
+
+    return False
 
 
 @cython.boundscheck(CYDEBUG)
@@ -531,3 +532,90 @@ cpdef marching_cube_box(ndarray[DTYPE_t, ndim=3, mode="c"] data, object isovalue
                 [ tri_tmp.p2.x, tri_tmp.p2.y, tri_tmp.p2.z ] ] )
 
     return tri_list
+
+
+@cython.boundscheck(CYDEBUG)
+@cython.wraparound(CYDEBUG)
+@cython.initializedcheck(CYDEBUG)
+@cython.nonecheck(CYDEBUG)
+def marching_cube_outline(ndarray[DTYPE_t, ndim=3, mode="c"] data,
+        ndarray[DTYPE_t, ndim=1, mode="c"] xvals,
+        ndarray[DTYPE_t, ndim=1, mode="c"] yvals,
+        ndarray[DTYPE_t, ndim=1, mode="c"] zvals,
+        object isovalues):
+    """
+    Return [ (pp0, pp1) ] where pp0 and pp1 are lower and upper bounds
+    of active boxes.
+    """
+
+    cdef int nx = data.shape[0]
+    cdef int ny = data.shape[1]
+    cdef int nz = data.shape[2]
+
+    cdef int niso = len(isovalues)
+    cdef int iiso
+    cdef vector[float] isovals
+    for iiso in range(niso):
+        isovals.push_back(isovalues[iiso])
+
+    cdef ndarray[DTYPE_t, ndim=1, mode="c"] cornervalues = np.zeros(8, dtype=DTYPE)
+
+    outlines = []
+
+    cdef int ix, iy, iz, ix2, iy2, iz2
+    cdef float x, y, z, x2, y2, z2
+
+    cdef vector[box] active_boxes
+    cdef box box_tmp
+
+    for iz in range(nz-1):
+        iz2 = iz + 1
+        for ix in range(nx-1):
+            ix2 = ix + 1
+            for iy in range(ny-1):
+                iy2 = iy + 1
+
+                cornervalues[0] = data[ix ,iy ,iz ]
+                cornervalues[1] = data[ix ,iy2,iz ]
+                cornervalues[2] = data[ix2,iy2,iz ]
+                cornervalues[3] = data[ix2,iy ,iz ]
+                cornervalues[4] = data[ix ,iy ,iz2]
+                cornervalues[5] = data[ix ,iy2,iz2]
+                cornervalues[6] = data[ix2,iy2,iz2]
+                cornervalues[7] = data[ix2,iy ,iz2]
+
+                x = xvals[ix]
+                y = yvals[iy]
+                z = zvals[iz]
+
+                x2 = xvals[ix2]
+                y2 = yvals[iy2]
+                z2 = zvals[iz2]
+
+                if active_box(&cornervalues[0], niso, &isovals[0]):
+                    box_tmp.p0.x = x
+                    box_tmp.p0.y = y
+                    box_tmp.p0.z = z
+                    box_tmp.p1.x = x2
+                    box_tmp.p1.y = y2
+                    box_tmp.p1.z = z2
+
+                    active_boxes.push_back(box_tmp)
+
+    outlines = []
+    cdef int nboxes = active_boxes.size()
+    cdef int ibox
+    for ibox in range(nboxes):
+        outlines.append( (
+            (
+                active_boxes[ibox].p0.x,
+                active_boxes[ibox].p0.y,
+                active_boxes[ibox].p0.z
+            ),
+            (
+                active_boxes[ibox].p1.x,
+                active_boxes[ibox].p1.y,
+                active_boxes[ibox].p1.z
+            )
+            ) )
+    return outlines
