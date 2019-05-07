@@ -26,18 +26,21 @@
 
 cimport cython
 
+import math
 import numpy as np
 cimport numpy as np
 
 from numpy cimport ndarray
 from libc.math cimport sqrt, exp
+from libc.stdlib cimport malloc, free
 
 DTYPE = np.float32
 ctypedef np.float32_t DTYPE_t
 
-import math
+DEF CYDEBUG = False
 
 from .constants import ang2bohr
+from .containing_isovalues import isovalue_containing_proportion
 
 molden_shorder = [[""],
            ["x", "y", "z"],
@@ -65,17 +68,17 @@ cdef gamma2n_impl(i):
 
 cdef class Shell:
     """ Fast Cython container for shell data"""
-    cdef float X, Y, Z
+    cdef public float X, Y, Z
     cdef public int l, start, size
-    cdef public DTYPE_t[:] center
-    cdef DTYPE_t[:] exponents
-    cdef DTYPE_t[:] prim_coeffs
-    cdef DTYPE_t[:,:] norms
-    cdef DTYPE_t[:] denormed_coeffs
-    cdef float mxx
-    cdef float most_diffuse
-    cdef float logthr
-    cdef float mxnorm
+    cdef public DTYPE_t[::1] center
+    cdef public object exponents
+    cdef public object prim_coeffs
+    cdef public object norms
+    cdef public object denormed_coeffs
+    cdef public float mxx
+    cdef public float most_diffuse
+    cdef public float logthr
+    cdef public float mxnorm
 
     def __init__(self, center, int l,
             exponents, coeff,
@@ -136,7 +139,11 @@ cdef class Shell:
             return 0.0
         return np.sqrt(xx, dtype=DTYPE)
 
-    def value(self, DTYPE_t x, DTYPE_t y, DTYPE_t z, ndarray[DTYPE_t, ndim=1] coeff,
+    @cython.boundscheck(CYDEBUG)
+    @cython.wraparound(CYDEBUG)
+    @cython.initializedcheck(CYDEBUG)
+    @cython.nonecheck(CYDEBUG)
+    cpdef float value(self, DTYPE_t x, DTYPE_t y, DTYPE_t z, ndarray[DTYPE_t, ndim=1] coeff,
             float logmxcoeff=0.):
 
         cdef float dx = x - self.X
@@ -217,23 +224,18 @@ cdef class Shell:
                     )
         return out
 
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
-    cpdef add_plane_values(self, ndarray[DTYPE_t, ndim=1] xx,
-            ndarray[DTYPE_t, ndim=1] yy, float z_a,
-            ndarray[DTYPE_t, ndim=1] coeff,
-            ndarray[DTYPE_t, ndim=2] target, float logmxcoeff=0.0):
+    @cython.boundscheck(CYDEBUG)
+    @cython.wraparound(CYDEBUG)
+    @cython.initializedcheck(CYDEBUG)
+    @cython.nonecheck(CYDEBUG)
+    cpdef void add_plane_values(self, DTYPE_t[::1] xx,
+            DTYPE_t[::1] yy, float z_a,
+            DTYPE_t[::1] coeff,
+            DTYPE_t[:,::1] target, float logmxcoeff=0.0):
 
         cdef float X = self.X
         cdef float Y = self.Y
         cdef float Z = self.Z
-
-        cdef float sqrt3 = sqrt(3.0)
-        cdef float sqrt5 = sqrt(5.0)
-        cdef float sqrt15 = sqrt(15.0)
-        cdef float sqrt_35_5 = sqrt(35.0/5.0)
-        cdef float sqrt_35_3 = sqrt(35.0/3.0)
-        cdef float sqrt_35_1 = sqrt(35.0/1.0)
 
         cdef float logthresh = self.logthr - logmxcoeff
 
@@ -246,10 +248,10 @@ cdef class Shell:
         cdef int shellsize = self.size
 
         # check the four corners to find a max value
-        cdef float x0 = xx[0]
-        cdef float x1 = xx[nx-1]
-        cdef float y0 = yy[0]
-        cdef float y1 = yy[ny-1]
+        cdef float x0 = xx[0] - X
+        cdef float x1 = xx[nx-1] - X
+        cdef float y0 = yy[0] - Y
+        cdef float y1 = yy[ny-1] - Y
 
         cdef float min_x = min(abs(x0),abs(x1))
         if (x0*x1 < 0):
@@ -263,10 +265,17 @@ cdef class Shell:
         if min_rr >= logthresh:
             return
 
-        cdef float dx, dy, dz, rr, radial
+        cdef float sqrt3 = sqrt(3.0)
+        cdef float sqrt5 = sqrt(5.0)
+        cdef float sqrt15 = sqrt(15.0)
+        cdef float sqrt_35_5 = sqrt(35.0/5.0)
+        cdef float sqrt_35_3 = sqrt(35.0/3.0)
+        cdef float sqrt_35_1 = sqrt(35.0/1.0)
 
-        cdef DTYPE_t[:] denormed_coeffs = self.denormed_coeffs
-        cdef DTYPE_t[:] exponents = self.exponents
+        cdef float dx, dy, dz, radial
+
+        cdef DTYPE_t[::1] denormed_coeffs = self.denormed_coeffs
+        cdef DTYPE_t[::1] exponents = self.exponents
 
         cdef ndarray[DTYPE_t, ndim=2] expyy = np.zeros([ny, nexp], dtype=DTYPE)
         cdef ndarray[DTYPE_t, ndim=1] expxx = np.zeros(nexp, dtype=DTYPE)
@@ -274,7 +283,7 @@ cdef class Shell:
         for iy in range(ny):
             dy = yy[iy] - Y
             for iexp in range(nexp):
-                expyy[iy,iexp] = exp(-exponents[iexp]*dy*dy)
+                expyy[iy, iexp] = exp(-exponents[iexp]*dy*dy)
 
         dz = z_a - Z
         for ix in range(nx):
@@ -290,7 +299,7 @@ cdef class Shell:
 
                 radial = 0.0
                 for iexp in range(nexp):
-                    radial += expxx[iexp] * expyy[iy,iexp]
+                    radial += expxx[iexp] * expyy[iy, iexp]
 
                 if l == 0:
                     target[ix,iy] += radial * coeff[0]
@@ -340,140 +349,6 @@ cdef class Shell:
                             + coeff[14] * dz*dz*dx*dy * sqrt_35_1
                             )
 
-
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
-    cpdef add_box_values(self, ndarray[DTYPE_t, ndim=1] xx,
-            ndarray[DTYPE_t, ndim=1] yy,
-            ndarray[DTYPE_t, ndim=1] zz,
-            ndarray[DTYPE_t, ndim=1] coeff,
-            ndarray[DTYPE_t, ndim=3] target, float logmxcoeff=0.0):
-
-        cdef float X = self.X
-        cdef float Y = self.Y
-        cdef float Z = self.Z
-
-        cdef float sqrt3 = sqrt(3.0)
-        cdef float sqrt5 = sqrt(5.0)
-        cdef float sqrt15 = sqrt(15.0)
-        cdef float sqrt_35_5 = sqrt(35.0/5.0)
-        cdef float sqrt_35_3 = sqrt(35.0/3.0)
-        cdef float sqrt_35_1 = sqrt(35.0/1.0)
-
-        cdef float logthresh = self.logthr
-
-        cdef int nx = len(xx)
-        cdef int ny = len(yy)
-        cdef int nz = len(zz)
-
-        cdef int nexp = len(self.exponents)
-
-        cdef int l = self.l
-        cdef int shellsize = self.size
-
-        # check the four corners to find a max value
-        cdef float x0 = xx[0]
-        cdef float x1 = xx[nx-1]
-        cdef float y0 = yy[0]
-        cdef float y1 = yy[ny-1]
-        cdef float z0 = zz[0]
-        cdef float z1 = zz[nz-1]
-
-        cdef float min_x = min(abs(x0),abs(x1))
-        if (x0*x1 < 0):
-            min_x = 0.0
-        cdef float min_y = min(abs(y0),abs(y1))
-        if (y0*y1 < 0):
-            min_y = 0.0
-        cdef float min_z = min(abs(z0),abs(z1))
-        if (z0*z1 < 0):
-            min_z = 0.0
-
-        cdef float min_rr = min_x*min_x + min_y*min_y + min_z*min_z
-        if min_rr >= logthresh - logmxcoeff:
-            return
-
-        cdef float dx, dy, dz, rr, radial
-
-        cdef DTYPE_t[:] denormed_coeffs = self.denormed_coeffs
-        cdef DTYPE_t[:] exponents = self.exponents
-
-        cdef ndarray[DTYPE_t, ndim=2] expzz = np.zeros([nz, nexp], dtype=DTYPE)
-        cdef ndarray[DTYPE_t, ndim=2] expyy = np.zeros([ny, nexp], dtype=DTYPE)
-        cdef ndarray[DTYPE_t, ndim=1] expxx = np.zeros([nexp], dtype=DTYPE)
-
-        for iy in range(ny):
-            dy = yy[iy] - Y
-            for iexp in range(nexp):
-                expyy[iy,iexp] = exp(-exponents[iexp]*dy*dy)
-
-        for iz in range(nz):
-            dz = zz[iz] - Z
-            for iexp in range(nexp):
-                expzz[iz,iexp] = exp(-exponents[iexp]*dz*dz)
-
-        for ix in range(nx):
-            dx = xx[ix] - X
-            for iexp in range(nexp):
-                expxx[iexp] = exp(-exponents[iexp] * dx*dx) * denormed_coeffs[iexp]
-
-            for iy in range(ny):
-                dy = yy[iy] - Y
-
-                for iz in range(nz):
-                    dz = zz[iz] - Z
-
-                    radial = 0.0
-                    for iexp in range(nexp):
-                        radial += expxx[iexp] * expyy[iy,iexp] * expzz[iz,iexp]
-
-                    if l == 0:
-                        target[ix,iy,iz] += radial * coeff[0]
-                    elif l == 1:
-                        target[ix,iy,iz] += radial * (
-                                  coeff[0] * dx
-                                + coeff[1] * dy
-                                + coeff[2] * dz)
-                    elif l == 2:
-                        target[ix,iy,iz] += radial * (
-                                  coeff[0] * dx*dx
-                                + coeff[1] * dy*dy
-                                + coeff[2] * dz*dz
-                                + coeff[3] * dx*dy * sqrt3
-                                + coeff[4] * dx*dz * sqrt3
-                                + coeff[5] * dy*dz * sqrt3
-                                )
-                    elif l == 3:
-                        target[ix,iy,iz] += radial * (
-                                  coeff[0] * dx*dx*dx
-                                + coeff[1] * dy*dy*dy
-                                + coeff[2] * dz*dz*dz
-                                + coeff[3] * dx*dy*dy * sqrt5
-                                + coeff[4] * dx*dx*dy * sqrt5
-                                + coeff[5] * dx*dx*dz * sqrt5
-                                + coeff[6] * dx*dz*dz * sqrt5
-                                + coeff[7] * dy*dz*dz * sqrt5
-                                + coeff[8] * dy*dy*dz * sqrt5
-                                + coeff[9] * dx*dy*dz * sqrt15
-                                )
-                    elif l == 4:
-                        target[ix,iy,iz] += radial * (
-                                  coeff[0] * dx*dx*dx*dx
-                                + coeff[1] * dy*dy*dy*dy
-                                + coeff[2] * dz*dz*dz*dz
-                                + coeff[3] * dx*dx*dx*dy * sqrt_35_5
-                                + coeff[4] * dx*dx*dx*dz * sqrt_35_5
-                                + coeff[5] * dy*dy*dy*dx * sqrt_35_5
-                                + coeff[6] * dy*dy*dy*dz * sqrt_35_5
-                                + coeff[7] * dz*dz*dz*dx * sqrt_35_5
-                                + coeff[8] * dz*dz*dz*dy * sqrt_35_5
-                                + coeff[9] * dx*dx*dy*dy * sqrt_35_3
-                                + coeff[10] * dx*dx*dz*dz * sqrt_35_3
-                                + coeff[11] * dy*dy*dz*dz * sqrt_35_3
-                                + coeff[12] * dx*dx*dy*dz * sqrt_35_1
-                                + coeff[13] * dy*dy*dx*dz * sqrt_35_1
-                                + coeff[14] * dz*dz*dx*dy * sqrt_35_1
-                                )
 
 def gaussian_overlap(axyz, aexp, apoly, bxyz, bexp, bpoly):
     """returns overlap integral for gaussians centered at xyz with exponents exp
@@ -529,17 +404,212 @@ class MOData(object):
 
         return cls(shells, coeff, nocc)
 
+ctypedef struct CShell:
+    float X, Y, Z
+    int l
+    int start, size
+    int nexp
+    DTYPE_t* exponents
+    DTYPE_t* prim_coeffs
+    DTYPE_t* norms
+    DTYPE_t* denormed_coeffs
+    float mxx
+    float most_diffuse
+    float logthr
+    float mxnorm
 
-class OrbitalCalculater(object):
+@cython.boundscheck(CYDEBUG)
+@cython.wraparound(CYDEBUG)
+@cython.initializedcheck(CYDEBUG)
+@cython.nonecheck(CYDEBUG)
+cdef void add_box_values(CShell* shell,
+        int nx, DTYPE_t* xx,
+        int ny, DTYPE_t* yy,
+        int nz, DTYPE_t* zz,
+        DTYPE_t* coeff,
+        DTYPE_t* target,
+        float logmxcoeff):
+    cdef float X = shell.X
+    cdef float Y = shell.Y
+    cdef float Z = shell.Z
+
+    cdef float logthresh = shell.logthr
+
+    cdef int ix
+    cdef int iy
+    cdef int iz
+    cdef int iexp
+
+    cdef int nexp = shell.nexp
+
+    cdef int l = shell.l
+
+    # check the four corners to find a max value
+    cdef float x0 = xx[0] - X
+    cdef float x1 = xx[nx-1] - X
+    cdef float y0 = yy[0] - Y
+    cdef float y1 = yy[ny-1] - Y
+    cdef float z0 = zz[0] - Z
+    cdef float z1 = zz[nz-1] - Z
+
+    cdef float min_x = min(abs(x0),abs(x1))
+    if (x0*x1 < 0):
+        min_x = 0.0
+    cdef float min_y = min(abs(y0),abs(y1))
+    if (y0*y1 < 0):
+        min_y = 0.0
+    cdef float min_z = min(abs(z0),abs(z1))
+    if (z0*z1 < 0):
+        min_z = 0.0
+
+    cdef float min_rr = min_x*min_x + min_y*min_y + min_z*min_z
+    if min_rr >= logthresh - logmxcoeff:
+        return
+
+    cdef float sqrt3 = sqrt(3.0)
+    cdef float sqrt5 = sqrt(5.0)
+    cdef float sqrt15 = sqrt(15.0)
+    cdef float sqrt_35_5 = sqrt(35.0/5.0)
+    cdef float sqrt_35_3 = sqrt(35.0/3.0)
+    cdef float sqrt_35_1 = sqrt(35.0/1.0)
+
+    cdef float dx, dy, dz, rr, radial
+
+    cdef DTYPE_t* denormed_coeffs = shell.denormed_coeffs
+    cdef DTYPE_t* exponents = shell.exponents
+
+    cdef DTYPE_t* expzz
+    cdef DTYPE_t* expyy
+    cdef DTYPE_t* expxx
+
+    expzz = <DTYPE_t*>malloc(nz*nexp*sizeof(DTYPE_t))
+    expyy = <DTYPE_t*>malloc(ny*nexp*sizeof(DTYPE_t))
+    expxx = <DTYPE_t*>malloc(nexp*sizeof(DTYPE_t))
+
+    for iy in range(ny):
+        dy = yy[iy] - Y
+        for iexp in range(nexp):
+            expyy[iy*nexp + iexp] = exp(-exponents[iexp]*dy*dy)
+
+    for iz in range(nz):
+        dz = zz[iz] - Z
+        for iexp in range(nexp):
+            expzz[iz*nexp + iexp] = exp(-exponents[iexp]*dz*dz)
+
+    for ix in range(nx):
+        dx = xx[ix] - X
+        for iexp in range(nexp):
+            expxx[iexp] = exp(-exponents[iexp] * dx*dx) * denormed_coeffs[iexp]
+
+        for iy in range(ny):
+            dy = yy[iy] - Y
+
+            for iz in range(nz):
+                dz = zz[iz] - Z
+
+                ixyz = iz + iy*nz + ix*nz*ny
+
+                radial = 0.0
+                for iexp in range(nexp):
+                    radial += expxx[iexp] * expyy[iy*nexp + iexp] * expzz[iz*nexp + iexp]
+
+                if l == 0:
+                    target[ixyz] += radial * coeff[0]
+                elif l == 1:
+                    target[ixyz] += radial * (
+                              coeff[0] * dx
+                            + coeff[1] * dy
+                            + coeff[2] * dz)
+                elif l == 2:
+                    target[ixyz] += radial * (
+                              coeff[0] * dx*dx
+                            + coeff[1] * dy*dy
+                            + coeff[2] * dz*dz
+                            + coeff[3] * dx*dy * sqrt3
+                            + coeff[4] * dx*dz * sqrt3
+                            + coeff[5] * dy*dz * sqrt3
+                            )
+                elif l == 3:
+                    target[ixyz] += radial * (
+                              coeff[0] * dx*dx*dx
+                            + coeff[1] * dy*dy*dy
+                            + coeff[2] * dz*dz*dz
+                            + coeff[3] * dx*dy*dy * sqrt5
+                            + coeff[4] * dx*dx*dy * sqrt5
+                            + coeff[5] * dx*dx*dz * sqrt5
+                            + coeff[6] * dx*dz*dz * sqrt5
+                            + coeff[7] * dy*dz*dz * sqrt5
+                            + coeff[8] * dy*dy*dz * sqrt5
+                            + coeff[9] * dx*dy*dz * sqrt15
+                            )
+                elif l == 4:
+                    target[ixyz] += radial * (
+                              coeff[0] * dx*dx*dx*dx
+                            + coeff[1] * dy*dy*dy*dy
+                            + coeff[2] * dz*dz*dz*dz
+                            + coeff[3] * dx*dx*dx*dy * sqrt_35_5
+                            + coeff[4] * dx*dx*dx*dz * sqrt_35_5
+                            + coeff[5] * dy*dy*dy*dx * sqrt_35_5
+                            + coeff[6] * dy*dy*dy*dz * sqrt_35_5
+                            + coeff[7] * dz*dz*dz*dx * sqrt_35_5
+                            + coeff[8] * dz*dz*dz*dy * sqrt_35_5
+                            + coeff[9] * dx*dx*dy*dy * sqrt_35_3
+                            + coeff[10] * dx*dx*dz*dz * sqrt_35_3
+                            + coeff[11] * dy*dy*dz*dz * sqrt_35_3
+                            + coeff[12] * dx*dx*dy*dz * sqrt_35_1
+                            + coeff[13] * dy*dy*dx*dz * sqrt_35_1
+                            + coeff[14] * dz*dz*dx*dy * sqrt_35_1
+                            )
+    free(expxx)
+    free(expyy)
+    free(expzz)
+
+cdef class OrbitalCalculater:
     """Computes value of orbital at real space points"""
+    cdef object shells
+    cdef object coeff
+    cdef DTYPE_t[:] logmxcoeff
+    cdef int nshells
+    cdef CShell* cshells
+    cdef Shell sh
 
     def __init__(self, shells, coeff):
         self.shells = shells
         self.coeff = np.array(coeff, dtype=DTYPE)
 
+        cdef ndarray[DTYPE_t, ndim=1] sh_exponents
+        cdef ndarray[DTYPE_t, ndim=1] sh_prim_coeffs
+        cdef ndarray[DTYPE_t, ndim=2] sh_norms
+        cdef ndarray[DTYPE_t, ndim=1] sh_denormed_coeffs
+
+        self.nshells = len(shells)
+        self.cshells = <CShell*>malloc(self.nshells * sizeof(CShell))
+        for ish in range(self.nshells):
+            sh = shells[ish]
+            sh_exponents = sh.exponents
+            sh_prim_coeffs = sh.prim_coeffs
+            sh_norms = sh.norms
+            sh_denormed_coeffs = sh.denormed_coeffs
+
+            self.cshells[ish].X = sh.X
+            self.cshells[ish].Y = sh.Y
+            self.cshells[ish].Z = sh.Z
+            self.cshells[ish].l = sh.l
+            self.cshells[ish].start = sh.start
+            self.cshells[ish].size = sh.size
+            self.cshells[ish].nexp = len(sh.exponents)
+            self.cshells[ish].exponents = &sh_exponents[0]
+            self.cshells[ish].prim_coeffs = &sh_prim_coeffs[0]
+            self.cshells[ish].norms = &sh_norms[0,0]
+            self.cshells[ish].denormed_coeffs = &sh_denormed_coeffs[0]
+            self.cshells[ish].mxx = sh.mxx
+            self.cshells[ish].most_diffuse = sh.most_diffuse
+            self.cshells[ish].logthr = sh.logthr
+            self.cshells[ish].mxnorm = sh.mxnorm
+
         # use very small number to replace zeros
         self.logmxcoeff = np.log(np.array([
-            max(np.max(abs(self.coeff[sh.start:sh.start + sh.size])), 1e-30)
+            max(np.max(abs(coeff[sh.start:sh.start + sh.size])), 1e-30)
             for sh in self.shells], dtype=DTYPE))
 
     def bounding_box(self, thr=1.0e-5):
@@ -554,7 +624,7 @@ class OrbitalCalculater(object):
 
         return p0, p1
 
-    def value(self, x, y, z):
+    cpdef value(self, x, y, z):
         """Returns value of the orbital at specified point"""
         out = 0.0
         for sh, lmx in zip(self.shells, self.logmxcoeff):
@@ -562,19 +632,33 @@ class OrbitalCalculater(object):
             out += val
         return out
 
-    def plane_values(self, xvals, yvals, z_a):
+    cpdef plane_values(self, xvals, yvals, z_a):
         out = np.zeros([len(xvals), len(yvals)], dtype=DTYPE)
         for sh, lmx in zip(self.shells, self.logmxcoeff):
             sh.add_plane_values(xvals, yvals, z_a, self.coeff[sh.start:sh.start+sh.size],
                     out, logmxcoeff=lmx)
         return out
 
-    def box_values(self, xvals, yvals, zvals):
-        out = np.zeros([len(xvals), len(yvals), len(zvals)], dtype=DTYPE)
+    @cython.boundscheck(CYDEBUG)
+    @cython.wraparound(CYDEBUG)
+    @cython.initializedcheck(CYDEBUG)
+    @cython.nonecheck(CYDEBUG)
+    cpdef box_values(self, ndarray[DTYPE_t, ndim=1, mode="c"] xvals,
+            ndarray[DTYPE_t, ndim=1, mode="c"] yvals,
+            ndarray[DTYPE_t, ndim=1, mode="c"] zvals):
+        cdef int nshells = self.nshells
+        cdef int ish, nx, ny, nz
 
-        for sh, lmx in zip(self.shells, self.logmxcoeff):
-            sh.add_box_values(xvals, yvals, zvals, self.coeff[sh.start:sh.start+sh.size],
-                    out, logmxcoeff=lmx)
+        nx = len(xvals)
+        ny = len(yvals)
+        nz = len(zvals)
+
+        cdef ndarray[DTYPE_t, ndim=3, mode="c"] out = np.zeros([nx, ny, nz], dtype=DTYPE)
+        cdef ndarray[DTYPE_t, ndim=1, mode="c"] coeff = np.array(self.coeff, dtype=DTYPE)
+
+        for ish in range(nshells):
+            add_box_values(&self.cshells[ish], nx, &xvals[0], ny, &yvals[0], nz, &zvals[0],
+                    &coeff[self.cshells[ish].start], &out[0,0,0], self.logmxcoeff[ish])
 
         return out
 
@@ -588,5 +672,4 @@ class OrbitalCalculater(object):
         dV = (xvals[1] - xvals[0]) * (yvals[1] - yvals[0]) * (zvals[1] - zvals[0])
         boxvalues = self.box_values(xvals, yvals, zvals).reshape(-1)
 
-        return [0.1]
         return isovalue_containing_proportion(values, boxvalues, dV)

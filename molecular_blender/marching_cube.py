@@ -485,10 +485,10 @@ def molden_isosurface(orbital, isovalues, resolution, name="iso", wm=None, metho
     p0, p1 = orbital.bounding_box(min([abs(x) for x in isovalues]) * 0.001)
     axes = np.eye(3, dtype=DTYPE) * bohr2ang
 
-    return isosurface(p0, p1, resolution, isovalues, orbital.plane_values, axes, name, wm, rough_resolution=rough_resolution)
+    return isosurface(p0, p1, resolution, isovalues, orbital.box_values, axes, name, wm, rough_resolution=rough_resolution)
 
 
-def isosurface_outline(p0, p1, npoints, isovalues, isoplane_func, axes, name, wm=None):
+def isosurface_outline(p0, p1, npoints, isovalues, box_func, axes, name, wm=None):
     """Returns low resolution outline of an isosurface"""
     xvals, xstep = np.linspace(p0[0], p1[0], num=npoints[0], retstep=True, endpoint=True, dtype=DTYPE)
     yvals, ystep = np.linspace(p0[1], p1[1], num=npoints[1], retstep=True, endpoint=True, dtype=DTYPE)
@@ -498,7 +498,9 @@ def isosurface_outline(p0, p1, npoints, isovalues, isoplane_func, axes, name, wm
 
     outlines = [ ]
     z = p0[2]
-    plane_values_1 = isoplane_func(xvals, yvals, z)
+    box_values = box_func(xvals, yvals, zvals)
+
+    plane_values_1 = box_values[:,:,0]
 
     cornervalues = [0] * 8
 
@@ -508,7 +510,7 @@ def isosurface_outline(p0, p1, npoints, isovalues, isoplane_func, axes, name, wm
     for zi in range(1, nz):
         z = zvals[zi-1]
         z2 = zvals[zi]
-        plane_values_2 = isoplane_func(xvals, yvals, z2)
+        plane_values_2 = box_values[:,:,zi]
         for yi in range(ny-1):
             y = yvals[yi]
             y2 = yvals[yi+1]
@@ -540,18 +542,18 @@ def isosurface_outline(p0, p1, npoints, isovalues, isoplane_func, axes, name, wm
     return outlines
 
 
-def isosurface(p0, p1, resolution, isovalues, isoplane_func, axes, name, wm=None, method="adaptive",
+def isosurface(p0, p1, resolution, isovalues, box_func, axes, name, wm=None, method="adaptive",
         rough_resolution=0.2*ang2bohr, max_subdivide=4):
     """Return set of triangles from function object"""
 
     if method == "adaptive":
-        return isosurface_adaptive(p0, p1, rough_resolution, resolution, max_subdivide, isovalues, isoplane_func, axes, name, wm)
+        return isosurface_adaptive(p0, p1, rough_resolution, resolution, max_subdivide, isovalues, box_func, axes, name, wm)
     else:
         npoints = [ int(math.ceil((b-a)/(resolution*ang2bohr))) for a, b in zip(p0, p1) ]
-        return isosurface_simple(p0, p1, npoints, isovalues, isoplane_func, axes, name, wm)
+        return isosurface_simple(p0, p1, npoints, isovalues, box_func, axes, name, wm)
 
 
-def isosurface_adaptive(p0, p1, resolution_start, resolution_end, max_subdivide, isovalues, isoplane_func, axes, name, wm=None):
+def isosurface_adaptive(p0, p1, resolution_start, resolution_end, max_subdivide, isovalues, box_func, axes, name, wm=None):
     """Return set of triangles from function object from multi-pass adaptive algorithm"""
 
     # let's start by finding the nearest integer that provides a rough layer of at least 0.25 A
@@ -560,20 +562,20 @@ def isosurface_adaptive(p0, p1, resolution_start, resolution_end, max_subdivide,
 
     subdivide = [ max_subdivide for x in range(3) ]
 
-    outlines = isosurface_outline(p0, p1, np_start, isovalues, isoplane_func, axes, name, wm)
+    outlines = isosurface_outline(p0, p1, np_start, isovalues, box_func, axes, name, wm)
 
     # np_now is the effective number of points that would be produced by the final pass
     np_now = [ a * s for a, s in zip(np_start, subdivide) ]
 
     while not all([now > want for now, want in zip(np_now, np_min_end)]):
         new_outlines = []
-        boxgen = ( (pp0, pp1, subdivide, isovalues, isoplane_func, axes, name, wm) for pp0, pp1 in outlines )
+        boxgen = ( (pp0, pp1, subdivide, isovalues, box_func, axes, name, wm) for pp0, pp1 in outlines )
         #with multiprocessing.Pool(processes=1) as pool:
         new_outlines = starmap(isosurface_outline, boxgen)
 
         outlines = sum(new_outlines, [])
         #for pp0, pp1 in outlines:
-        #    o = isosurface_outline(pp0, pp1, subdivide, isovalues, isoplane_func, axes, name, wm)
+        #    o = isosurface_outline(pp0, pp1, subdivide, isovalues, box_func, axes, name, wm)
         #    new_outlines.extend(o)
 
         #outlines = new_outlines
@@ -583,7 +585,7 @@ def isosurface_adaptive(p0, p1, resolution_start, resolution_end, max_subdivide,
     # now build actual triangles from the list of active boxes from above
     triangles = None
     vertlist = None
-    boxgen = ( (pp0, pp1, subdivide, isovalues, isoplane_func, axes, name) for pp0, pp1 in outlines )
+    boxgen = ( (pp0, pp1, subdivide, isovalues, box_func, axes, name) for pp0, pp1 in outlines )
     #with multiprocessing.Pool() as pool:
     vertlist = starmap(isosurface_simple, boxgen)
 
@@ -596,7 +598,7 @@ def isosurface_adaptive(p0, p1, resolution_start, resolution_end, max_subdivide,
 
     return triangles
 
-def isosurface_simple(p0, p1, npoints, isovalues, isoplane_func, axes, name, wm=None):
+def isosurface_simple(p0, p1, npoints, isovalues, box_func, axes, name, wm=None):
     """Return set of triangles from function object in single pass algorithm"""
     triangle_sets = [{"isovalue": iso, "name" : name} for iso in isovalues]
     tri_list = [[] for iso in isovalues]
@@ -608,7 +610,10 @@ def isosurface_simple(p0, p1, npoints, isovalues, isoplane_func, axes, name, wm=
     r = (xstep, ystep, zstep)
 
     z = p0[2]
-    plane_values_1 = isoplane_func(xvals, yvals, z)
+
+    box_values = box_func(xvals, yvals, zvals)
+
+    plane_values_1 = box_values[:,:,0]
 
     cornervalues = [0] * 8
 
@@ -619,7 +624,7 @@ def isosurface_simple(p0, p1, npoints, isovalues, isoplane_func, axes, name, wm=
         z = zvals[zi-1]
         z2 = zvals[zi]
 
-        plane_values_2 = isoplane_func(xvals, yvals, z2)
+        plane_values_2 = box_values[:,:,zi]
         for yi in range(ny-1):
             y = yvals[yi]
             y2 = yvals[yi+1]
