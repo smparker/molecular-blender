@@ -47,7 +47,7 @@ def molden_isosurface(orbital, isovalues, resolution, name="iso", wm=None, metho
 
 
 def isosurface(p0, p1, resolution, isovalues, box_func, axes, name, wm=None, method="adaptive",
-        rough_resolution=0.2*ang2bohr, max_subdivide=4):
+        rough_resolution=0.2*ang2bohr, max_subdivide=2):
     """Return set of triangles from function object"""
 
     if method == "adaptive":
