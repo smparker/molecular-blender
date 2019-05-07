@@ -1,4 +1,4 @@
-# cython: profile=True
+# cython: profile=False
 # -*- coding: utf-8 -*-
 #
 #  Molecular Blender
@@ -31,7 +31,7 @@ import numpy as np
 cimport numpy as np
 
 from numpy cimport ndarray
-from libc.math cimport sqrt, exp
+from libc.math cimport sqrt, exp, fabs
 from libc.stdlib cimport malloc, free
 
 DTYPE = np.float32
@@ -428,7 +428,7 @@ cdef void add_box_values(CShell* shell,
         int nz, DTYPE_t* zz,
         DTYPE_t* coeff,
         DTYPE_t* target,
-        float logmxcoeff):
+        float logmxcoeff) nogil:
     cdef float X = shell.X
     cdef float Y = shell.Y
     cdef float Z = shell.Z
@@ -452,13 +452,13 @@ cdef void add_box_values(CShell* shell,
     cdef float z0 = zz[0] - Z
     cdef float z1 = zz[nz-1] - Z
 
-    cdef float min_x = min(abs(x0),abs(x1))
+    cdef float min_x = min(fabs(x0),fabs(x1))
     if (x0*x1 < 0):
         min_x = 0.0
-    cdef float min_y = min(abs(y0),abs(y1))
+    cdef float min_y = min(fabs(y0),fabs(y1))
     if (y0*y1 < 0):
         min_y = 0.0
-    cdef float min_z = min(abs(z0),abs(z1))
+    cdef float min_z = min(fabs(z0),fabs(z1))
     if (z0*z1 < 0):
         min_z = 0.0
 
