@@ -127,7 +127,7 @@ class VolumeData(object):
         self.dvol = np.prod(self.axis_norms)
 
     def isovalue_containing_proportion(self, values=[0.90]):
-        return isovalue_containing_proportion(values, self.data, dvol)
+        return isovalue_containing_proportion(values, self.data, self.dvol)
 
     @classmethod
     def from_dict(cls, inp):

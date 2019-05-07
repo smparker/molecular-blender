@@ -4,8 +4,9 @@ import numpy as np
 import math
 from .util import round_sigfigs
 
-def isovalue_containing_proportion(values, volume_data, dV):
+def isovalue_containing_proportion(values, volume_data_sh, dV):
     cumulative = 0.0
+    volume_data = volume_data_sh.reshape(-1)
     data = np.zeros([len(volume_data), 2], dtype=np.float32)
     for i, v in enumerate(sorted(volume_data, key=lambda x: x*x, reverse=True)):
         data[i,0] = abs(v)

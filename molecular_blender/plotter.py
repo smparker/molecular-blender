@@ -34,7 +34,7 @@ import bmesh
 from .molecule import Molecule
 from .periodictable import elements
 from .stylers import get_styler
-from .marching_cube import cube_isosurface, molden_isosurface
+from .isosurfaces import cube_isosurface, molden_isosurface
 
 from .util import stopwatch, Timer, unique_name
 from .importers import molecule_from_file
