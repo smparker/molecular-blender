@@ -433,7 +433,7 @@ cdef void add_box_values(CShell* shell,
     cdef float Y = shell.Y
     cdef float Z = shell.Z
 
-    cdef float logthresh = shell.logthr
+    cdef float logthresh = shell.logthr - logmxcoeff
 
     cdef int ix
     cdef int iy
@@ -463,7 +463,7 @@ cdef void add_box_values(CShell* shell,
         min_z = 0.0
 
     cdef float min_rr = min_x*min_x + min_y*min_y + min_z*min_z
-    if min_rr >= logthresh - logmxcoeff:
+    if min_rr >= logthresh:
         return
 
     cdef float sqrt3 = sqrt(3.0)
@@ -486,6 +486,8 @@ cdef void add_box_values(CShell* shell,
     expyy = <DTYPE_t*>malloc(ny*nexp*sizeof(DTYPE_t))
     expxx = <DTYPE_t*>malloc(nexp*sizeof(DTYPE_t))
 
+    cdef float xthresh, ythresh, zthresh
+
     for iy in range(ny):
         dy = yy[iy] - Y
         for iexp in range(nexp):
@@ -498,14 +500,27 @@ cdef void add_box_values(CShell* shell,
 
     for ix in range(nx):
         dx = xx[ix] - X
+
+        xthresh = dx * dx + min_y*min_y + min_z*min_z
+        if xthresh > logthresh:
+            continue
+
         for iexp in range(nexp):
             expxx[iexp] = exp(-exponents[iexp] * dx*dx) * denormed_coeffs[iexp]
 
         for iy in range(ny):
             dy = yy[iy] - Y
 
+            ythresh = dx * dx + dy * dy + min_z*min_z
+            if ythresh > logthresh:
+                continue
+
             for iz in range(nz):
                 dz = zz[iz] - Z
+
+                zthresh = dx * dx + dy * dy + dz*dz
+                if zthresh > logthresh:
+                    continue
 
                 ixyz = iz + iy*nz + ix*nz*ny
 
