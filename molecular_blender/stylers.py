@@ -137,10 +137,9 @@ class PaletteElementStyler(object):
 
     def isosurface_material(self, isoname):
         """Return isosurface material"""
-        out = bpy.data.materials.new(isoname)
-        out.diffuse_color = self.iso_plus_color if "plus" in isoname else self.iso_minus_color
-
-        return out
+        color = self.iso_plus_color if "plus" in isoname else self.iso_minus_color
+        return self.make_principled_material(isoname, base_color=color,
+                metallic=0.7, specular=1.0, roughness=0.25, sheen=1.0)
 
     def outer_isosurface_material(self, isoname):
         """Return isosurface material"""
