@@ -15,21 +15,35 @@ quantum chemistry
 - draw molecular orbital isosurfaces with .cube files or .molden files
 
 ## Installation
-There are two basic ways to install Molecular Blender, either through
-the Blender interface or directly adding it to Blender's internal list of addons.
+There are two basic ways to install Molecular Blender, depending on whether you
+want to use the optional cython enhanced isosurface routines (highly recommended,
+if you're drawing isosurfaces at all).
 
-### Through Blender
-The simplest way to install would be to download this repository as a zip file.
-Then, navigate to `User Preferences` in Blender and select the `Add-ons` pane.
-Click the `Install from File...` button at the bottom of the panel and select
-the .zip file of the repository. Then activate it in the `Add-ons` window (and
-hit `Save User Settings` for good measure).
+### Using setup.py (cython compatible)
+The most robust way to install is to use the included `setup.py`:
 
-### Manual
-You can also add a directory or a symlink directly to the addons folder.
-The recommended way for developers to install Molecular Blender is with a symlink:
+    cd /path/to/molecular/blender/repo
+    echo '{ "Copy Target" : "/path/to/blender/scripts/addons" }' > conf.json
+    python3 setup.py build --copy
 
-    ln -s /path/to/molecular/blender/repo /path/to/blender/scripts/addons/
+For this to work, you'll need to use python 3.7 (the same version used in Blender 2.80),
+and have cython installed for it.
+
+On Mac OS X, the path for a user supplied addon is
+
+    /Users/<username>/Library/Application\ Support/Blender/<version>/scripts/addons
+
+where `<username>` and `<version>` should be replaced with your username and the
+Blender version you are using.
+
+### Symlink (no cython)
+If you are okay with skipping python, you can directly symlink from the python
+package to the blender scripts directory. The non-cython version has all the same
+functionality as the cython version, but may be significantly slower for certain
+tasks (cython version is roughly 100 times faster at drawing orbitals from molden
+files).
+
+    ln -s /path/to/molecular/blender/repo/molecular_blender /path/to/blender/scripts/addons/
 
 and then it should appear in the list of Import-Export addons that can be
 activated like any other addon.

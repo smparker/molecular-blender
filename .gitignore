@@ -1,3 +1,4 @@
+conf.json
 compilation_info.json
 *.c
 *.cpp
