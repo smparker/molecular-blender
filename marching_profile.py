@@ -14,7 +14,7 @@ import cProfile
 import molecular_blender as mb
 
 def run():
-    geo = mb.importers.molecule_from_file('zine.molden', {})
+    geo = mb.importers.molecule_from_file('examples/zine.molden', {})
     orbitals = mb.orbitals.MOData.from_dict(geo)
     xyz = np.linspace(-10, 10, 50)
 

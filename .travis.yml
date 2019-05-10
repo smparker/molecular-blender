@@ -28,4 +28,4 @@ install:
   - "echo \" { \\\"Copy Target\\\" : \\\"${BLENDER_DIR}/scripts/addons\\\" }" > conf.json"
   - python setup.py build --copy
 
-script: ./run_test.sh ${BNAME}/blender
+script: ./run_test.sh -b ${BNAME}/blender
