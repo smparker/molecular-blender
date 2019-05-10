@@ -25,7 +25,7 @@ install:
   # register addon
   - export BLENDER_DIR=${HOME}/.config/blender/${BLENDER_VERSION}
   - mkdir -p ${BLENDER_DIR}/scripts/addons
-  - "echo \" { \\\"Copy Target\\\" : \\\"${BLENDER_DIR}/scripts/addons\\\" }" > conf.json"
+  - "echo \" { \\\"Copy Target\\\" : \\\"${BLENDER_DIR}/scripts/addons\\\" }\" > conf.json"
   - python setup.py build --copy
 
 script: ./run_test.sh -b ${BNAME}/blender
