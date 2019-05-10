@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 usage() { echo "Usage: $0 [-t | -p] [-b /path/to/blender]" 1>&2; exit 1; }
 
 run_blender() {

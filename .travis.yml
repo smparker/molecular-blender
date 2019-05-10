@@ -9,7 +9,7 @@ before_install:
   # install blender from official sources.
   - sudo apt-get install blender clang
   # install cython
-  - sudo pip install cython
+  - sudo pip3 install cython
 
 install:
   # manually install recent blender off mirror
