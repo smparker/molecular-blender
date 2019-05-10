@@ -25,6 +25,8 @@
 
 import re
 import numpy as np
+import json
+import os
 
 from .util import stopwatch
 from .periodictable import symbols
@@ -74,12 +76,15 @@ class Reader(object):
 
 def molecule_from_file(filename, options):
     """Tries to guess filetype based on extension, then calls the appropriate reader"""
-    if ".xyz" in filename.lower():
+    if filename.lower().endswith(".xyz"):
         return molecule_from_xyz(filename, options)
-    elif ".molden" in filename.lower():
+    elif filename.lower().endswith(".molden"):
         return molecule_from_molden(filename, options)
-    elif ".cube" in filename.lower():
+    elif filename.lower().endswith(".cub") or filename.lower().endswith(".cube"):
         return molecule_from_cube(filename, options)
+    elif filename.lower().endswith(".json"):
+        return molecule_from_json(filename, options)
+
     # fall back to Babel import
     return molecule_from_babel(filename, options)
 
@@ -167,7 +172,7 @@ MO_RE = re.compile(r"\[\s*mo\s*\]", flags=re.IGNORECASE)
 NEWSECTION_RE = re.compile(r"\s*\[")
 
 
-def molden_read_atoms(f, ignore_h=False):
+def molden_read_atoms(f, ignore_h=False, animate=False):
     """reads [Atoms] section of molden files"""
     out = []
     line = f.restore_mark("atoms")
@@ -188,7 +193,10 @@ def molden_read_atoms(f, ignore_h=False):
             charge = 0.0
             grad = [0.0, 0.0, 0.0]
             hidden = ignore_h and element == "h"
-            out.append(make_atom_dict(element, pos, index, charge, grad, hidden))
+            new_atom = make_atom_dict(element, pos, index, charge, grad, hidden)
+            if animate:
+                new_atom["trajectory"] = [make_snap_dict(pos, charge, grad)]
+            out.append(new_atom)
             line = f.readline()
             m = NEWSECTION_RE.match(line)
     except EOFError:
@@ -322,6 +330,7 @@ def molecule_from_molden(filename, _options):
     """Read molden file to look for coordinates and optionally orbital data"""
     # molden format is not terribly efficient, but hopefully this doesn't matter
     ignore_h = _options.get("ignore_hydrogen", False)
+    animate = _options.get("plot_type", "") == "animate"
     out = {"atoms": []}
 
     marks = {"molden": MOLDEN_RE,
@@ -355,7 +364,7 @@ def molecule_from_molden(filename, _options):
             raise Exception("Molden file is missing [Atoms] specification")
 
         # read through atoms section
-        out["atoms"] = molden_read_atoms(f, ignore_h)
+        out["atoms"] = molden_read_atoms(f, ignore_h, animate=animate)
 
         if f.is_marked("gto"):  # read through GTO section to build basis
             make_spherical = []
@@ -391,6 +400,7 @@ def molecule_from_cube(filename, options):
     out = {"atoms": [], "volume": {}}
 
     ignore_h = options.get("ignore_hydrogen", False)
+    animate = options.get("plot_type", "") == "animate"
 
     with Reader(filename) as f:
         f.readline()  # first two lines are comments
@@ -433,6 +443,12 @@ def molecule_from_cube(filename, options):
             iatom = int(ato)
             position = [bohr2ang * float(xx) for xx in [x, y, z]]
             hidden = ignore_h and symbols[iatom] == "h"
+            new_atom = make_atom_dict(symbols[iatom], position, i, chg,
+                    [0.0, 0.0, 0.0], hidden)
+
+            if animate:
+                new_atom["trajectory"] = [make_snap_dict(position, 0.0, [0.0, 0.0, 0.0])]
+
             out["atoms"].append(make_atom_dict(
                 symbols[iatom], position, i, chg, [0.0, 0.0, 0.0], hidden))
 
@@ -451,6 +467,42 @@ def molecule_from_cube(filename, options):
     out["volume"]["data"] = data.reshape(nres)
 
     return out
+
+
+def molecule_from_json(filename, options):
+    data = json.load(open(filename))
+
+    if "molecules" not in data:
+        return
+
+    animate = options.get("plot_type", "") == "animate"
+    molecules = []
+
+    for i, mol in enumerate(data["molecules"]):
+        fil = mol["filename"]
+        if fil.lower().endswith(".json"):
+            raise Exception("Molecules specified in a json must be xyz, molden or cube")
+        filnam = os.path.join(os.path.dirname(filename), fil)
+        moldata = molecule_from_file(filnam, options)
+        iframe = mol["frame"] if "frame" in mol else i
+        molecules.append( { "molecule" : moldata, "frame" : iframe } )
+        if not animate:
+            break
+
+    first = molecules.pop(0)
+    merged = first["molecule"]
+    natoms = len(merged["atoms"])
+
+    print("nframes: ", len(molecules))
+    for mol in molecules:
+        if len(mol["molecule"]["atoms"]) != natoms:
+            raise Exception("Number of atoms must be the same in each frame.")
+        for out_atom, frame_atom in zip(merged["atoms"], mol["molecule"]["atoms"]):
+            if out_atom["symbol"] != frame_atom["symbol"]:
+                raise Exception("Order of atoms must be the same for each frame")
+            out_atom["trajectory"].append(frame_atom["trajectory"][0])
+
+    return merged
 
 
 def molecule_from_babel(_filename, _options):

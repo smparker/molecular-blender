@@ -46,7 +46,7 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
 
     # in the template, we'll figure it out later
     filter_glob: StringProperty(
-        default="*.xyz;*.molden;*.cube",
+        default="*.xyz;*.molden;*.cube;*.cub;*.json",
         options={'HIDDEN'})
 
     object_type: EnumProperty(
