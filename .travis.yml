@@ -1,11 +1,13 @@
 language: python
+python:
+  - "3.7"
 dist: xenial
 
 before_install:
   # update apt-gets repository sources
   - sudo apt-get update -qq
   # install blender from official sources.
-  - sudo apt-get install blender
+  - sudo apt-get install blender clang
   # install cython
   - sudo pip install cython
 
@@ -13,7 +15,7 @@ install:
   # manually install recent blender off mirror
   - export BLENDER_VERSION=2.80
   - echo "Installing Blender ${BLENDER_VERSION}"
-  - export BNAME="blender-2.80-480a09a92f7f-linux-glibc224-x86_64"
+  - export BNAME="blender-2.80-427c75e4c20b-linux-glibc224-x86_64"
   - wget "https://builder.blender.org/download/${BNAME}.tar.bz2"
   - tar -xjf ${BNAME}.tar.bz2
 
@@ -23,8 +25,7 @@ install:
   # register addon
   - export BLENDER_DIR=${HOME}/.config/blender/${BLENDER_VERSION}
   - mkdir -p ${BLENDER_DIR}/scripts/addons
-  - sudo ln -s ${PWD} ${BLENDER_DIR}/scripts/addons/molecular_blender
-  - pwd
-  - ls -l ${BLENDER_DIR}/scripts/addons
+  - echo " { \"Copy Target\" : \"${BLENDER_DIR}/scripts/addons\" }" > conf.json
+  - python setup.py build --copy
 
 script: ./run_test.sh ${BNAME}/blender
