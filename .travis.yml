@@ -2,14 +2,16 @@ language: python
 python:
   - "3.7"
 dist: xenial
+addons:
+  apt:
+    packages:
+      - clang
+      - gcc
+      - blender
 
 before_install:
-  # update apt-gets repository sources
-  - sudo apt-get update -qq
-  # install blender from official sources.
-  - sudo apt-get install blender clang
   # install cython
-  - sudo pip3 install cython
+  - pip install -q cython
 
 install:
   # manually install recent blender off mirror
