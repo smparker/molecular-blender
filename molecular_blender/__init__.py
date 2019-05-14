@@ -58,13 +58,6 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
                ('wireframe', "Wireframe", "Wireframe")),
         default='mesh')
 
-    plot_type: EnumProperty(
-        name="Type",
-        description="What to draw",
-        items=(('frame', "Single Frame", "Plot a single frame from an XYZ"),
-               ('animate', "Animation", "Animate from an XYZ")),
-        default='frame')
-
     plot_style: EnumProperty(
         name="Style",
         description="Plot style",
@@ -97,7 +90,7 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     keystride: IntProperty(
         name="Keystride",
         description="Striding between keyframes in animation",
-        default=2)
+        default=1)
 
     animate_bonds: EnumProperty(
         name="Animate bonds",
@@ -142,7 +135,7 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     isovalues: StringProperty(
         name="Isovalues to plot",
         description="List of isovalues to plot densities or orbitals",
-        default="0.8,0.95")
+        default="0.25,0.50")
 
     cumulative: BoolProperty(
         name="Cumulative isovalues",
@@ -170,6 +163,11 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         step=0.01,
         precision=3)
 
+    remesh: IntProperty(
+        name="Remesh Octree Depth",
+        description="Octree depth for remesh modifier",
+        default=6)
+
     charge_offset: FloatProperty(
         name="chgoff",
         description="Use chgfac*(charge + chgoff) to control visibility of charges",
@@ -193,7 +191,7 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     recycle_materials: BoolProperty(
         name="Recycle materials",
         description="Re-use materials generated for previously imported molecules",
-        default=True)
+        default=False)
 
     colors: EnumProperty(
         name="Colors",
@@ -210,7 +208,6 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
                       bond_thickness=self.bond_thickness,
                       hook_atoms=self.hook_atoms,
                       plot_style=self.plot_style,
-                      plot_type=self.plot_type,
                       object_type=self.object_type,
                       keystride=self.keystride,
                       animate_bonds=self.animate_bonds,
@@ -227,6 +224,7 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
                       volume=self.volume,
                       orbital=self.orbital,
                       resolution=self.resolution,
+                      remesh=self.remesh,
                       colors=self.colors)
 
         return {'FINISHED'}

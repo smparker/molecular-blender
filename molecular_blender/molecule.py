@@ -138,7 +138,8 @@ class VolumeData(object):
 class Molecule(object):
     """Atoms and bonds form a molecule"""
 
-    def __init__(self, name, atoms, volume=None, orbitals=None):
+    def __init__(self, name, atoms, volume=None, orbitals=None,
+            volume_trajectory=None, orbitals_trajectory=None):
         """Create Molecule"""
         self.name = name
         self.atoms = atoms
@@ -149,14 +150,21 @@ class Molecule(object):
         self.chgoff = 1.0
         self.chgfac = 1.0
         self.volume = volume
+        self.volume_trajectory = volume_trajectory
         self.orbitals = orbitals
+        self.orbitals_trajectory = orbitals_trajectory
 
     @classmethod
     def from_dict(cls, name, inp):
         """Build Molecule from dictionary"""
         vol = VolumeData.from_dict(inp["volume"]) if "volume" in inp else None
+        vol_traj = [ VolumeData.from_dict(vol) for vol
+                in inp["volume_trajectory"] ] if "volume_trajectory" in inp else None
         modata = MOData.from_dict(inp) if "basis" in inp else None
-        return cls(name, [Atom.from_dict(x) for x in inp["atoms"]], volume=vol, orbitals=modata)
+        mo_traj = [ MOData.from_dict(mo) for mo
+                in inp["orbital_trajectory" ] ] if "orbital_trajectory" in inp else None
+        return cls(name, [Atom.from_dict(x) for x in inp["atoms"]], volume=vol, orbitals=modata,
+            volume_trajectory=vol_traj, orbitals_trajectory=mo_traj)
 
     def center_of_mass(self):
         """Computes center of mass from atoms list"""

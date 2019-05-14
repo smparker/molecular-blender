@@ -42,9 +42,11 @@ from .importers import molecule_from_file
 
 def plot_prep(molecule, options):
     """Preprocess options"""
+    process_options(options)
     if options["charges"] != "none":
         molecule.chgfac = options["charge_factor"]
         molecule.chgoff = options["charge_offset"]
+    return options
 
 @stopwatch("make_materials")
 def make_materials(molecule, styler, options):
@@ -506,7 +508,7 @@ def PlotWireFrame(context, molecule, _options):
 
 def AnimateMolecule(context, molecule, options):
     """Keyframes position of atoms and opacity of bonds"""
-    kstride = options["keystride"]
+    frame_map = get_frame_mapper(options)
 
     # check to make sure trajectory information is stored for at least the first atom
     if not molecule.atoms[0].trajectory:
@@ -536,7 +538,7 @@ def AnimateMolecule(context, molecule, options):
         for (iframe, isnap) in enumerate(atom.trajectory):
             atom_obj.location = isnap.position
             atom_obj.keyframe_insert(
-                data_path='location', frame=iframe * kstride + 1)
+                data_path='location', frame=frame_map(iframe))
 
             if options["charges"] != "none":
                 if options["charges"] == "scale":
@@ -545,7 +547,7 @@ def AnimateMolecule(context, molecule, options):
                     negcharge.scale = molecule.scale(nc)
                     for x in [pluscharge, negcharge]:
                         x.keyframe_insert(data_path='scale',
-                                          frame=iframe * kstride + 1)
+                                          frame=frame_map(iframe))
 
     if options["animate_bonds"] == "dynamic":
         bondmask = molecule.bond_mask(options)
@@ -555,14 +557,14 @@ def AnimateMolecule(context, molecule, options):
                 for (iframe, mask) in enumerate(bondmask[(i, j)]):
                     bond_obj.hide_viewport = not mask
                     bond_obj.keyframe_insert(
-                        data_path="hide_viewport", frame=iframe * kstride + 1)
+                        data_path="hide_viewport", frame=frame_map(iframe))
                     bond_obj.hide_render = not mask
                     bond_obj.keyframe_insert(
-                        data_path="hide_render", frame=iframe * kstride + 1)
+                        data_path="hide_render", frame=frame_map(iframe))
     return
 
 
-def create_mesh(name, verts, faces, material, context, remesh=True):
+def create_mesh(name, verts, faces, material, context, remesh=6):
     """Some black magic to make a mesh with the given name, verts, and faces"""
     me = bpy.data.meshes.new(name)  # create a new mesh
     me.from_pydata(verts, [], faces)
@@ -580,10 +582,10 @@ def create_mesh(name, verts, faces, material, context, remesh=True):
     else:
         ob.data.materials.append(material)
 
-    if remesh:
+    if remesh > 0:
         mod = ob.modifiers.new('Remesh', 'REMESH')
         mod.mode = 'SMOOTH'
-        mod.octree_depth = 7
+        mod.octree_depth = remesh
         mod.scale = 0.99
         mod.use_smooth_shade = True
         mod.use_remove_disconnected = False
@@ -614,7 +616,13 @@ def draw_surfaces(molecule, styler, context, options):
     if molecule.volume is None and molecule.orbitals is None:
         return
 
+    # master list of all sets of vertices for plotting
     vertex_sets = []
+    # map set names to the frame at which they are active
+    vertex_trajectory_map = {}
+
+    fmap = get_frame_mapper(options)
+
     wm = context.window_manager
 
     # set up collections
@@ -631,6 +639,20 @@ def draw_surfaces(molecule, styler, context, options):
         # marching cubes to make the surface
         vsets = cube_isosurface(vol.data, vol.origin, vol.axes, isovals, name="cube", wm=wm)
         vertex_sets.extend(vsets)
+        if molecule.volume_trajectory is not None:
+            f0 = fmap(0)
+            if f0 not in vertex_trajectory_map:
+                vertex_trajectory_map[f0] = []
+            vertex_trajectory_map[f0].extend( [ v["name"] for v in vsets ] )
+
+            for i, vol in enumerate(molecule.volume_trajectory, 1):
+                name = "cube-{:5d}".format(i)
+                vsets = cube_isosurface(vol.data, vol.origin, vol.axes, isovals, name=name, wm=wm)
+                fi = fmap(i)
+                if fi not in vertex_trajectory_map:
+                    vertex_trajectory_map[fi] = []
+                vertex_trajectory_map[fi].extend( [ v["name"] for v in vsets ] )
+                vertex_sets.extend(vsets)
     elif molecule.orbitals is not None:  # orbital data was read
         orbitals = molecule.orbitals
         homo = orbitals.homo()
@@ -673,6 +695,24 @@ def draw_surfaces(molecule, styler, context, options):
             vset = molden_isosurface(orb, orbital_isovals, resolution, orbname, wm)
             vertex_sets.extend(vset)
 
+            if molecule.orbitals_trajectory is not None:
+                f0 = fmap(0)
+                if f0 not in vertex_trajectory_map:
+                    vertex_trajectory_map[f0] = []
+                vertex_trajectory_map[f0].extend( [ v["name"] for v in vsets ] )
+
+            for i, orbital_snap in enumerate(molecule.volume_trajectory, 1):
+                name = f"{orbname:s}-{i:4d}"
+                orb = orbital_snap.get_orbital(orbnumber)
+                vsets = molecule_isosurface(orb, orbital_isovals, resolution, name, wm)
+
+                fi = fmap(i)
+                if fi not in vertex_trajectory_map:
+                    vertex_trajectory_map[fi] = []
+                vertex_trajectory_map[fi].extend( [ v["name"] for v in vsets ] )
+
+                vertex_sets.extend(vsets)
+
     meshes = []
     materials = make_iso_materials(molecule, styler, vertex_sets, options)
 
@@ -680,7 +720,9 @@ def draw_surfaces(molecule, styler, context, options):
         # add surfaces to the scene
         name = "{0}_{1}_{2}".format(molecule.name, v["name"], v["isovalue"])
         verts, faces = create_geometry(v["triangles"])
-        meshes.append(create_mesh(name, verts, faces, v["material"], context, options["remesh"]))
+        vmesh = create_mesh(name, verts, faces, v["material"], context, remesh=options["remesh"])
+        v["mesh"] = vmesh
+        meshes.append(vmesh)
 
     mol_obj = bpy.data.objects[molecule.name]
     for m in meshes:
@@ -691,6 +733,17 @@ def draw_surfaces(molecule, styler, context, options):
     # parent them
     context.view_layer.objects.active = mol_obj
     bpy.ops.object.parent_set(type='OBJECT', keep_transform=False)
+
+    if vertex_trajectory_map: # keyframe visibility for surfaces
+        for frame in vertex_trajectory_map:
+            for v in vertex_sets:
+                obj = v["mesh"]
+                vn = v["name"]
+                hide = vn not in vertex_trajectory_map[frame]
+                obj.hide_viewport = hide
+                obj.hide_render = hide
+                obj.keyframe_insert(data_path="hide_viewport", frame=frame)
+                obj.keyframe_insert(data_path="hide_render", frame=frame)
 
 @stopwatch("draw rings")
 def plot_rings(context, molecule, options):
@@ -726,17 +779,16 @@ def plot_rings(context, molecule, options):
         bpy.ops.object.parent_set(type="OBJECT", keep_transform=False)
 
 
-def process_options(filename, options):
-    """postprocess choices that might interact with each other"""
-
+def default_options(options):
+    """add defaults to options in case called outside of blender"""
     # force defaults in case called outside of the blender UI
     defaults = {"bonds": True,
                 "bond_thickness": 0.2,
                 "hook_atoms": "auto",
                 "plot_style": "sticks",
-                "plot_type": "frame",
+                "plot_type": "auto",
                 "object_type": "mesh",
-                "keystride": 2,
+                "keystride": 1,
                 "animate_bonds": "staticfirst",
                 "universal_bonds": True,
                 "ignore_hydrogen": True,
@@ -745,12 +797,13 @@ def process_options(filename, options):
                 "charges_offset": 0.0,
                 "charges_factor": 1.0,
                 "find_aromatic": False,
-                "recycle_materials": True,
-                "isovalues": "",
+                "recycle_materials": False,
+                "isovalues": "0.25,0.50",
+                "cumulative": True,
                 "volume": "orbital",
-                "orbital": 0,
-                "remesh" : True,
-                "resolution": 0.5,
+                "orbital": "homo",
+                "remesh" : 6,
+                "resolution": 0.05,
                 "colors": "default"
                }
 
@@ -758,8 +811,14 @@ def process_options(filename, options):
         if d not in options:
             options[d] = defaults[d]
 
+    return options
+
+
+def process_options(options):
+    """postprocess choices that might interact with each other"""
+
     hooking = {"on": True, "off": False,
-               "auto": options["plot_type"] == "animate"}
+               "auto": options["plot_type"] == "animate" }
     options["hook_atoms"] = hooking[options["hook_atoms"]]
 
     options["isosurfaces"] = "isovalues" in options and options["isovalues"] != ""
@@ -782,10 +841,18 @@ def process_options(filename, options):
     return options
 
 
+def get_frame_mapper(options):
+    """ returns a function that maps snapshot number to frame number """
+    stride = options["keystride"]
+    def f(i):
+        return i*stride + 1
+    return f
+
+
 def BlendMolecule(context, filename, **options):
     """basic driver that calls the appropriate plot functions"""
 
-    options = process_options(filename, options)
+    options = default_options(options)
     name = filename.rsplit('.', 1)[0].rsplit('/')[-1]
     molecule = Molecule.from_dict(name, molecule_from_file(filename, options))
     molecule.determine_bonding(options)

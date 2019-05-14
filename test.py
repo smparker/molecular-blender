@@ -84,6 +84,7 @@ class TestAnimateSticksAndCharges(unittest.TestCase):
                          plot_type="animate",
                          animate_bonds="dynamic",
                          ignore_hydrogen=False,
+                         keystride=2,
                          charges="scale",
                          charge_offset=0.95,
                          charge_factor=4.0)

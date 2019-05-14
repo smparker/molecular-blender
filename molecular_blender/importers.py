@@ -107,7 +107,7 @@ def molecule_from_xyz(filename, options):
     """Read in xyz file and return a dictionary of results"""
     out = {"atoms": []}
     ignore_h = options.get("ignore_hydrogen", False)
-    animate = options.get("plot_type", "") == "animate"
+    animate = options.get("plot_type", "") in [ "animate", "auto" ]
 
     with Reader(filename) as f:
         # first line contains number of atoms
@@ -160,6 +160,8 @@ def molecule_from_xyz(filename, options):
                     tmp) >= 8 else [0.0 for x in range(3)]
                 out["atoms"][iatom]["trajectory"].append(
                     make_snap_dict(position, charge, gradient))
+            if animate:
+                options["plot_type"] = "animate"
 
     return out
 
@@ -400,7 +402,7 @@ def molecule_from_cube(filename, options):
     out = {"atoms": [], "volume": {}}
 
     ignore_h = options.get("ignore_hydrogen", False)
-    animate = options.get("plot_type", "") == "animate"
+    animate = options.get("plot_type", "") in [ "animate", "auto" ]
 
     with Reader(filename) as f:
         f.readline()  # first two lines are comments
@@ -449,8 +451,7 @@ def molecule_from_cube(filename, options):
             if animate:
                 new_atom["trajectory"] = [make_snap_dict(position, 0.0, [0.0, 0.0, 0.0])]
 
-            out["atoms"].append(make_atom_dict(
-                symbols[iatom], position, i, chg, [0.0, 0.0, 0.0], hidden))
+            out["atoms"].append(new_atom)
 
         # and finally the volumetric data comes, 6 elements per line in z, y, x order
         ndata = np.prod(nres)
@@ -475,7 +476,10 @@ def molecule_from_json(filename, options):
     if "molecules" not in data:
         return
 
-    animate = options.get("plot_type", "") == "animate"
+    if len(data["molecules"]) > 1:
+        options["plot_type"] = "animate"
+
+    animate = options.get("plot_type", "") in [ "animate", "auto" ]
     molecules = []
 
     for i, mol in enumerate(data["molecules"]):
@@ -493,7 +497,6 @@ def molecule_from_json(filename, options):
     merged = first["molecule"]
     natoms = len(merged["atoms"])
 
-    print("nframes: ", len(molecules))
     for mol in molecules:
         if len(mol["molecule"]["atoms"]) != natoms:
             raise Exception("Number of atoms must be the same in each frame.")
@@ -501,6 +504,17 @@ def molecule_from_json(filename, options):
             if out_atom["symbol"] != frame_atom["symbol"]:
                 raise Exception("Order of atoms must be the same for each frame")
             out_atom["trajectory"].append(frame_atom["trajectory"][0])
+
+        if "volume" in mol["molecule"]:
+            if "volume_trajectory" not in merged:
+                merged["volume_trajectory"] = []
+            merged["volume_trajectory"].append(mol["molecule"]["volume"])
+
+        if "mo" in mol["molecule"] and "gto" in mol["molecule"]:
+            if "orbital_trajectory" not in merged:
+                merged["orbital_trajectory"] = []
+            merged["orbital_trajectory"].append(
+                { x : mol["molecule"][x] for x in [ "atoms", "mo", "basis" ] })
 
     return merged
 
