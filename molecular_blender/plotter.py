@@ -418,7 +418,7 @@ def PlotMolecule(context, molecule, options):
     clock.tick_print("link objects")
 
     # update scene
-    context.scene.update()
+    context.view_layer.update()
 
     clock.tick_print("update scene")
 
