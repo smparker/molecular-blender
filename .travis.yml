@@ -18,7 +18,7 @@ install:
   - export BLENDER_VERSION=2.80
   - echo "Installing Blender ${BLENDER_VERSION}"
   - export BNAME="blender-2.80-linux-glibc217-x86_64"
-  - wget "https://www.blender.org/download/Blender2.80/${BNAME}.tar.bz2"
+  - wget "https://mirror.clarkson.edu/blender/release/Blender2.80/${BNAME}.tar.bz2"
   - tar -xjf ${BNAME}.tar.bz2
 
   # set up path to use this blender
