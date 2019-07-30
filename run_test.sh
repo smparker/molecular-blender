@@ -39,8 +39,8 @@ shift $((OPTIND-1))
 if [ "$blender" == "auto" ]; then
   if [ -x "$(which blender)" ]; then
     BLENDER=blender
-  elif [ -x "/Applications/blender.app/Contents/MacOS/blender" ]; then
-    BLENDER=/Applications/blender.app/Contents/MacOS/blender
+  elif [ -x "/Applications/Blender.app/Contents/MacOS/blender" ]; then
+    BLENDER=/Applications/Blender.app/Contents/MacOS/blender
   fi
 else
   if [ -x "$blender" ]; then
