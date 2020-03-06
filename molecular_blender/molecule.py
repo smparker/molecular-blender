@@ -173,7 +173,7 @@ class Molecule(object):
         for i in self.atoms:
             out += i.position * i.element.mass
             total_mass += i.element.mass
-        out /= total_mass
+        out /= max(total_mass, 1.0e-10)
         return out
 
     @stopwatch("determine_bonding")

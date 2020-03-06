@@ -403,6 +403,7 @@ def molecule_from_cube(filename, options):
 
     ignore_h = options.get("ignore_hydrogen", False)
     animate = options.get("plot_type", "") in [ "animate", "auto" ]
+    expect_dset = False
 
     with Reader(filename) as f:
         f.readline()  # first two lines are comments
@@ -411,6 +412,8 @@ def molecule_from_cube(filename, options):
         # 3rd line is <natoms> <origin_x> <origin_y> <origin_z>
         natoms, ox, oy, oz = f.readline().split()
         natoms = int(natoms)
+        expect_dset = natoms < 0
+        natoms = abs(natoms)
         origin = np.array([ox, oy, oz], dtype=np.float32) * bohr2ang
         out["volume"]["origin"] = origin
 
@@ -453,8 +456,23 @@ def molecule_from_cube(filename, options):
 
             out["atoms"].append(new_atom)
 
+        # optionally check for DSET_IDs, basically labels of different data sets
+        volume_labels = []
+        if expect_dset:
+            dsets = f.readline().split()
+            ndsets = int(dsets.pop(0))
+            for i in range(ndsets):
+                if not dsets:
+                    dsets = f.readline().split()
+                volume_labels.append(int(dsets.pop(0)))
+        else:
+            volume_labels = [ 0 ]
+        assert len(volume_labels) == ndsets
+
         # and finally the volumetric data comes, 6 elements per line in z, y, x order
-        ndata = np.prod(nres)
+        nvol = len(volume_labels)
+        data_layout = nres + [ nvol ]
+        ndata = np.prod(data_layout)
         data = np.zeros(ndata, dtype=np.float32)
         i = 0
         while True:
@@ -465,7 +483,7 @@ def molecule_from_cube(filename, options):
                 break
 
     # now should have shape [nx, ny, nz]
-    out["volume"]["data"] = data.reshape(nres)
+    out["volume"]["data"] = data.reshape(data_layout)[:,:,:,0].copy()
 
     return out
 
