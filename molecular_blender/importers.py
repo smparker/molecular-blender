@@ -467,7 +467,6 @@ def molecule_from_cube(filename, options):
                 volume_labels.append(int(dsets.pop(0)))
         else:
             volume_labels = [ 0 ]
-        assert len(volume_labels) == ndsets
 
         # and finally the volumetric data comes, 6 elements per line in z, y, x order
         nvol = len(volume_labels)
