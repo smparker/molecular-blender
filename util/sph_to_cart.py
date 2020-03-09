@@ -3,7 +3,10 @@
 from sympy import *
 from sympy.printing.pycode import pycode
 
-DO_PRINT = True
+import argparse
+
+ANG_LABELS = "spdfg"
+MAX_L = 4
 
 def cart_to_sph(l, m, x, y, z):
     j = (x + y - abs(m))
@@ -77,6 +80,16 @@ def real_sph_to_cart(l,m,x1,y1,z1):
                     out += cart_overlap(x1,y1,z1,x2,y2,z2) * cart_to_real_sph(l,m,x2,y2,z2)
     return out
 
+def gen_cart_to_real_sph_transform(l, sphorder, cartorder):
+    """Outputs the matrix transform from cartesian AOs to real spherical harmonics"""
+    xyzs = [ (xyz.count("x"), xyz.count("y"), xyz.count("z")) for xyz in cartorder ]
+
+    transform = []
+    for m in sphorder:
+        transform.append([cart_to_real_sph(l, m, x, y, z) for x, y, z in xyzs])
+
+    return transform
+
 def gen_real_sph_to_cart_transform(l, sphorder, cartorder):
     """Outputs the matrix transform from real spherical harmonics to cartesian AOs"""
     transform = []
@@ -88,8 +101,6 @@ def gen_real_sph_to_cart_transform(l, sphorder, cartorder):
         transform.append( [ real_sph_to_cart(l, m, x, y, z) for m in sphorder ] )
 
     return transform
-
-ang_labels = "spdfg"
 
 molden_cart_s_order = [ "" ]
 molden_cart_p_order = "x y z".split()
@@ -109,44 +120,70 @@ def gen_molden_sph_order(l):
 
 molden_sph_order = [ gen_molden_sph_order(l) for l in range(5) ]
 
-if DO_PRINT:
-    print("Cartesian to spherical transformations")
-    for l in range(3):
-        for m in range(-l,l+1):
-            # looking for v(l,m)
+def main():
+    parser = argparse.ArgumentParser("sph_to_cart",
+            description="Computes transformation coefficients between normalized " +
+            "real spherical AOs and normalized cartesian AOs (CAOs). Formulas for the " +
+            "coefficients are taken from Schlegel, Frisch IJQC 1995 v. 54 p. 83. " +
+            "Calculations are done with sympy so the results are exact expressions, " +
+            "i.e., have no precision loss"
+            )
 
-            term = "v({0},{1}) = ".format(l, m)
-            for x in range(l+1):
-                for y in range(l+1):
-                    for z in range(l+1):
-                        if x+y+z == l:
-                            cc = cart_to_real_sph(l, m, x, y, z)
+    parser.add_argument("--cao2sao", action="store_true", help="print CAO-to-SAO matrix")
+    parser.add_argument("--sao2cao", action="store_true", help="print SAO-to-CAO matrix")
+    parser.add_argument("--latex", action="store_true", help="print pretty latex transforms")
 
-                            if cc != 0:
-                                term += "+ {0} v({1},{2},{3})".format(cc, x, y, z)
-            print(term)
-        print()
+    args = parser.parse_args()
 
-    print("Spherical to Cartesian transformations")
-    for l in range(1,3):
-        for cart in molden_cart_order[l]:
-            # looking for coefficients for v(x,y,z)
-            x = cart.count("x")
-            y = cart.count("y")
-            z = cart.count("z")
-
-            term = "v({0},{1},{2}) = ".format(x,y,z)
+    if args.latex:
+        print("Cartesian to spherical transformations")
+        for l in range(MAX_L+1):
             for m in range(-l,l+1):
-                cc = real_sph_to_cart(l,m,x,y,z)
+                term = "v({0},{1}) = ".format(l, m)
+                for xyz in molden_cart_order[l]:
+                    x = xyz.count("x")
+                    y = xyz.count("y")
+                    z = xyz.count("z")
+                    cc = cart_to_real_sph(l, m, x, y, z)
 
-                if cc != 0:
-                    term += "+ {0} v({1},{2})".format(cc, l, m)
-            print(term)
-        print()
+                    if cc != 0:
+                        term += "+ {0} v({1},{2},{3})".format(cc, x, y, z)
+                print(term)
+            print()
 
-print("Printing real spherical harmonic to cartesian AO transformations:")
+        print("Spherical to Cartesian transformations")
+        for l in range(MAX_L+1):
+            for cart in molden_cart_order[l]:
+                # looking for coefficients for v(x,y,z)
+                x = cart.count("x")
+                y = cart.count("y")
+                z = cart.count("z")
 
-for l in range(5):
-    print("shell: {0}".format(ang_labels[l]))
-    print(pycode(gen_real_sph_to_cart_transform(l, molden_sph_order[l], molden_cart_order[l])))
-    print()
+                term = "v({0},{1},{2}) = ".format(x,y,z)
+                for m in range(-l,l+1):
+                    cc = real_sph_to_cart(l,m,x,y,z)
+
+                    if cc != 0:
+                        term += "+ {0} v({1},{2})".format(cc, l, m)
+                print(term)
+            print()
+
+    if args.cao2sao:
+        print("Printing cartesian AO to spherical harmonic transformations:")
+
+        for l in range(MAX_L+1):
+            print("shell: {0}".format(ANG_LABELS[l]))
+            print(pycode(gen_cart_to_real_sph_transform(l, molden_sph_order[l], molden_cart_order[l])))
+            print()
+
+
+    if args.sao2cao:
+        print("Printing real spherical harmonic to cartesian AO transformations:")
+
+        for l in range(MAX_L+1):
+            print("shell: {0}".format(ANG_LABELS[l]))
+            print(pycode(gen_real_sph_to_cart_transform(l, molden_sph_order[l], molden_cart_order[l])))
+            print()
+
+if __name__ == "__main__":
+    main()
