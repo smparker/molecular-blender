@@ -137,9 +137,10 @@ def main():
 
     if args.latex:
         print("Cartesian to spherical transformations")
+        g = Function("v")
         for l in range(MAX_L+1):
             for m in range(-l,l+1):
-                term = "v({0},{1}) = ".format(l, m)
+                term = None
                 for xyz in molden_cart_order[l]:
                     x = xyz.count("x")
                     y = xyz.count("y")
@@ -147,8 +148,11 @@ def main():
                     cc = cart_to_real_sph(l, m, x, y, z)
 
                     if cc != 0:
-                        term += "+ {0} v({1},{2},{3})".format(cc, x, y, z)
-                print(term)
+                        if term is None:
+                            term = cc * g(S(x), S(y), S(z))
+                        else:
+                            term += cc * g(S(x), S(y), S(z))
+                print("v({0},{1}) = {2}".format(l, m, latex(term)))
             print()
 
         print("Spherical to Cartesian transformations")
@@ -159,13 +163,16 @@ def main():
                 y = cart.count("y")
                 z = cart.count("z")
 
-                term = "v({0},{1},{2}) = ".format(x,y,z)
+                term = None
                 for m in range(-l,l+1):
                     cc = real_sph_to_cart(l,m,x,y,z)
 
                     if cc != 0:
-                        term += "+ {0} v({1},{2})".format(cc, l, m)
-                print(term)
+                        if term is None:
+                            term = cc * g(S(l), S(m))
+                        else:
+                            term += cc * g(S(l), S(m))
+                print("v({0},{1},{2}) = {3}".format(x, y, z, latex(term)))
             print()
 
     if args.cao2sao:
