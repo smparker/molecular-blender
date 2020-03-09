@@ -269,7 +269,7 @@ def molden_read_gto(f):
     return out
 
 
-def molden_read_mo(f, nmo):
+def molden_read_mo(f, nao):
     """reads through [MO] section to collect MO coefficient information"""
     line = f.restore_mark("mo")
 
@@ -307,7 +307,7 @@ def molden_read_mo(f, nmo):
             if not found:
                 break
 
-        for i in range(nmo):
+        for i in range(nao):
             if i != 0:
                 line = f.readline()
             m = re_coef.match(line)
@@ -346,6 +346,7 @@ def molecule_from_molden(filename, _options):
 
     # Molden defaults to Cartesian basis functions
     shelldegen = {"s": 1, "sp": 4, "p": 3, "d": 6, "f": 10, "g": 15}
+    cartdegen = {"s": 1, "sp": 4, "p": 3, "d": 6, "f": 10, "g": 15}
     sphdegen = {"s": 1, "sp": 4, "p": 3, "d": 5, "f": 7, "g": 9}
 
     with Reader(filename) as f:
@@ -369,29 +370,30 @@ def molecule_from_molden(filename, _options):
         out["atoms"] = molden_read_atoms(f, ignore_h, animate=animate)
 
         if f.is_marked("gto"):  # read through GTO section to build basis
-            make_spherical = []
-            if f.is_marked("5d") or f.is_marked("5d7f"):
-                make_spherical.extend(["d", "f"])
-            if f.is_marked("7f"):
-                make_spherical.append("f")
-            if f.is_marked("5d10f"):
-                make_spherical.append("d")
-            if f.is_marked("9g"):
-                make_spherical.append("g")
-
-            cartesian = not make_spherical
-            if not cartesian:
-                raise Exception(
-                    "MolecularBlender currently can only handle cartesian d-, f-, and g-functions")
-            for l in make_spherical:
-                shelldegen[l] = sphdegen[l]
             out["basis"] = molden_read_gto(f)
 
         # read through MO section to build coefs
         if f.is_marked("mo") and "basis" in out:
-            nmo = sum([sum([shelldegen[x["shell"]] for x in atom])
+            spherical = []
+            if f.is_marked("5d") or f.is_marked("5d7f"):
+                spherical.extend(["d", "f"])
+            if f.is_marked("7f"):
+                spherical.append("f")
+            if f.is_marked("5d10f"):
+                spherical.append("d")
+            if f.is_marked("9g"):
+                spherical.append("g")
+
+            for l in spherical:
+                shelldegen[l] = sphdegen[l]
+            nao = sum([sum([shelldegen[x["shell"]] for x in atom])
                        for atom in out["basis"]])
-            out["mo"] = molden_read_mo(f, nmo)
+            molden_mo = molden_read_mo(f, nao)
+
+            if spherical:
+                molden_mo = transform_sph_to_cart(molden_mo, spherical, basis)
+
+            out["mo"] = molden_mo
 
     return out
 
