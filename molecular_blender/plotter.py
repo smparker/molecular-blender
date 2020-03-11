@@ -701,17 +701,17 @@ def draw_surfaces(molecule, styler, context, options):
                     vertex_trajectory_map[f0] = []
                 vertex_trajectory_map[f0].extend( [ v["name"] for v in vsets ] )
 
-            for i, orbital_snap in enumerate(molecule.volume_trajectory, 1):
-                name = f"{orbname:s}-{i:4d}"
-                orb = orbital_snap.get_orbital(orbnumber)
-                vsets = molecule_isosurface(orb, orbital_isovals, resolution, name, wm)
+                for i, orbital_snap in enumerate(molecule.orbitals_trajectory, 1):
+                    name = f"{orbname:s}-{i:4d}"
+                    orb = orbital_snap.get_orbital(orbnumber)
+                    vsets = molecule_isosurface(orb, orbital_isovals, resolution, name, wm)
 
-                fi = fmap(i)
-                if fi not in vertex_trajectory_map:
-                    vertex_trajectory_map[fi] = []
-                vertex_trajectory_map[fi].extend( [ v["name"] for v in vsets ] )
+                    fi = fmap(i)
+                    if fi not in vertex_trajectory_map:
+                        vertex_trajectory_map[fi] = []
+                    vertex_trajectory_map[fi].extend( [ v["name"] for v in vsets ] )
 
-                vertex_sets.extend(vsets)
+                    vertex_sets.extend(vsets)
 
     meshes = []
     materials = make_iso_materials(molecule, styler, vertex_sets, options)

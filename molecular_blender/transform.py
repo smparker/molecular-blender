@@ -25,6 +25,7 @@
 AOs to using only cartesian AOs (CAOs)."""
 
 import numpy as np
+from math import sqrt
 
 cartdegen = {"s": 1, "sp": 4, "p": 3, "d": 6, "f": 10, "g": 15}
 sphdegen = {"s": 1, "sp": 4, "p": 3, "d": 5, "f": 7, "g": 9}
@@ -35,8 +36,8 @@ def transform_sph_to_cart(orbitals, spherical, basis):
                        for atom in basis])
     nmo = len(orbitals)
 
-    sph = np.zeros(nmo, nao)
-    cart = np.zeros(nmo, ncao)
+    sph = np.zeros([nmo, nao], dtype=np.float32)
+    cart = np.zeros([nmo, ncao], dtype=np.float32)
 
     for p, orb in enumerate(orbitals):
         sph[p,:] = orb["coeff"][:]

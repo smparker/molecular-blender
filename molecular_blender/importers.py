@@ -31,6 +31,7 @@ import os
 from .util import stopwatch
 from .periodictable import symbols
 from .constants import bohr2ang
+from .transform import transform_sph_to_cart
 
 
 class Reader(object):
@@ -391,7 +392,7 @@ def molecule_from_molden(filename, _options):
             molden_mo = molden_read_mo(f, nao)
 
             if spherical:
-                molden_mo = transform_sph_to_cart(molden_mo, spherical, basis)
+                molden_mo = transform_sph_to_cart(molden_mo, spherical, out["basis"])
 
             out["mo"] = molden_mo
 
