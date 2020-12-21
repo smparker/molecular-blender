@@ -1,27 +1,9 @@
-from . generic import *
+import os
 
 import numpy as np
+from Cython.Build import cythonize
 
-def execute_Cythonize(setupInfoList, addonDirectory):
-    printHeader("Run Cythonize")
-    tasks = getCythonizeTasks(addonDirectory)
-    for i, task in enumerate(tasks, 1):
-        print("{}/{}:".format(i, len(tasks)))
-        task.execute()
-
-def getCythonizeTasks(addonDirectory):
-    tasks = []
-    for path in iterCythonFilePaths(addonDirectory):
-        tasks.append(CythonizeTask(path))
-    return tasks
-
-def iterCythonFilePaths(addonDirectory):
-    yield from iterPathsWithExtension(addonDirectory, ".pyx")
-
-class CythonizeTask:
-    def __init__(self, path):
-        self.path = path
-
-    def execute(self):
-        from Cython.Build import cythonize
-        cythonize(self.path, compiler_directives = {"language_level" : "3"}, include_path = [ np.get_include() ])
+def compile_cython(addon_dir):
+    cython_files = [ os.path.join(addon_dir, f) for f in os.listdir(addon_dir) if f.endswith('.pyx') ]
+    for f in cython_files:
+        cythonize(f, compiler_directives = {"language_level" : "3"}, include_path = [ np.get_include() ])

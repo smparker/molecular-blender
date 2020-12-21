@@ -12,6 +12,9 @@ _globals = set(globals().keys())
 onLinux = sys.platform.startswith("linux")
 onWindows = sys.platform.startswith("win")
 onMacOS = sys.platform == "darwin"
+if onLinux: currentOS = "linux"
+elif onWindows: currentOS = "windows"
+elif onMacOS: currentOS = "macOS"
 
 if not (onLinux or onWindows or onMacOS):
     raise Exception("unknown OS")
@@ -29,6 +32,30 @@ def getPlatformSummary():
         summary["Cython.__version__"] = Cython.__version__
     except: pass
     return summary
+
+def find_user_blender_dirs():
+    if onLinux:
+        pathbases = [ os.path.join(os.environ['HOME'], '.config', 'blender'),
+                os.path.join(os.environ['XDG_CONFIG_HOME'], 'blender') ]
+    elif onMacOS:
+        pathbases = [ os.path.join('/Users', os.environ['USER'], 'Library', 'Application Support', 'Blender') ]
+    elif onWindows:
+        pathbases = [ os.path.join(os.environ['USERPROFILE'], 'AppData', 'Roaming', 'Blender Foundation', 'Blender') ]
+
+    for p in pathbases:
+        versions = []
+        for d in os.listdir(p):
+            try:
+                dfloat = float(d)
+                versions.append(d)
+            except:
+                pass
+
+        paths = [ os.path.join(p, v) for v in sorted(versions, key= lambda x:float(x)) ]
+        if paths:
+            return paths
+
+    return []
 
 def printHeader(text):
     print()

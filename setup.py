@@ -1,6 +1,6 @@
 '''
 Setup originally created by JacquesLucke
-Modified for molecular_blender by Shane Parker 2019
+Modified for molecular_blender by Shane Parker 2019-2020
 '''
 
 import os
@@ -9,6 +9,8 @@ import json
 import textwrap
 import subprocess
 from pprint import pprint
+
+import argparse
 
 currentDirectory = os.path.dirname(os.path.abspath(__file__))
 
@@ -23,7 +25,7 @@ if currentDirectory not in sys.path:
 
 from _setuputils.generic import *
 from _setuputils.addon_files import *
-from _setuputils.cythonize import execute_Cythonize
+from _setuputils.cythonize import compile_cython
 from _setuputils.compilation import execute_Compile
 from _setuputils.copy_addon import execute_CopyAddon
 from _setuputils.pypreprocess import execute_PyPreprocess
@@ -33,150 +35,66 @@ from _setuputils.compile_libraries import execute_CompileLibraries
 
 addonName = "molecular_blender"
 addonDirectory = os.path.join(currentDirectory, addonName)
-defaultConfigPath = os.path.join(currentDirectory, "conf.default.json")
-configPath = os.path.join(currentDirectory, "conf.json")
-initPath = os.path.join(currentDirectory, addonName, "__init__.py")
 
-if onLinux: currentOS = "linux"
-elif onWindows: currentOS = "windows"
-elif onMacOS: currentOS = "macOS"
-addonVersion = getAddonVersion(initPath)
+addonVersion = getAddonVersion(os.path.join(addonDirectory, "__init__.py"))
 exportName = "{}_v{}_{}_{}_py{}{}".format(
     addonName, *addonVersion[:2], currentOS, *sys.version_info[:2])
 
 exportPath = os.path.join(currentDirectory, exportName + ".zip")
-exportCPath = os.path.join(currentDirectory, "{}_c.zip".format(addonName))
-exportCSetupPath = os.path.join(currentDirectory, "_export_c_setup.py")
-
-possibleCommands = ["build", "help", "clean"]
-
-buildOptionDescriptions = [
-    ("--copy", "Copy build to location specified in the conf.json file"),
-    ("--export", "Create installable .zip file"),
-    ("--exportc", "Create build that can be compiled without cython"),
-    ("--nocompile", "Don't compile the extension modules"),
-    ("--noversioncheck", "Don't check the used Python version")
-]
-buildOptions = {option for option, _ in buildOptionDescriptions}
-helpNote = "Use 'python setup.py help' to see the possible commands."
-
 
 # Main
 ####################################################
-
 def main():
-    configs = setupConfigFile()
-    args = sys.argv[1:]
-    if len(args) == 0 or args[0] == "help":
-        main_Help()
-    elif args[0] == "build":
-        main_Build(args[1:], configs)
-    elif args[0] == "clean":
-        main_Clean()
-    else:
-        print("Invalid command: '{}'\n".format(args[0]))
-        print(helpNote)
-        sys.exit()
+    parser = argparse.ArgumentParser("Setup molecular_blender")
+    parser.add_argument("command", choices=['build', 'link', 'export'])
+    parser.add_argument("--link", "-c", action='store_true', help='link build to available blender installations')
+    parser.add_argument("--export", "-e", action='store_true', help='create installable .zip file')
+    parser.add_argument("--no-check", action='store_true', help='skip python version check')
+    parser.add_argument("--link-target", default='all', help='which available blender versions to symlink (default: all found)')
 
-def setupConfigFile():
-    if not fileExists(defaultConfigPath):
-        print("Expected conf.default.json file to exist.")
-        sys.exit()
-    if not fileExists(configPath):
-        copyFile(defaultConfigPath, configPath)
-        print(textwrap.dedent('''\
-        Copied the conf.default.json file to conf.json.
-        Please change it manually if needed.
-        Note: git ignorers it, so depending on the settings of your editor
-              it might not be shows inside it.
-        '''))
-    return readJsonFile(configPath)
+    args = parser.parse_args()
 
-
-# Help
-####################################################
-
-def main_Help():
-    print(textwrap.dedent('''\
-    usage: python setup.py <command> [options]
-
-    Possible commands:
-        help                Show this help
-        build               Build the addon from sources
-        clean               Remove all untracked files except conf.py
-
-    The 'build' command has multiple options:'''))
-    for option, description in buildOptionDescriptions:
-        print("    {:20}{}".format(option, description))
-
-
-# Clean
-####################################################
-
-def main_Clean():
-    answer = input("Remove all files? [y/N] ").lower()
-    print()
-    if answer == "y":
-        removedFiles = removeUntrackedFiles(filesToKeep = ["conf.json"])["removed"]
-        print("Cleanup Finished.")
-        print("Removed {} files.".format(len(removedFiles)))
-    else:
-        print("Operation canceled.")
-        sys.exit()
-
-@returnChangedFileStates(currentDirectory)
-def removeUntrackedFiles(filesToKeep):
-    storedFiles = {}
-    for path in filesToKeep:
-        if fileExists(path):
-            storedFiles[path] = readBinaryFile(path)
-
-    try:
-        pipe = subprocess.PIPE
-        subprocess.run(["git", "clean", "-fdx"], stdout = pipe, stderr = pipe)
-    except FileNotFoundError:
-        print("git is required but not installed")
-        sys.exit()
-
-    for path, content in storedFiles.items():
-        writeBinaryFile(path, content)
-
-
+    if args.command == 'build':
+        build()
+    elif args.command == 'link':
+        link(args.link_target)
+    elif args.command == 'export':
+        export()
 
 # Build
 ####################################################
 
-def main_Build(options, configs):
-    checkBuildEnvironment(
-        checkCython = True,
-        checkPython = "--noversioncheck" not in options and "--nocompile" not in options
-    )
-    checkBuildOptions(options)
+def build():
+    check_build_environment()
 
-    changedFileStates = build(skipCompilation = "--nocompile" in options)
+    changedFileStates = build_impl()
     printChangedFileStates(changedFileStates, currentDirectory)
 
-    if "--copy" in options:
-        copyTarget = configs["Copy Target"]
-        if not directoryExists(copyTarget):
-            print("Copy Target not found. Please correct the conf.json file.")
+def link(link_target='all'):
+    paths = find_user_blender_dirs()
+
+    source = os.path.join(currentDirectory, addonName)
+    for p in paths:
+        addon = os.path.join(p, 'scripts', 'addons')
+        os.makedirs(addon, exist_ok=True)
+        target = os.path.join(addon, addonName)
+        if not os.path.isdir(target):
+            print("  - creating symlink at {}".format(target))
+            os.symlink(source, target)
         else:
-            execute_CopyAddon(addonDirectory, configs["Copy Target"], addonName)
-            print()
-    if "--export" in options:
-        execute_Export(addonDirectory, exportPath, addonName)
-    if "--exportc" in options:
-        execute_ExportC(addonDirectory, exportCPath, exportCSetupPath, addonName)
+            print("  - skipping directory {}".format(target))
+
+def export():
+    execute_Export(addonDirectory, exportPath, addonName)
 
 def printChangedFileStates(states, basepath):
-    printHeader("File System Changes")
-
-    print("New Files:")
-    printIndentedPathList(states["new"], basepath)
-    print("\nRemoved Files:")
-    printIndentedPathList(states["removed"], basepath)
-    print("\nModified Files:")
-    printIndentedPathList(states["changed"], basepath)
+    print('Change Summary')
+    for p in states['new']:
+        print(' + {}'.format(p))
+    for p in states['removed']:
+        print(' - {}'.format(p))
+    for p in states['changed']:
+        print(' ~ {}'.format(p))
 
 def printIndentedPathList(paths, basepath):
     if len(paths) == 0:
@@ -186,50 +104,42 @@ def printIndentedPathList(paths, basepath):
             print("  {}".format(os.path.relpath(path, basepath)))
 
 @returnChangedFileStates(currentDirectory)
-def build(skipCompilation = False):
+def build_impl():
+    compile_cython(addonDirectory)
     setupInfoList = getSetupInfoList(addonDirectory)
 
-    execute_PyPreprocess(setupInfoList, addonDirectory)
-    execute_Cythonize(setupInfoList, addonDirectory)
+    #execute_CompileLibraries(setupInfoList, addonDirectory)
+    execute_Compile(setupInfoList, addonDirectory)
 
-    if not skipCompilation:
-        execute_CompileLibraries(setupInfoList, addonDirectory)
-        execute_Compile(setupInfoList, addonDirectory)
+def have_cython():
+    try:
+        import Cython
+        return True
+    except:
+        return False
 
-def checkBuildEnvironment(checkCython, checkPython):
-    if checkCython:
-        try: import Cython
-        except:
-            print("Cython is not installed for this Python version.")
-            print(sys.version)
-            sys.exit()
-    if checkPython:
-        v = sys.version_info
-        if v.major != 3 or v.minor != 7:
-            print(textwrap.dedent('''\
-            Blender 2.8 officially uses Python 3.7.x.
-            You are using: {}
+def have_python_37():
+    v = sys.version_info
+    if v.major != 3 or v.minor != 7:
+        return False
+    return True
 
-            Use the --noversioncheck option to disable this check.\
-            '''.format(sys.version)))
-            sys.exit()
+def check_build_environment(cython=True, python=True):
+    fail = False
+    if cython and not have_cython():
+        print("Cython is not installed for this Python version.")
+        print(sys.version)
+        fail = True
+    if python and not have_python_37():
+        print(textwrap.dedent('''\
+        Blender 2.8 officially uses Python 3.7.x.
+        You are using: {}
 
-def checkBuildOptions(options):
-    options = set(options)
-    invalidOptions = options - buildOptions
-    if len(invalidOptions) > 0:
-        print("Invalid build options: {}\n".format(invalidOptions))
-        print(helpNote)
+        Use the --no-check option to disable this check.\
+        '''.format(sys.version)))
+        fail = True
+    if fail:
         sys.exit()
-
-    if "--nocompile" in options:
-        if "--copy" in options:
-            print("The options --nocompile and --copy don't work together.")
-            sys.exit()
-        if "--export" in options:
-            print("The options --nocompile and --export don't work together.")
-            sys.exit()
-
 
 # Run Main
 ###############################################
