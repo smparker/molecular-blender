@@ -25,13 +25,9 @@ if currentDirectory not in sys.path:
 
 from _setuputils.generic import *
 from _setuputils.addon_files import *
-from _setuputils.cythonize import compile_cython
-from _setuputils.compilation import execute_Compile
-from _setuputils.copy_addon import execute_CopyAddon
-from _setuputils.pypreprocess import execute_PyPreprocess
+from _setuputils.compilation import compile_cxx, compile_cython
 from _setuputils.setup_info_files import getSetupInfoList
-from _setuputils.export import execute_Export, execute_ExportC
-from _setuputils.compile_libraries import execute_CompileLibraries
+from _setuputils.export import execute_Export
 
 addonName = "molecular_blender"
 addonDirectory = os.path.join(currentDirectory, addonName)
@@ -88,6 +84,7 @@ def export():
     execute_Export(addonDirectory, exportPath, addonName)
 
 def printChangedFileStates(states, basepath):
+    print()
     print('Change Summary')
     for p in states['new']:
         print(' + {}'.format(p))
@@ -108,8 +105,7 @@ def build_impl():
     compile_cython(addonDirectory)
     setupInfoList = getSetupInfoList(addonDirectory)
 
-    #execute_CompileLibraries(setupInfoList, addonDirectory)
-    execute_Compile(setupInfoList, addonDirectory)
+    compile_cxx(addonDirectory)
 
 def have_cython():
     try:

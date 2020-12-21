@@ -1,67 +1,31 @@
 import os
 import re
 import sys
-import glob
 import time
-from . generic import *
+from .generic import splitPath, changeFileExtension
 import numpy as np
 
-def execute_Compile(setupInfoList, addonDirectory):
-    printHeader("Compile")
-    tasks = getCompileTasks(setupInfoList, addonDirectory)
-    for i, task in enumerate(tasks, 1):
-        print("{}/{}:".format(i, len(tasks)))
-        task.execute()
+from Cython.Build import cythonize
 
-    compilationInfo = getPlatformSummary()
-    compilationInfo["date"] = int(time.time())
-    compilationInfoPath = os.path.join(addonDirectory, "compilation_info.json")
-    writeJsonFile(compilationInfoPath, compilationInfo)
+def compile_cython(addon_dir):
+    cython_files = [ os.path.join(addon_dir, f) for f in os.listdir(addon_dir) if f.endswith('.pyx') ]
+    for f in cython_files:
+        cythonize(f, compiler_directives = {"language_level" : "3"}, include_path = [ np.get_include() ])
 
-def getCompileTasks(setupInfoList, addonDirectory):
-    includeDirs = list(iterCustomIncludeDirs(setupInfoList))
+def compile_cxx(addon_dir):
+    print("Compile:\n{:40s}".format('-'))
 
-    tasks = []
-    for path in iterFilesToCompile(addonDirectory):
-        tasks.append(CompileExtModuleTask(path, addonDirectory, includeDirs))
-    return tasks
+    pyx_files = [ os.path.join(addon_dir, f) for f in os.listdir(addon_dir) if f.endswith('.pyx') ]
+    cxx_files = [ f.replace('.pyx', '.cpp') for f in pyx_files ]
 
-def iterFilesToCompile(addonDirectory):
-    for path in iterPathsWithExtension(addonDirectory, ".pyx"):
-        language = getPyxTargetLanguage(path)
-        if language == "c++":
-            yield changeFileExtension(path, ".cpp")
-        elif language == "c":
-            yield changeFileExtension(path, ".c")
+    for cxx in cxx_files:
+        ext = getExtensionFromPath(cxx, addon_dir)
+        buildExtensionInplace(ext)
 
-def iterCustomIncludeDirs(setupInfoList):
-    fName = "getIncludeDirs"
-    yield np.get_include()
-    for setupInfo in setupInfoList:
-        if fName in setupInfo:
-            for name in setupInfo[fName]():
-                yield changeFileName(setupInfo["__file__"], name)
-
-class CompileExtModuleTask:
-    def __init__(self, path, addonDirectory, includeDirs = []):
-        self.path = path
-        self.addonDirectory = addonDirectory
-        self.includeDirs = includeDirs
-
-    def execute(self):
-        extension = getExtensionFromPath(self.path, self.addonDirectory, self.includeDirs)
-        buildExtensionInplace(extension)
-
-def getPossibleCompiledFilesWithTime(cpath):
-    directory = os.path.dirname(cpath)
-    name = getFileNameWithoutExtension(cpath)
-    pattern = os.path.join(directory, name) + ".*"
-    paths = glob.glob(pattern + ".pyd") + glob.glob(pattern + ".so")
-    return [(path, tryGetLastModificationTime(path)) for path in paths]
-
-def getExtensionFromPath(path, addonDirectory, includeDirs = []):
+def getExtensionFromPath(path, addonDirectory, includeDirs = [np.get_include()]):
     from distutils.core import Extension
     moduleName = getModuleNameOfPath(path, addonDirectory)
+    print("moduleName: ", moduleName)
 
     kwargs = {
         "sources" : [path],
@@ -92,7 +56,7 @@ def getModuleNameOfPath(path, basePath):
     return ".".join(splitPath(relativePath))
 
 def getExtensionsArgsFromInfoFile(infoFilePath):
-    if not fileExists(infoFilePath):
+    if not os.path.isfile(infoFilePath):
         return {}
 
     data = executePythonFile(infoFilePath)
@@ -105,17 +69,18 @@ def getExtensionsArgsFromInfoFile(infoFilePath):
 def buildExtensionInplace(extension):
     from distutils.core import setup
     oldArgs = sys.argv
-    sys.argv = [oldArgs[0], "build_ext", "--inplace"]
+    sys.argv = [oldArgs[0], "build_ext", "--inplace" ]
     setup(ext_modules = [extension])
     sys.argv = oldArgs
 
 def getSetupOptions(path):
     pyxPath = changeFileExtension(path, ".pyx")
-    if not fileExists(pyxPath):
+    if not os.path.isfile(pyxPath):
         return set()
 
     options = set()
-    text = readTextFile(pyxPath)
+    with open(pyxPath, "rt") as f:
+        text = f.read()
     for match in re.finditer(r"^#\s*setup\s*:\s*options\s*=(.*)$", text, flags = re.MULTILINE):
         options.update(match.group(1).split())
     return options

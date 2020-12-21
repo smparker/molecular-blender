@@ -1,4 +1,6 @@
-# cython: profile=False
+#distutils: language = c++
+#cython: cdivision=True
+#cython: profile=False
 # -*- coding: utf-8 -*-
 #
 #  Molecular Blender
