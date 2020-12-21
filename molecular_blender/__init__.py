@@ -252,7 +252,7 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         box.row().prop(self, "recycle_materials")
         row = box.row()
         row.prop(self, "use_cython")
-        row.enabled = CYTHON_ENABLED
+        row.enabled = False
 
     def execute(self, context):
         """Function called to plot molecule"""
