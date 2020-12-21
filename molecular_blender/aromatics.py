@@ -52,7 +52,7 @@ def is_planar(atomlist, cycle):
         v43.normalize()
         v31.normalize()
         threshold = v31.dot(v21.cross(v43))
-        if abs(threshold) > 0.1:
+        if abs(threshold) > 0.2:
             return False
     return True
 

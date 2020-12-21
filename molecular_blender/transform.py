@@ -55,7 +55,7 @@ def transform_sph_to_cart(orbitals, spherical, basis):
                 sph_to_cart = get_sph_to_cart(sh)
                 cart[:,icao:icao+ncartdeg] = np.einsum("cs,ps->pc", sph_to_cart, sph[:,iao:iao+ndeg])
             else:
-                cart[:,iao:iao+ndeg] = sph[:,iao:iao+ndeg]
+                cart[:,icao:icao+ndeg] = sph[:,iao:iao+ndeg]
 
             iao += ndeg
             icao += ncartdeg

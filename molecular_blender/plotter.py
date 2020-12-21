@@ -39,7 +39,6 @@ from .isosurfaces import cube_isosurface, molden_isosurface
 from .util import stopwatch, Timer, unique_name
 from .importers import molecule_from_file
 
-
 def plot_prep(molecule, options):
     """Preprocess options"""
     process_options(options)

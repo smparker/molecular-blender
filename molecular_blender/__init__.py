@@ -27,6 +27,7 @@ import bpy
 from bpy.props import StringProperty, BoolProperty, EnumProperty, IntProperty, FloatProperty
 import bpy_extras
 from .plotter import BlendMolecule
+from .marching_cube import CYTHON_ENABLED
 
 bl_info = {  # pylint: disable=invalid-name
     "name": "Molecular Blender",
@@ -49,6 +50,7 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         default="*.xyz;*.molden;*.cube;*.cub;*.json",
         options={'HIDDEN'})
 
+    ## Style Options
     object_type: EnumProperty(
         name="Object type",
         description="Object type to use to draw atoms",
@@ -78,22 +80,27 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         step=0.05,
         precision=4)
 
-    hook_atoms: EnumProperty(
-        name="Hook bonds",
-        description="Hook bonds to atoms to make bonds follow manual manipulation of the atoms",
-        items=(('auto', "Automatic", "Off for single frames, on for animations"),
-               ('on', "On", "Hook bonds (slow for molecules with hundreds or more atoms)"),
-               ('off', "Off", "Do not hook bonds to atoms (faster, but manipulating atoms in" +
-                " blender will not move the bonds alongside)")),
-        default='auto')
+    find_aromatic: BoolProperty(
+        name="Plot Aromatics",
+        description="Find closed rings and if planar, fill in with object",
+        default=False)
 
-    keystride: IntProperty(
-        name="Keystride",
-        description="Striding between keyframes in animation",
-        default=1)
+    ignore_hydrogen: BoolProperty(
+        name="Ignore Hydrogens",
+        description="Ignores Hydrogen atoms for cleaner images",
+        default=False)
 
+    colors: EnumProperty(
+        name="Colors",
+        description="Palette of colors to use",
+        items=(('default', 'default', 'Colors defined by molecular blender'),
+               ('vmd', 'vmd', 'Same colors defined by VMD Element')
+              ),
+        default='default')
+
+    ## Animation
     animate_bonds: EnumProperty(
-        name="Animate bonds",
+        name="Bonds",
         description="Determine how the bonds are handled for an animation",
         items=(('staticfirst', "Static: first frame", "Use bonds from only the first frame"),
                ('staticall', "Static: all frames",
@@ -103,35 +110,12 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
               ),
         default='staticfirst')
 
-    universal_bonds: BoolProperty(
-        name="Universal bonds",
-        description="Use one bond type for whole plot",
-        default=True)
+    keystride: IntProperty(
+        name="Keystride",
+        description="Striding between keyframes in animation",
+        default=1)
 
-    ignore_hydrogen: BoolProperty(
-        name="Ignore Hydrogens",
-        description="Ignores Hydrogen atoms for cleaner images",
-        default=False)
-
-    find_aromatic: BoolProperty(
-        name="Plot Aromatics",
-        description="Find closed rings and if planar, fill in with object",
-        default=False)
-
-    gradient: BoolProperty(
-        name="Plot gradient",
-        description="Draw arrows for data found in gradients column",
-        default=False)
-
-    charges: EnumProperty(
-        name="Plot charges",
-        description="Style in which to plot atomic charges",
-        items=(('none', 'none', 'No charges plotted'),
-               ('scale', 'scale',
-                'Charge magnitude encoded by scale of sphere')
-              ),
-        default='none')
-
+    ## Isosurfaces
     isovalues: StringProperty(
         name="Isovalues to plot",
         description="List of isovalues to plot densities or orbitals",
@@ -168,6 +152,21 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         description="Octree depth for remesh modifier",
         default=6)
 
+    ## Properties
+    gradient: BoolProperty(
+        name="Plot gradient",
+        description="Draw arrows for data found in gradients column",
+        default=False)
+
+    charges: EnumProperty(
+        name="Plot charges",
+        description="Style in which to plot atomic charges",
+        items=(('none', 'none', 'No charges plotted'),
+               ('scale', 'scale',
+                'Charge magnitude encoded by scale of sphere')
+              ),
+        default='none')
+
     charge_offset: FloatProperty(
         name="chgoff",
         description="Use chgfac*(charge + chgoff) to control visibility of charges",
@@ -188,18 +187,72 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         precision=2
     )
 
+    ## Import details
+    hook_atoms: EnumProperty(
+        name="Hook bonds",
+        description="Hook bonds to atoms to make bonds follow manual manipulation of the atoms",
+        items=(('auto', "Automatic", "Off for single frames, on for animations"),
+               ('on', "On", "Hook bonds (slow for molecules with hundreds or more atoms)"),
+               ('off', "Off", "Do not hook bonds to atoms (faster, but manipulating atoms in" +
+                " blender will not move the bonds alongside)")),
+        default='auto')
+
+    universal_bonds: BoolProperty(
+        name="Universal bonds",
+        description="Use one bond type for whole plot",
+        default=True)
+
     recycle_materials: BoolProperty(
         name="Recycle materials",
         description="Re-use materials generated for previously imported molecules",
-        default=False)
+        default=True)
 
-    colors: EnumProperty(
-        name="Colors",
-        description="Palette of colors to use",
-        items=(('default', 'default', 'Colors defined by molecular blender'),
-               ('vmd', 'vmd', 'Same colors defined by VMD Element')
-              ),
-        default='default')
+    use_cython: BoolProperty(
+        name="Cython Acceleration",
+        description="Accelerate isosurface generation and orbital computation using cython",
+        default=CYTHON_ENABLED)
+
+    def draw(self, context):
+        layout = self.layout
+
+        box = layout.box()
+        box.label(text="Style Options")
+        box.row().prop(self, "object_type", expand=True)
+        box.row().prop(self, "plot_style", expand=True)
+        box.row().prop(self, "bond_thickness")
+        box.row().prop(self, "find_aromatic")
+        box.row().prop(self, "ignore_hydrogen")
+        box.row().prop(self, "colors")
+
+        box = layout.box()
+        box.label(text="Animation")
+        box.row().prop(self, "animate_bonds")
+        box.row().prop(self, "keystride")
+
+        box = layout.box()
+        box.label(text="Isosurfacing")
+        box.row().prop(self, "isovalues")
+        box.row().prop(self, "cumulative")
+        box.row().prop(self, "volume")
+        box.row().prop(self, "orbital")
+        box.row().prop(self, "resolution")
+        box.row().prop(self, "remesh")
+
+        box = layout.box()
+        box.label(text="Properties")
+        box.row().prop(self, "gradient")
+        box.row().prop(self, "charges")
+        box.row().prop(self, "charge_offset")
+        box.row().prop(self, "charge_factor")
+
+        box = layout.box()
+        box.label(text="Import Details")
+        box.row().prop(self, "hook_atoms")
+        box.row().prop(self, "universal_bonds")
+        box.row().prop(self, "recycle_materials")
+        row = box.row()
+        row.prop(self, "use_cython")
+        row.enabled = CYTHON_ENABLED
 
     def execute(self, context):
         """Function called to plot molecule"""
