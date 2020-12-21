@@ -24,7 +24,6 @@ if currentDirectory not in sys.path:
     sys.path.append(currentDirectory)
 
 from _setuputils.generic import *
-from _setuputils.addon_files import *
 from _setuputils.compilation import compile_cxx, compile_cython
 from _setuputils.setup_info_files import getSetupInfoList
 from _setuputils.export import execute_Export
@@ -92,13 +91,6 @@ def printChangedFileStates(states, basepath):
         print(' - {}'.format(p))
     for p in states['changed']:
         print(' ~ {}'.format(p))
-
-def printIndentedPathList(paths, basepath):
-    if len(paths) == 0:
-        print("  <none>")
-    else:
-        for path in sorted(paths):
-            print("  {}".format(os.path.relpath(path, basepath)))
 
 @returnChangedFileStates(currentDirectory)
 def build_impl():
