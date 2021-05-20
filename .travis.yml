@@ -15,10 +15,11 @@ before_install:
 
 install:
   # manually install recent blender off mirror
-  - export BLENDER_VERSION=2.82
+  - export BLENDER_VERSION=2.83
+  - export BLENDER_BUGFIX_VERSION=15
   - echo "Installing Blender ${BLENDER_VERSION}"
-  - export BNAME="blender-${BLENDER_VERSION}-linux64"
-  - wget "https://mirror.clarkson.edu/blender/release/Blender${BLENDER_VERSION}/${BNAME}.tar.xz"
+  - export BNAME="blender-${BLENDER_VERSION}.${BLENDER_BUGFIX_VERSION}-linux64"
+  - wget "https://blender.org/download/Blender${BLENDER_VERSION}/${BNAME}.tar.xz"
   - tar -xf ${BNAME}.tar.xz
 
   # set up path to use this blender
