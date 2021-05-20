@@ -8,6 +8,7 @@ addons:
       - clang
       - gcc
       - blender
+      - xz-utils
 
 before_install:
   # install cython
