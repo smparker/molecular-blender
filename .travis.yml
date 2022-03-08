@@ -10,17 +10,22 @@ addons:
       - blender
       - xz-utils
 
+jobs:
+  include:
+    - env: BLENDER_VERSION=2.83.19
+    - env: BLENDER_VERSION=2.93.8
+
+
 before_install:
   # install cython
   - pip install -q cython
 
 install:
   # manually install recent blender off mirror
-  - export BLENDER_VERSION=2.83
-  - export BLENDER_BUGFIX_VERSION=15
+  - export BLENDER_MAJOR_VERSION=${BLENDER_VERSION%.*}
   - echo "Installing Blender ${BLENDER_VERSION}"
-  - export BNAME="blender-${BLENDER_VERSION}.${BLENDER_BUGFIX_VERSION}-linux64"
-  - wget "https://blender.org/download/Blender${BLENDER_VERSION}/${BNAME}.tar.xz"
+  - export BNAME="blender-${BLENDER_VERSION}.${BLENDER_BUGFIX_VERSION}-linux-x64"
+  - wget "https://blender.org/download/release/Blender${BLENDER_MAJOR_VERSION}/${BNAME}.tar.xz"
   - tar -xf ${BNAME}.tar.xz
 
   # set up path to use this blender
