@@ -30,7 +30,6 @@ jobs:
         python -m pip install -q pytest cython
     - name: Install Blender 3.6
       run: |
-        pytest
         export BLENDER_VERSION=3.6.7
         echo "Installing Blender ${BLENDER_VERSION}"
         wget "https://www.blender.org/download/release/Blender3.6/blender-${BLENDER_VERSION}-linux-x64.tar.xz"
