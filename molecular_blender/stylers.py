@@ -49,18 +49,21 @@ class PaletteElementStyler(object):
         mat.use_nodes = True
         mat.diffuse_color = base_color
 
+        if specular_tint != 0.0:
+            print("Warning: Specular tint is not supported by the Principled BSDF shader")
+        if sheen_tint != 0.0:
+            print("Warning: Sheen tint is not supported by the Principled BSDF shader")
+
         options = {
             'Base Color' : base_color,
             'Subsurface' : subsurface,
             'Subsurface Color' : subsurface_color,
             'Metallic' : metallic,
             'Specular' : specular,
-            'Specular Tint' : specular_tint,
             'Roughness'  : roughness,
             'Anisotropic' : anisotropic,
             'Anisotropic Rotation' : anisotropic_rotation,
             'Sheen'      : sheen,
-            'Sheen Tint' : sheen_tint,
             'Clearcoat'  : clearcoat,
             'Clearcoat Roughness' : clearcoat_roughness,
             'IOR' : IOR,
@@ -76,7 +79,8 @@ class PaletteElementStyler(object):
 
         principled = nodes.new('ShaderNodeBsdfPrincipled')
         for o in options:
-            principled.inputs[o].default_value = options[o]
+            if o in principled.inputs:
+                principled.inputs[o].default_value = options[o]
         links.new(principled.outputs['BSDF'], material_output.inputs['Surface'])
 
         arrange_nodes(nodes, "socket")
