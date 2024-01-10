@@ -22,7 +22,7 @@ jobs:
         python-version: "3.10"
     - name: Install Linux Dependences
       run: |
-        #sudo apt-get update
+        sudo apt-get update
         sudo apt-get install -y clang gcc blender tar xz-utils
     - name: Install Python Dependences
       run: |
@@ -33,11 +33,12 @@ jobs:
         export BLENDER_VERSION=3.6.7
         echo "Installing Blender ${BLENDER_VERSION}"
         wget "https://mirror.clarkson.edu/blender/release/Blender3.6/blender-${BLENDER_VERSION}-linux-x64.tar.xz"
-        tar -xvf blender-${BLENDER_VERSION}-linux-x64.tar.xz
+        tar -xf blender-${BLENDER_VERSION}-linux-x64.tar.xz
 
         # set up path for blender
         export PATH=${PWD}/blender-${BLENDER_VERSION}-linux-x64
-
+    - name: Install molecular-blender addon
+      run: |
         # register addon
         export BLENDER_DIR=${HOME}/.config/blender/${BLENDER_VERSION}
         mkdir -p ${BLENDER_DIR}/scripts/addons
