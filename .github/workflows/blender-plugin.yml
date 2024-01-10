@@ -33,7 +33,7 @@ jobs:
         export BLENDER_VERSION=3.6.7
         echo "Installing Blender ${BLENDER_VERSION}"
         wget "https://www.blender.org/download/release/Blender3.6/blender-${BLENDER_VERSION}-linux-x64.tar.xz"
-        tar -xf blender-${BLENDER_VERSION}-linux-x64.tar.xz
+        tar -xf -J blender-${BLENDER_VERSION}-linux-x64.tar.xz
 
         # set up path for blender
         export PATH=${PWD}/blender-${BLENDER_VERSOIN}-linux-x64
