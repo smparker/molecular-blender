@@ -700,7 +700,8 @@ def draw_surfaces(molecule, styler, context, options):
                     vertex_trajectory_map[f0] = []
                 vertex_trajectory_map[f0].extend( [ v["name"] for v in vsets ] )
 
-                for i, orbital_snap in enumerate(molecule.orbitals_trajectory, 1):
+            if molecule.orbitals_trajectory is not None:
+                for i, orbital_snap in enumerate(molecule.volume_trajectory, 1):
                     name = f"{orbname:s}-{i:4d}"
                     orb = orbital_snap.get_orbital(orbnumber)
                     vsets = molecule_isosurface(orb, orbital_isovals, resolution, name, wm)
