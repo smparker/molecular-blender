@@ -23,7 +23,7 @@ jobs:
     - name: Install Linux Dependences
       run: |
         sudo apt-get update
-        sudo apt-get install -y clang gcc blender
+        sudo apt-get install -y clang gcc blender tar xz-utils
     - name: Install Python Dependences
       run: |
         python -m pip install --upgrade pip
