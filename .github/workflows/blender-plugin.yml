@@ -15,7 +15,7 @@ jobs:
       fail-fast: false
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Set up Python 3.10
       uses: actions/setup-python@v3
       with:
@@ -39,7 +39,6 @@ jobs:
         export PATH=${PWD}/blender-${BLENDER_VERSION}-linux-x64
     - name: Install molecular-blender addon
       run: |
-        # register addon
         export BLENDER_DIR=${HOME}/.config/blender/${BLENDER_VERSION}
         mkdir -p ${BLENDER_DIR}/scripts/addons
         echo \"{ \\\"Copy Target\\\" : \\\"${BLENDER_DIR}/scripts/addons\\\" }\" > conf.json
@@ -47,4 +46,4 @@ jobs:
         python setup.py link --no-check
     - name: Test Blender
       run: |
-        ./run_test.sh -b blender-${BLENDER_VERSION}-linux-x64/blender
+        bash run_test.sh -b blender-${BLENDER_VERSION}-linux-x64/blender
