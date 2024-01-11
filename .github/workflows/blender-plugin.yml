@@ -43,7 +43,8 @@ jobs:
         export BLENDER_DIR=${HOME}/.config/blender/${BLENDER_VERSION}
         mkdir -p ${BLENDER_DIR}/scripts/addons
         echo \"{ \\\"Copy Target\\\" : \\\"${BLENDER_DIR}/scripts/addons\\\" }\" > conf.json
-        python setup.py build --copy
+        python setup.py build --no-check
+        python setup.py link --no-check
     - name: Test Blender
       run: |
         ./run_test.sh -b blender-${BLENDER_VERSION}-linux-x64/blender
