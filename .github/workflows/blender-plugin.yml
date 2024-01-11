@@ -8,6 +8,9 @@ on:
   pull_request:
     branches: [ master ]
 
+env:
+  BLENDER_VERSION=3.6.7
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -30,13 +33,9 @@ jobs:
         python -m pip install -q pytest cython numpy
     - name: Install Blender 3.6
       run: |
-        export BLENDER_VERSION=3.6.7
         echo "Installing Blender ${BLENDER_VERSION}"
         wget -q "https://mirror.clarkson.edu/blender/release/Blender3.6/blender-${BLENDER_VERSION}-linux-x64.tar.xz"
         tar -xf blender-${BLENDER_VERSION}-linux-x64.tar.xz
-
-        # set up path for blender
-        export PATH=${PWD}/blender-${BLENDER_VERSION}-linux-x64
     - name: Install molecular-blender addon
       run: |
         export BLENDER_DIR=${HOME}/.config/blender/${BLENDER_VERSION}
