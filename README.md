@@ -1,4 +1,4 @@
-# Molecular Blender [![Build Status](https://travis-ci.org/smparker/molecular-blender.svg?branch=master)](https://travis-ci.org/smparker/molecular-blender)
+# Molecular Blender [![Build](https://github.com/smparker/molecular-blender/actions/workflows/blender-plugin.yml/badge.svg?branch=master)](https://github.com/smparker/molecular-blender/actions/workflows/blender-plugin.yml)
 An import plugin specialized for .xyz files of molecules used in, for example,
 quantum chemistry
 
