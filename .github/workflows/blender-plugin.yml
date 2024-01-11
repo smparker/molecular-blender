@@ -8,6 +8,10 @@ on:
   pull_request:
     branches: [ master ]
 
+env:
+  BLENDER_VERSION: "3.6.7"
+  BLENDER_MAJOR_VERSION: "3.6"
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -15,7 +19,7 @@ jobs:
       fail-fast: false
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Set up Python 3.10
       uses: actions/setup-python@v3
       with:
@@ -23,26 +27,21 @@ jobs:
     - name: Install Linux Dependences
       run: |
         sudo apt-get update
-        sudo apt-get install -y clang gcc blender
+        sudo apt-get install -y clang gcc blender tar xz-utils
     - name: Install Python Dependences
       run: |
         python -m pip install --upgrade pip
-        python -m pip install -q pytest cython
+        python -m pip install -q pytest cython numpy
     - name: Install Blender 3.6
       run: |
-        export BLENDER_VERSION=3.6.7
         echo "Installing Blender ${BLENDER_VERSION}"
-        wget "https://www.blender.org/download/release/Blender3.6/blender-${BLENDER_VERSION}-linux-x64.tar.xz"
+        wget -q "https://mirror.clarkson.edu/blender/release/Blender3.6/blender-${BLENDER_VERSION}-linux-x64.tar.xz"
         tar -xf blender-${BLENDER_VERSION}-linux-x64.tar.xz
-
-        # set up path for blender
-        export PATH=${PWD}/blender-${BLENDER_VERSOIN}-linux-x64
-
-        # register addon
-        export BLENDER_DIR=${HOME}/.config/blender/${BLENDER_VERSION}
-        mkdir -p ${BLENDER_DIR}/scripts/addons
-        echo \"{ \\\"Copy Target\\\" : \\\"${BLENDER_DIR}/scripts/addons\\\" }\" > conf.json
-        python setup.py build --copy
+    - name: Install molecular-blender addon
+      run: |
+        mkdir -p ${HOME}/.config/blender/${BLENDER_MAJOR_VERSION}/scripts/addons
+        python setup.py build --no-check
+        python setup.py link --no-check
     - name: Test Blender
       run: |
-        ./run_test.sh -b blender-${BLENDER_VERSION}-linux-x64/blender
+        bash run_test.sh -b blender-${BLENDER_VERSION}-linux-x64/blender

@@ -43,8 +43,11 @@ if [ "$blender" == "auto" ]; then
     BLENDER=/Applications/Blender.app/Contents/MacOS/blender
   fi
 else
+  echo "Checking for blender at $blender"
   if [ -x "$blender" ]; then
     BLENDER="$blender"
+  else
+    echo "Failed to find an executable at $blender"
   fi
 fi
 
