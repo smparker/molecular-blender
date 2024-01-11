@@ -10,6 +10,7 @@ on:
 
 env:
   BLENDER_VERSION: "3.6.7"
+  BLENDER_MAJOR_VERSION: "3.6"
 
 jobs:
   build:
@@ -38,9 +39,7 @@ jobs:
         tar -xf blender-${BLENDER_VERSION}-linux-x64.tar.xz
     - name: Install molecular-blender addon
       run: |
-        export BLENDER_DIR=${HOME}/.config/blender/${BLENDER_VERSION}
-        mkdir -p ${BLENDER_DIR}/scripts/addons
-        echo \"{ \\\"Copy Target\\\" : \\\"${BLENDER_DIR}/scripts/addons\\\" }\" > conf.json
+        mkdir -p ${HOME}/.config/blender/${BLENDER_MAJOR_VERSION}/scripts/addons
         python setup.py build --no-check
         python setup.py link --no-check
     - name: Test Blender
