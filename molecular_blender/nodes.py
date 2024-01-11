@@ -73,9 +73,9 @@ def calc_priority_by_type(node):
     return 0
 
 def calc_priority_by_socket(node):
-    if len(node.inputs) is 0:
+    if len(node.inputs) == 0:
         return -9999
-    if len(node.outputs) is 0:
+    if len(node.outputs) == 0:
         return 9999
 
     result = 0
@@ -83,7 +83,7 @@ def calc_priority_by_socket(node):
         if in_socket.is_linked:
             for link in in_socket.links:
                 if link.is_valid:
-                    if len(link.from_node.inputs) is 0:
+                    if len(link.from_node.inputs) == 0:
                         result -= 1
                     else:
                         result += 2
@@ -92,7 +92,7 @@ def calc_priority_by_socket(node):
         if out_socket.is_linked:
             for link in out_socket.links:
                 if link.is_valid:
-                    if len(link.to_node.outputs) is 0:
+                    if len(link.to_node.outputs) == 0:
                         result += 10
                     else:
                         result -= 1
