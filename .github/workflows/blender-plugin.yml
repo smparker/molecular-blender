@@ -40,8 +40,8 @@ jobs:
     - name: Install molecular-blender addon
       run: |
         mkdir -p ${HOME}/.config/blender/${BLENDER_MAJOR_VERSION}/scripts/addons
-        python setup.py build --no-check
-        python setup.py link --no-check
+        python setup.py build
+        python setup.py link
     - name: Test Blender
       run: |
         bash run_test.sh -b blender-${BLENDER_VERSION}-linux-x64/blender
