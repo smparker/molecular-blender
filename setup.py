@@ -1,16 +1,13 @@
 '''
 Setup originally created by JacquesLucke
-Modified for molecular_blender by Shane Parker 2019-2020
+Modified for molecular_blender by Shane Parker 2019-2024
 '''
 
 import os
 import sys
-import json
-import textwrap
 import subprocess
-from pprint import pprint
-
 import argparse
+import importlib
 
 currentDirectory = os.path.dirname(os.path.abspath(__file__))
 
@@ -18,10 +15,7 @@ if not os.path.samefile(currentDirectory, os.getcwd()):
     print("You are not in the correct directory.")
     print("Expected:", currentDirectory)
     print("Got:     ", os.getcwd())
-    sys.exit()
-
-if currentDirectory not in sys.path:
-    sys.path.append(currentDirectory)
+    raise RuntimeError("setup.py should be run from the directory it is in.")
 
 from _setuputils.generic import *
 from _setuputils.compilation import compile_cxx, compile_cython
@@ -32,7 +26,7 @@ addonName = "molecular_blender"
 addonDirectory = os.path.join(currentDirectory, addonName)
 
 addonVersion = getAddonVersion(os.path.join(addonDirectory, "__init__.py"))
-exportName = "{}_v{}_{}_{}_py{}{}".format(
+exportName = "{}_v{}_{}_{}_py{}_{}".format(
     addonName, *addonVersion[:2], currentOS, *sys.version_info[:2])
 
 exportPath = os.path.join(currentDirectory, exportName + ".zip")
@@ -41,16 +35,16 @@ exportPath = os.path.join(currentDirectory, exportName + ".zip")
 ####################################################
 def main():
     parser = argparse.ArgumentParser("Setup molecular_blender")
-    parser.add_argument("command", choices=['build', 'link', 'export'])
-    parser.add_argument("--link", "-c", action='store_true', help='link build to available blender installations')
-    parser.add_argument("--export", "-e", action='store_true', help='create installable .zip file')
-    parser.add_argument("--no-check", action='store_true', help='skip python version check')
+    parser.add_argument("command", choices=['build', 'install', 'export'])
+    parser.add_argument("--mode", "-i", choices=['link', 'copy'], default='link',
+        help='install by either linking of copying')
+    parser.add_argument("--check-version", action='store_true', help='check python version')
     parser.add_argument("--link-target", default='all', help='which available blender versions to symlink (default: all found)')
 
     args = parser.parse_args()
 
     if args.command == 'build':
-        build()
+        build(check_environment=args.check_version)
     elif args.command == 'link':
         link(args.link_target)
     elif args.command == 'export':
@@ -59,8 +53,9 @@ def main():
 # Build
 ####################################################
 
-def build():
-    check_build_environment()
+def build(check_environment=False):
+    if check_environment:
+        check_build_environment()
 
     changedFileStates = build_impl()
     printChangedFileStates(changedFileStates, currentDirectory)
@@ -70,6 +65,8 @@ def link(link_target='all'):
 
     source = os.path.join(currentDirectory, addonName)
     for p in paths:
+        if link_target != 'all' and not os.path.basename(p) in link_target:
+            continue
         addon = os.path.join(p, 'scripts', 'addons')
         os.makedirs(addon, exist_ok=True)
         target = os.path.join(addon, addonName)
@@ -99,38 +96,19 @@ def build_impl():
 
     compile_cxx(addonDirectory)
 
-def have_cython():
-    try:
-        import Cython
-        return True
-    except:
-        return False
-
-def have_python_37():
-    v = sys.version_info
-    if v.major != 3 or v.minor != 7:
-        return False
-    return True
-
 def check_build_environment(cython=True, python=True):
     fail = False
-    if cython and not have_cython():
+    if cython and (importlib.util.find_spec("Cython") is None):
         print("Cython is not installed for this Python version.")
         print(sys.version)
         fail = True
-    if python and not have_python_37():
-        print(textwrap.dedent('''\
-        Blender 2.8 officially uses Python 3.7.x.
-        You are using: {}
-
-        Use the --no-check option to disable this check.\
-        '''.format(sys.version)))
+    if python and not (sys.version_info.major, sys.version_info.minor) == (3, 10):
+        print("Blender 3.6 uses Python 3.10")
+        print(f"You are using {sys.version}")
         fail = True
     if fail:
-        sys.exit()
+        raise Exception("Build environment is not correct.")
 
-# Run Main
-###############################################
-
-main()
+if __name__ == "__main__":
+    main()
 
