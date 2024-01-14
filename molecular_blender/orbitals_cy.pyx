@@ -430,7 +430,7 @@ cdef void add_box_values(CShell* shell,
         int nz, DTYPE_t* zz,
         DTYPE_t* coeff,
         DTYPE_t* target,
-        float logmxcoeff) nogil:
+        float logmxcoeff) noexcept nogil:
     cdef float X = shell.X
     cdef float Y = shell.Y
     cdef float Z = shell.Z

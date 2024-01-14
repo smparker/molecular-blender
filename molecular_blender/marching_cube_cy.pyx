@@ -331,7 +331,7 @@ ctypedef vector[triangle_vec] iso_triangles
 @cython.nonecheck(CYDEBUG)
 cdef void polygonise(triangle_vec* tri_list, const DTYPE_t* cornervalues,
         const DTYPE_t* cornerpos,
-        float isolevel) nogil:
+        float isolevel) noexcept nogil:
     global edgetable, tritable
 
     cdef point[12] vertlist
@@ -379,7 +379,7 @@ cdef void polygonise(triangle_vec* tri_list, const DTYPE_t* cornervalues,
 @cython.wraparound(CYDEBUG)
 @cython.initializedcheck(CYDEBUG)
 @cython.nonecheck(CYDEBUG)
-cdef void vertex_interp(point* vert_out, float isolevel, const DTYPE_t* p1, const DTYPE_t* p2, const float v1, const float v2) nogil:
+cdef void vertex_interp(point* vert_out, float isolevel, const DTYPE_t* p1, const DTYPE_t* p2, const float v1, const float v2) noexcept nogil:
     cdef float zero = 1e-8
     if (fabs(isolevel-v1) < zero):
         vert_out.x = p1[0]

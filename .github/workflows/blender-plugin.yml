@@ -41,7 +41,7 @@ jobs:
       run: |
         mkdir -p ${HOME}/.config/blender/${BLENDER_MAJOR_VERSION}/scripts/addons
         python setup.py build
-        python setup.py install --mode copy
+        python setup.py install
     - name: Test Blender
       run: |
         bash run_test.sh -b blender-${BLENDER_VERSION}-linux-x64/blender

@@ -21,8 +21,8 @@ def transform_triangles(triangles, origin, axes):
     if not triangles:
         return triangles
     coords = np.array(triangles, dtype=DTYPE)
-    out = np.dot(coords, axes)
-    return [out[i, :] + origin for i in range(coords.shape[0])]
+    out = np.dot(coords, axes) + origin
+    return [ out[i,:] for i in range(out.shape[0]) ]
 
 
 def cube_isosurface(data, origin, axes, isovalues, name="cube", wm=None):
@@ -113,16 +113,13 @@ def isosurface_simple(p0, p1, nvoxels, isovalues, box_func, axes, name, wm=None)
     yvals, ystep = np.linspace(p0[1], p1[1], num=nvoxels[1]+1, retstep=True, endpoint=True, dtype=DTYPE)
     zvals, zstep = np.linspace(p0[2], p1[2], num=nvoxels[2]+1, retstep=True, endpoint=True, dtype=DTYPE)
 
-    scaled_axes = np.array(axes, dtype=DTYPE)
-    scaled_axes[:,0] *= xstep
-    scaled_axes[:,1] *= ystep
-    scaled_axes[:,2] *= zstep
+    scaled_axes = np.array(axes, dtype=DTYPE) * np.array([xstep, ystep, zstep], dtype=DTYPE)
 
     box_values = box_func(xvals, yvals, zvals)
     tri_list = marching_cube_box(box_values, isovalues)
 
+    origin = np.array(p0, dtype=DTYPE) * bohr2ang
     for iiso in range(len(isovalues)):
-        origin = np.array(p0, dtype=DTYPE) * bohr2ang
         triangle_sets[iiso]["triangles"] = transform_triangles(
             tri_list[iiso], origin, scaled_axes)
 
