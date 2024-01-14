@@ -8,6 +8,7 @@ import sys
 import subprocess
 import argparse
 import importlib
+import shutil
 
 currentDirectory = os.path.dirname(os.path.abspath(__file__))
 
@@ -36,7 +37,7 @@ exportPath = os.path.join(currentDirectory, exportName + ".zip")
 def main():
     parser = argparse.ArgumentParser("Setup molecular_blender")
     parser.add_argument("command", choices=['build', 'install', 'export'])
-    parser.add_argument("--mode", "-i", choices=['link', 'copy'], default='link',
+    parser.add_argument("--mode", "-m", choices=['link', 'copy'], default='copy',
         help='install by either linking of copying')
     parser.add_argument("--check-version", action='store_true', help='check python version')
     parser.add_argument("--link-target", default='all', help='which available blender versions to symlink (default: all found)')
@@ -45,8 +46,8 @@ def main():
 
     if args.command == 'build':
         build(check_environment=args.check_version)
-    elif args.command == 'link':
-        link(args.link_target)
+    elif args.command == 'install':
+        install(install_mode=args.mode)
     elif args.command == 'export':
         export()
 
@@ -60,21 +61,30 @@ def build(check_environment=False):
     changedFileStates = build_impl()
     printChangedFileStates(changedFileStates, currentDirectory)
 
-def link(link_target='all'):
+def install(install_mode='copy'):
+    if install_mode not in ('link', 'copy'):
+        raise ValueError("install_mode must be either 'link' or 'copy'")
     paths = find_user_blender_dirs()
 
     source = os.path.join(currentDirectory, addonName)
     for p in paths:
-        if link_target != 'all' and not os.path.basename(p) in link_target:
-            continue
         addon = os.path.join(p, 'scripts', 'addons')
         os.makedirs(addon, exist_ok=True)
         target = os.path.join(addon, addonName)
-        if not os.path.isdir(target):
-            print("  - creating symlink at {}".format(target))
-            os.symlink(source, target)
+
+        if os.path.isdir(target):
+            print("  - removing directory {}".format(target))
+            if os.path.islink(target):
+                os.unlink(target)
+            else:
+                shutil.rmtree(target)
+
+        if install_mode == 'copy':
+            print("  - copying directory {} to {}".format(source, target))
+            shutil.copytree(source, target)
         else:
-            print("  - skipping directory {}".format(target))
+            print("  - creating symlink from {} to {}".format(source, target))
+            os.symlink(source, target)
 
 def export():
     execute_Export(addonDirectory, exportPath, addonName)
