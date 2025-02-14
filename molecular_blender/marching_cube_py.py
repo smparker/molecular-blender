@@ -472,6 +472,10 @@ def marching_cube_outline(data, xvals, yvals, zvals, isovalues):
 
     outlines = []
 
+    nx = len(xvals)
+    ny = len(yvals)
+    nz = len(zvals)
+
     for zi in range(1, nz):
         z = zvals[zi-1]
         z2 = zvals[zi]
