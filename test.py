@@ -193,7 +193,13 @@ class TestMoldenFunctions(unittest.TestCase):
         for i in range(1,25+1):
             orb = self.orbitals.get_orbital(i)
             integration = np.sum(orb.box_values(self.xyz, self.xyz, self.xyz)**2) * self.dvol
-            self.assertAlmostEqual(integration, 1.00, places=1)
+            self.assertAlmostEqual(integration, 1.0, places=1)
+
+    def test_density_norm(self):
+        """Test to verify density norm"""
+        density = self.orbitals.get_density()
+        integration = np.sum(density.box_values(self.xyz, self.xyz, self.xyz)) * self.dvol
+        self.assertAlmostEqual(integration, 4.0, places=1)
 
 def blender_argv(argv):
     """Processes argv to process the Blender specific parts"""
