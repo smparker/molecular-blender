@@ -673,26 +673,33 @@ def draw_surfaces(molecule, styler, context, options):
             if ml:
                 neworb = lumo + int(ml.group(1))
 
-            try:
-                neworb = int(o)
-            except ValueError:
-                pass
+            if o == "density":
+                neworb = "density"
 
             if neworb is None:
-                raise Exception("Could not understand orbital list!")
+                try:
+                    neworb = int(o)
+                except ValueError:
+                    raise Exception(f"Could not understand orbital {o}!")
+                    pass
+
             orblist.append(neworb)
 
         isovals = options["isovalues"]
         resolution = options["resolution"]
 
         for orbname, orbnumber in zip(orbnames, orblist):
-            orb = orbitals.get_orbital(orbnumber)
-            if options["cumulative"]:
+            if orbname == "density": # TODO make this a function (base class?)
+                orb = orbitals.get_density()
+            else:
+                orb = orbitals.get_orbital(orbnumber)
+            if options["cumulative"]: # TODO does this need to be adjusted for densities?
                 orbital_isovals = orb.isovalue_containing_proportion(isovals)
             else:
                 orbital_isovals = isovals
             vset = molden_isosurface(orb, orbital_isovals, resolution, orbname, wm)
-            vertex_sets.extend(vset)
+            if vset:
+                vertex_sets.extend(vset)
 
             if molecule.orbitals_trajectory is not None:
                 f0 = fmap(0)
@@ -703,7 +710,10 @@ def draw_surfaces(molecule, styler, context, options):
             if molecule.orbitals_trajectory is not None:
                 for i, orbital_snap in enumerate(molecule.volume_trajectory, 1):
                     name = f"{orbname:s}-{i:4d}"
-                    orb = orbital_snap.get_orbital(orbnumber)
+                    if orbname == "density":
+                        orb = orbital_snap.get_density()
+                    else:
+                        orb = orbital_snap.get_orbital(orbnumber)
                     vsets = molecule_isosurface(orb, orbital_isovals, resolution, name, wm)
 
                     fi = fmap(i)

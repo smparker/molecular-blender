@@ -128,7 +128,6 @@ class PaletteElementStyler(object):
         mat.blend_method = 'BLEND'
         mat.use_screen_refraction = True
         mat.refraction_depth = 0.1
-        mat.shadow_method = 'CLIP'
 
         return mat
 
