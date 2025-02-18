@@ -195,11 +195,27 @@ class TestMoldenFunctions(unittest.TestCase):
             integration = np.sum(orb.box_values(self.xyz, self.xyz, self.xyz)**2) * self.dvol
             self.assertAlmostEqual(integration, 1.0, places=1)
 
+    def test_cumulative_orbital_isovalue(self):
+        """Test to verify cumulative isovalue"""
+        orb = self.orbitals.get_orbital(1)
+
+        isovals = orb.isovalue_containing_proportion([0.5, 0.9], resolution=0.25, box=[[-3, -3, -3], [3, 3, 3]])
+        self.assertAlmostEqual(isovals[0], 0.12, places=2)
+        self.assertAlmostEqual(isovals[1], 0.048, places=2)
+
     def test_density_norm(self):
         """Test to verify density norm"""
         density = self.orbitals.get_density()
         integration = np.sum(density.box_values(self.xyz, self.xyz, self.xyz)) * self.dvol
         self.assertAlmostEqual(integration, 4.0, places=1)
+
+    def test_cumulative_density_isovalue(self):
+        """Test to verify cumulative isovalue"""
+        orb = self.orbitals.get_density()
+
+        isovals = orb.isovalue_containing_proportion([0.5, 0.9], resolution=0.25, box=[[-3, -3, -3], [3, 3, 3]])
+        self.assertAlmostEqual(isovals[0], 0.10, places=2)
+        self.assertAlmostEqual(isovals[1], 0.010, places=2)
 
 def blender_argv(argv):
     """Processes argv to process the Blender specific parts"""

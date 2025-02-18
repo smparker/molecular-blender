@@ -184,12 +184,17 @@ class Shell(object):
         return None
 
     def plane_values(self, xx, yy, z_a, logmxcoeff=0.0):
-        """compute values of shell on a plane of provided x and y values (each as an array)"""
+        """compute values of shell on a plane of provided x and y values (each as an array)
+
+        xx, yy: 2D arrays of x and y values
+        z_a: z value of plane
+        logmxcoeff: log of maximum coefficient in shell
+
+        Returns: 3D array of values of shell on plane: [ncao, len(xx), len(yy)]
+        """
         pxx = xx - self.X
         pyy = yy - self.Y
         pz  = z_a - self.Z
-
-        out = np.zeros( (xx.shape[0], xx.shape[1], len(self.coeff)) )
 
         rr = pxx*pxx + pyy*pyy + pz * pz
         if np.any(rr < self.logthr - logmxcoeff):
@@ -238,7 +243,8 @@ class MOData(object):
     def get_density(self):
         """Returns DensityCalculater for the electronic density"""
         rho = np.einsum("pu,p,pv->uv", self.coeff, self.occupations, self.coeff)
-        return DensityCalculater(self.shells, rho)
+        nelec = np.sum(self.occupations)
+        return DensityCalculater(self.shells, rho, nelec)
 
     @classmethod
     def from_dict(cls, geo):
@@ -324,6 +330,8 @@ class OrbitalCalculater(object):
     def isovalue_containing_proportion(self, values=[0.90], resolution=0.2*ang2bohr, box=None):
         if box is None:
             p0, p1 = self.bounding_box(1e-4)
+        else:
+            p0, p1 = box
 
         npoints = [ int(math.ceil((b - a)/resolution)) for a, b in zip(p0, p1) ]
 
@@ -337,9 +345,10 @@ class OrbitalCalculater(object):
 class DensityCalculater(object):
     """Computes value of densities at real space points"""
 
-    def __init__(self, shells, density):
+    def __init__(self, shells, density, nelec):
         self.shells = shells
         self.density = density
+        self.nelec = nelec
 
         # use very small number to replace zeros
         nshl = len(self.shells)
@@ -393,23 +402,25 @@ class DensityCalculater(object):
 
     def plane_values(self, xvals, yvals, z_a):
         out = np.zeros([len(xvals), len(yvals)])
+        xx = np.zeros([len(xvals), len(yvals)])
+        yy = np.zeros([len(xvals), len(yvals)])
         for i, x in enumerate(xvals):
-            for j, y in enumerate(yvals):
-                out[i, j] = self.value(x, y, z_a)
+            xx[i,:] = x
+            yy[i,:] = yvals[:]
 
+        nao = np.sum([sh.size for sh in self.shells])
+        phivals = np.zeros([nao, len(xvals), len(yvals)])
+        nonzero_shells = []
+        for i, ish in enumerate(self.shells):
+            ivals = ish.plane_values(xx, yy, z_a, logmxcoeff=self.logmxorb[i])
+            if ivals is not None:
+                phivals[ish.start:ish.start + ish.size] = ivals
+                nonzero_shells.append([i, ish])
+
+        for i, ish in nonzero_shells:
+            for j, jsh in nonzero_shells:
+                out += np.einsum("pxy,qxy,pq->xy", phivals[ish.start:ish.start + ish.size], phivals[jsh.start:jsh.start + jsh.size], self.density[ish.start:ish.start + ish.size, jsh.start:jsh.start + jsh.size])
         return out
-        # TODO reimplement to make use of plane_values in Shell
-        #xx = np.zeros([len(xvals), len(yvals)])
-        #yy = np.zeros([len(xvals), len(yvals)])
-        #for i, x in enumerate(xvals):
-        #    xx[i,:] = x
-        #    yy[i,:] = yvals[:]
-
-        #for sh, lmx in zip(self.shells, self.logmxcoeff):
-        #    vals = sh.plane_values(xx, yy, z_a, logmxcoeff=lmx)
-        #    if vals is not None:
-        #        out += np.einsum("pxy,p->xy", vals, self.coeff[sh.start:sh.start+sh.size])
-        #return out
 
     def box_values(self, xvals, yvals, zvals):
         out = np.zeros([len(xvals), len(yvals), len(zvals)])
@@ -422,6 +433,8 @@ class DensityCalculater(object):
     def isovalue_containing_proportion(self, values=[0.90], resolution=0.2*ang2bohr, box=None):
         if box is None:
             p0, p1 = self.bounding_box(1e-4)
+        else:
+            p0, p1 = box
 
         npoints = [ int(math.ceil((b - a)/resolution)) for a, b in zip(p0, p1) ]
 
@@ -429,4 +442,4 @@ class DensityCalculater(object):
         dV = (xvals[1] - xvals[0]) * (yvals[1] - yvals[0]) * (zvals[1] - zvals[0])
         boxvalues = self.box_values(xvals, yvals, zvals).reshape(-1)
 
-        return isovalue_containing_proportion(values, boxvalues, dV)
+        return isovalue_containing_proportion(values, boxvalues, dV, square=False)
