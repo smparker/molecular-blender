@@ -58,11 +58,11 @@ def isovalue_containing_proportion_binary(values, volume_data_sh, dV, square=Tru
     out = []
 
     for target_percentage in values:
-        target_integral = total_integral * target_percentage
+        target_integral = total_integral * abs(target_percentage)
 
         # Binary search for isovalue
-        min_val = np.min(volume_data_sh)
-        max_val = np.max(volume_data_sh)
+        min_val = np.min(np.abs(volume_data_sh))
+        max_val = np.max(np.abs(volume_data_sh))
 
         for _ in range(max_iterations):
             current_iso = (min_val + max_val) / 2
@@ -78,7 +78,7 @@ def isovalue_containing_proportion_binary(values, volume_data_sh, dV, square=Tru
                 max_val = current_iso
 
         # If we hit max iterations, return best estimate
-        out.append(current_iso)
+        out.append(np.copysign(current_iso, target_percentage))
 
     isovals = [ round_sigfigs(x, 2) for x in out ]
     return isovals
