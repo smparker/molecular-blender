@@ -693,7 +693,7 @@ def draw_surfaces(molecule, styler, context, options):
                 orb = orbitals.get_density()
             else:
                 orb = orbitals.get_orbital(orbnumber)
-            if options["cumulative"]: # TODO does this need to be adjusted for densities?
+            if options["cumulative"]:
                 orbital_isovals = orb.isovalue_containing_proportion(isovals)
             else:
                 orbital_isovals = isovals

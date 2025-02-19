@@ -432,7 +432,7 @@ class DensityCalculater(object):
 
     def isovalue_containing_proportion(self, values=[0.90], resolution=0.2*ang2bohr, box=None):
         if box is None:
-            p0, p1 = self.bounding_box(1e-4)
+            p0, p1 = self.bounding_box(1e-7)
         else:
             p0, p1 = box
 

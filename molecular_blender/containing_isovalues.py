@@ -70,7 +70,7 @@ def isovalue_containing_proportion_binary(values, volume_data_sh, dV, square=Tru
             current_integral = np.sum(volume_data_sh[mask]**2) * dV if square else np.sum(np.abs(volume_data_sh[mask])) * dV
 
             if abs(current_integral - target_integral) < tolerance * total_integral:
-                out.append(current_iso)
+                break
 
             if current_integral > target_integral:
                 min_val = current_iso
@@ -79,4 +79,6 @@ def isovalue_containing_proportion_binary(values, volume_data_sh, dV, square=Tru
 
         # If we hit max iterations, return best estimate
         out.append(current_iso)
-    return out
+
+    isovals = [ round_sigfigs(x, 2) for x in out ]
+    return isovals
