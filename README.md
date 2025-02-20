@@ -12,7 +12,7 @@ quantum chemistry
 - find and fill in aromatic rings
 - draw spheres sitting on atoms to represent atomic charges and dynamically
   scale them during an animation
-- draw molecular orbital isosurfaces with .cube files or .molden files
+- draw molecular orbital and density isosurfaces with .cube files or .molden files
 
 ## Installation
 There are two basic ways to install Molecular Blender, depending on whether you
@@ -55,6 +55,19 @@ On Mac OS X, the path for a user supplied addon is
 
 where `<username>` and `<version>` should be replaced with your username and the
 Blender version you are using.
+
+## Isosurfaces
+
+To draw isosurfaces, you need either a cube file or a molden file. If using a molden file,
+you also need to specify which orbital or density you want to draw. In the orbital selection
+box, you can specify a comma separated list of orbitals to draw. molecular_blender also
+understands the keywords homo, lumo, and density, and they can be combined with additional math.
+For example:
+
+  - `homo - 1` would compute the second highest occupied molecular orbital
+  - `lumo + 2` would compute the third highest unoccupied molecular orbital
+  - `4` would compute the 4th molecular orbital
+  - `density` would compute the density
 
 ## Design
 
