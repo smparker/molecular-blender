@@ -33,7 +33,7 @@ import numpy as np
 cimport numpy as np
 
 from numpy cimport ndarray
-from libc.math cimport sqrt, exp, fabs
+from libc.math cimport sqrt, exp, fabs, ceil
 from libc.stdlib cimport malloc, free
 
 DTYPE = np.float32
@@ -351,6 +351,126 @@ cdef class Shell:
                             + coeff[14] * dz*dz*dx*dy * sqrt_35_1
                             )
 
+    @cython.boundscheck(CYDEBUG)
+    @cython.wraparound(CYDEBUG)
+    @cython.initializedcheck(CYDEBUG)
+    @cython.nonecheck(CYDEBUG)
+    cpdef bint compute_chi_plane(self, DTYPE_t[::1] xx,
+            DTYPE_t[::1] yy, float z_a,
+            DTYPE_t[:,:,::1] target, float logmxcoeff=0.0):
+
+        cdef float x = self.X
+        cdef float y = self.Y
+        cdef float z = self.Z
+
+        cdef float logthresh = self.logthr - logmxcoeff
+
+        cdef int nx = len(xx)
+        cdef int ny = len(yy)
+
+        cdef int nexp = len(self.exponents)
+
+        cdef int l = self.l
+        cdef int shellsize = self.size
+
+        # check the four corners to find a max value
+        cdef float x0 = xx[0] - x
+        cdef float x1 = xx[nx-1] - x
+        cdef float y0 = yy[0] - y
+        cdef float y1 = yy[ny-1] - y
+
+        cdef float min_x = min(abs(x0),abs(x1))
+        if (x0*x1 < 0):
+            min_x = 0.0
+        cdef float min_y = min(abs(y0),abs(y1))
+        if (y0*y1 < 0):
+            min_y = 0.0
+        cdef float min_z = z_a
+
+        cdef float min_rr = min_x*min_x + min_y*min_y + min_z*min_z
+        if min_rr >= logthresh:
+            return False
+
+        cdef float sqrt3 = sqrt(3.0)
+        cdef float sqrt5 = sqrt(5.0)
+        cdef float sqrt15 = sqrt(15.0)
+        cdef float sqrt_35_5 = sqrt(35.0/5.0)
+        cdef float sqrt_35_3 = sqrt(35.0/3.0)
+        cdef float sqrt_35_1 = sqrt(35.0/1.0)
+
+        cdef float dx, dy, dz, radial
+
+        cdef DTYPE_t[::1] denormed_coeffs = self.denormed_coeffs
+        cdef DTYPE_t[::1] exponents = self.exponents
+
+        cdef ndarray[DTYPE_t, ndim=2] expyy = np.zeros([ny, nexp], dtype=DTYPE)
+        cdef ndarray[DTYPE_t, ndim=1] expxx = np.zeros(nexp, dtype=DTYPE)
+
+        for iy in range(ny):
+            dy = yy[iy] - y
+            for iexp in range(nexp):
+                expyy[iy, iexp] = exp(-exponents[iexp]*dy*dy)
+
+        dz = z_a - z
+
+        cdef int icoeff = 0
+        for ix in range(nx):
+            dx = xx[ix] - x
+            for iexp in range(nexp):
+                expxx[iexp] = exp(-exponents[iexp] * (dx*dx + dz*dz)) * denormed_coeffs[iexp]
+
+            for iy in range(ny):
+                dy = yy[iy] - y
+
+                if (dx*dx + dy*dy + dz*dz >= logthresh):
+                    continue
+
+                radial = 0.0
+                for iexp in range(nexp):
+                    radial += expxx[iexp] * expyy[iy, iexp]
+
+                if l == 0:
+                    target[icoeff,ix,iy] = radial
+                elif l == 1:
+                    target[icoeff,ix,iy] = radial * dx
+                    target[icoeff+1,ix,iy] = radial * dy
+                    target[icoeff+2,ix,iy] = radial * dz
+                elif l == 2:
+                    target[icoeff,ix,iy] = radial * dx*dx
+                    target[icoeff+1,ix,iy] = radial * dy*dy
+                    target[icoeff+2,ix,iy] = radial * dz*dz
+                    target[icoeff+3,ix,iy] = radial * dx*dy * sqrt3
+                    target[icoeff+4,ix,iy] = radial * dx*dz * sqrt3
+                    target[icoeff+5,ix,iy] = radial * dy*dz * sqrt3
+                elif l == 3:
+                    target[icoeff,ix,iy] = radial * dx*dx*dx
+                    target[icoeff+1,ix,iy] = radial * dy*dy*dy
+                    target[icoeff+2,ix,iy] = radial * dz*dz*dz
+                    target[icoeff+3,ix,iy] = radial * dx*dy*dy * sqrt5
+                    target[icoeff+4,ix,iy] = radial * dx*dx*dy * sqrt5
+                    target[icoeff+5,ix,iy] = radial * dx*dx*dz * sqrt5
+                    target[icoeff+6,ix,iy] = radial * dx*dz*dz * sqrt5
+                    target[icoeff+7,ix,iy] = radial * dy*dz*dz * sqrt5
+                    target[icoeff+8,ix,iy] = radial * dy*dy*dz * sqrt5
+                    target[icoeff+9,ix,iy] = radial * dx*dy*dz * sqrt15
+                elif l == 4:
+                    target[icoeff,ix,iy] = radial * dx*dx*dx*dx
+                    target[icoeff+1,ix,iy] = radial * dy*dy*dy*dy
+                    target[icoeff+2,ix,iy] = radial * dz*dz*dz*dz
+                    target[icoeff+3,ix,iy] = radial * dx*dx*dx*dy * sqrt_35_5
+                    target[icoeff+4,ix,iy] = radial * dx*dx*dx*dz * sqrt_35_5
+                    target[icoeff+5,ix,iy] = radial * dy*dy*dy*dx * sqrt_35_5
+                    target[icoeff+6,ix,iy] = radial * dy*dy*dy*dz * sqrt_35_5
+                    target[icoeff+7,ix,iy] = radial * dz*dz*dz*dx * sqrt_35_5
+                    target[icoeff+8,ix,iy] = radial * dz*dz*dz*dy * sqrt_35_5
+                    target[icoeff+9,ix,iy] = radial * dx*dx*dy*dy * sqrt_35_3
+                    target[icoeff+10,ix,iy] = radial * dx*dx*dz*dz * sqrt_35_3
+                    target[icoeff+11,ix,iy] = radial * dy*dy*dz*dz * sqrt_35_3
+                    target[icoeff+12,ix,iy] = radial * dx*dx*dy*dz * sqrt_35_1
+                    target[icoeff+13,ix,iy] = radial * dy*dy*dx*dz * sqrt_35_1
+                    target[icoeff+14,ix,iy] = radial * dz*dz*dx*dy * sqrt_35_1
+        return True
+
 
 def gaussian_overlap(axyz, aexp, apoly, bxyz, bexp, bpoly):
     """returns overlap integral for gaussians centered at xyz with exponents exp
@@ -364,15 +484,17 @@ def gaussian_overlap(axyz, aexp, apoly, bxyz, bexp, bpoly):
     return np.prod(fac * gam)
 
 
-class MOData(object):
+class MOData:
     """Organizes data for computing orbitals in real space"""
 
-    def __init__(self, shells, coeff, nocc):
+    def __init__(self, shells, coeff, nocc, occupations):
         assert sum([sh.size for sh in shells]) == coeff.shape[1]
 
         self.shells = shells
         self.coeff = coeff
         self.nocc = nocc
+        self.nvir = coeff.shape[0] - nocc
+        self.occupations = occupations
 
     def homo(self):
         return self.nocc
@@ -381,6 +503,12 @@ class MOData(object):
         """Returns OrbitalCalculater for orbital"""
         i = (iorb if iorb > 0 else self.nocc + iorb) - 1
         return OrbitalCalculater(self.shells, self.coeff[i, :])
+
+    def get_density(self):
+        """Returns DensityCalculater for the electronic density"""
+        rho = np.einsum("pu,p,pv->uv", self.coeff, self.occupations, self.coeff, dtype=DTYPE)
+        nelec = np.sum(self.occupations)
+        return DensityCalculater(self.shells, rho, nelec)
 
     @classmethod
     def from_dict(cls, geo):
@@ -396,15 +524,16 @@ class MOData(object):
                 ico += newshell.size
                 shells.append(newshell)
 
-        nocc = sum([float(x["occup"]) > 0.0 for x in geo["mo"]])
+        occupations = np.array([ float(x["occup"]) for x in geo["mo"]], dtype=DTYPE)
+        nocc = np.sum(occupations > 0.0)
         nmo = len(geo["mo"])
-        nao = sum([sh.size for sh in shells])
+        nao = np.sum([sh.size for sh in shells])
 
         coeff = np.zeros([nmo, nao], dtype=DTYPE)
         for i in range(nmo):
             coeff[i, :] = geo["mo"][i]["coeff"]
 
-        return cls(shells, coeff, nocc)
+        return cls(shells, coeff, nocc, occupations)
 
 ctypedef struct CShell:
     float X, Y, Z
@@ -682,6 +811,8 @@ cdef class OrbitalCalculater:
     def isovalue_containing_proportion(self, values=[0.90], resolution=0.2*ang2bohr, box=None):
         if box is None:
             p0, p1 = self.bounding_box(1e-4)
+        else:
+            p0, p1 = box
 
         npoints = [ int(math.ceil((b - a)/resolution)) for a, b in zip(p0, p1) ]
 
@@ -690,3 +821,155 @@ cdef class OrbitalCalculater:
         boxvalues = self.box_values(xvals, yvals, zvals).reshape(-1)
 
         return isovalue_containing_proportion(values, boxvalues, dV)
+
+cdef class DensityCalculater:
+    """Computes value of densities at real space points"""
+
+    cdef:
+        readonly list shells
+        readonly np.ndarray density
+        readonly int nelec
+        readonly np.ndarray shellmxdens
+        readonly np.ndarray logmxdens
+        readonly np.ndarray shellmxorb
+        readonly np.ndarray logmxorb
+        int nshl
+
+    def __init__(self, list shells, np.ndarray[DTYPE_t, ndim=2] density, int nelec):
+        self.shells = shells
+        self.density = density
+        self.nelec = nelec
+
+        # use very small number to replace zeros
+        self.nshl = len(self.shells)
+        # shellmxdens[i, j] is the maximum value in density of shell i, j
+        self.shellmxdens = np.zeros([self.nshl, self.nshl], dtype=DTYPE)
+
+        cdef:
+            int i, j
+            int istart, iend, jstart, jend
+            DTYPE_t shelldens
+
+        for i in range(self.nshl):
+            istart = shells[i].start
+            iend = istart + shells[i].size
+            for j in range(self.nshl):
+                jstart = shells[j].start
+                jend = jstart + shells[j].size
+                shelldens = np.max(np.abs(self.density[istart:iend, jstart:jend]))
+                self.shellmxdens[i,j] = shelldens
+
+        self.logmxdens = np.log(self.shellmxdens + 1e-30)
+
+        # shellmxorb[i] of shell i in entire density
+        self.shellmxorb = np.array([np.max(self.shellmxdens[i,:]) for i in range(self.nshl)], dtype=DTYPE)
+        # log(shellmxorb)
+        self.logmxorb = np.log(self.shellmxorb + 1e-30)
+
+    def bounding_box(self, DTYPE_t thr=1.0e-5):
+        """returns lower and upper limits of box (in bohr) that should fully contain orbital"""
+        cdef:
+            list p0, p1
+            int ixyz
+
+        # find lower bounds
+        p0 = [np.min([sh.center[ixyz] - sh.bounding_box_size(thr, lmx)
+               for sh, lmx in zip(self.shells, self.logmxorb)]) for ixyz in range(3)]
+
+        # find upper bounds
+        p1 = [np.max([sh.center[ixyz] + sh.bounding_box_size(thr, lmx)
+               for sh, lmx in zip(self.shells, self.logmxorb)]) for ixyz in range(3)]
+
+        return p0, p1
+
+    cpdef DTYPE_t value(self, DTYPE_t x, DTYPE_t y, DTYPE_t z):
+        """Returns value of the density at specified point"""
+        cdef:
+            DTYPE_t out = 0.0
+            list nonzero_shells = []
+            int nao = sum([sh.size for sh in self.shells])
+            np.ndarray[DTYPE_t, ndim=1] phivals = np.zeros(nao, dtype=DTYPE)
+            int i, j
+            np.ndarray[DTYPE_t, ndim=1] ivals
+
+        for i, ish in enumerate(self.shells):
+            ivals = ish.value(x, y, z, logmxcoeff=self.logmxorb[i])
+            if ivals is not None:
+                phivals[ish.start:ish.start + ish.size] = ivals
+                nonzero_shells.append([i, ish])
+
+        for i, ish in nonzero_shells:
+            for j, jsh in nonzero_shells:
+                out += np.einsum("p,q,pq->",
+                               phivals[ish.start:ish.start + ish.size],
+                               phivals[jsh.start:jsh.start + jsh.size],
+                               self.density[ish.start:ish.start + ish.size,
+                                          jsh.start:jsh.start + jsh.size],
+                                 optimize=True)
+        return out
+
+    def plane_values(self, np.ndarray[DTYPE_t, ndim=1] xvals,
+                    np.ndarray[DTYPE_t, ndim=1] yvals,
+                    DTYPE_t z_a):
+        cdef:
+            np.ndarray[DTYPE_t, ndim=2] out = np.zeros([len(xvals), len(yvals)], dtype=DTYPE)
+            np.ndarray[DTYPE_t, ndim=2] xx = np.zeros([len(xvals), len(yvals)], dtype=DTYPE)
+            np.ndarray[DTYPE_t, ndim=2] yy = np.zeros([len(xvals), len(yvals)], dtype=DTYPE)
+            int i, j
+            int nao = sum([sh.size for sh in self.shells])
+            np.ndarray[DTYPE_t, ndim=3] phivals = np.zeros([nao, len(xvals), len(yvals)], dtype=DTYPE)
+            list nonzero_shells = []
+            np.ndarray ivals
+
+        for i, x in enumerate(xvals):
+            xx[i,:] = x
+            yy[i,:] = yvals[:]
+
+        for i, ish in enumerate(self.shells):
+            contributes = ish.compute_chi_plane(xvals, yvals, z_a, phivals[ish.start:ish.start + ish.size],
+                                  logmxcoeff=self.logmxorb[i])
+            if contributes:
+                nonzero_shells.append([i, ish])
+
+        for i, ish in nonzero_shells:
+            for j, jsh in nonzero_shells:
+                out += np.einsum("pxy,qxy,pq->xy",
+                               phivals[ish.start:ish.start + ish.size],
+                               phivals[jsh.start:jsh.start + jsh.size],
+                               self.density[ish.start:ish.start + ish.size,
+                                          jsh.start:jsh.start + jsh.size])
+        return out
+
+    def box_values(self, np.ndarray[DTYPE_t, ndim=1] xvals,
+                  np.ndarray[DTYPE_t, ndim=1] yvals,
+                  np.ndarray[DTYPE_t, ndim=1] zvals):
+        cdef:
+            np.ndarray[DTYPE_t, ndim=3] out = np.zeros([len(xvals), len(yvals), len(zvals)], dtype=DTYPE)
+            int k
+            DTYPE_t z_a
+
+        for k, z_a in enumerate(zvals):
+            out[:,:,k] = self.plane_values(xvals, yvals, z_a)
+
+        return out
+
+    def isovalue_containing_proportion(self, list values=[0.90], DTYPE_t resolution=0.2*ang2bohr, tuple box=None):
+        cdef:
+            list p0, p1, npoints
+            np.ndarray[DTYPE_t, ndim=1] xvals, yvals, zvals
+            DTYPE_t dV
+            np.ndarray boxvalues
+
+        if box is None:
+            p0, p1 = self.bounding_box(1e-7)
+        else:
+            p0, p1 = box
+
+        npoints = [int(ceil((b - a)/resolution)) for a, b in zip(p0, p1)]
+
+        xvals, yvals, zvals = [np.linspace(a, b, num=n, endpoint=True, dtype=DTYPE)
+                              for a, b, n in zip(p0, p1, npoints)]
+        dV = (xvals[1] - xvals[0]) * (yvals[1] - yvals[0]) * (zvals[1] - zvals[0])
+        boxvalues = self.box_values(xvals, yvals, zvals).reshape(-1)
+
+        return isovalue_containing_proportion(values, boxvalues, dV, square=False)

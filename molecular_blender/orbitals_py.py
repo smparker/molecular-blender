@@ -220,7 +220,7 @@ def gaussian_overlap(axyz, aexp, apoly, bxyz, bexp, bpoly):
     return np.prod(fac * gam)
 
 
-class MOData(object):
+class MOData:
     """Organizes data for computing orbitals in real space"""
 
     def __init__(self, shells, coeff, nocc, occupations):

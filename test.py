@@ -213,7 +213,7 @@ class TestMoldenFunctions(unittest.TestCase):
         """Test to verify cumulative isovalue"""
         orb = self.orbitals.get_density()
 
-        isovals = orb.isovalue_containing_proportion([0.5, 0.9], resolution=0.25, box=[[-3, -3, -3], [3, 3, 3]])
+        isovals = orb.isovalue_containing_proportion([0.5, 0.9], resolution=0.25, box=([-3, -3, -3], [3, 3, 3]))
         self.assertAlmostEqual(isovals[0], 0.10, places=2)
         self.assertAlmostEqual(isovals[1], 0.010, places=2)
 
@@ -232,4 +232,6 @@ def blender_argv(argv):
 # When called through Blender, sys.argv includes the blender command. The
 # code block here is constructing argv to match what unittest expects.
 if __name__ == "__main__":
+    import sys
+    print(sys.version)
     unittest.main(argv=blender_argv(sys.argv))
