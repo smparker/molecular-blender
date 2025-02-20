@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 #
 #  Molecular Blender
-#  Filename: orbitals.py
-#  Copyright (C) 2017 Shane Parker, Joshua Szekely
+#  Filename: compute_aos_py.py
+#  Copyright (C) 2017-24 Shane Parker, Joshua Szekely
 #
 #  This file is part of Molecular Blender.
 #
@@ -44,7 +44,6 @@ def gamma2n_impl(i):
         return np.sqrt(np.pi)
     else:
         return (0.5 * i - 1.) * gamma2n_impl(i - 2)
-
 
 
 # Polynomial functions
