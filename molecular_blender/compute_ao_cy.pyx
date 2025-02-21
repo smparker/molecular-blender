@@ -659,6 +659,177 @@ cdef void add_box_values(CShell* shell,
     free(expyy)
     free(expzz)
 
+@cython.boundscheck(CYDEBUG)
+@cython.wraparound(CYDEBUG)
+@cython.initializedcheck(CYDEBUG)
+@cython.nonecheck(CYDEBUG)
+cdef bint compute_chi_box_shell(CShell* shell,
+        int nx, DTYPE_t* xx,
+        int ny, DTYPE_t* yy,
+        int nz, DTYPE_t* zz,
+        DTYPE_t* target,
+        int sx, int sy, int sz,
+        float logmxcoeff) noexcept nogil:
+    """Computes the value of the shell on a grid
+
+    target is a 3D array of shape (nx, ny, nz, shellsize)
+    sx, sy, sz are strides, such that target[ix,iy,iz,ishell] is at
+    target[ix*sx + iy*sy + iz*sz + ishell]
+    """
+    cdef bint out = False
+
+    cdef float X = shell.X
+    cdef float Y = shell.Y
+    cdef float Z = shell.Z
+
+    cdef float logthresh = shell.logthr - logmxcoeff
+
+    cdef int ix
+    cdef int iy
+    cdef int iz
+    cdef int iexp
+    cdef int target_ixyz
+
+    cdef int nexp = shell.nexp
+
+    cdef int l = shell.l
+
+    # check the four corners to find a max value
+    cdef float x0 = xx[0] - X
+    cdef float x1 = xx[nx-1] - X
+    cdef float y0 = yy[0] - Y
+    cdef float y1 = yy[ny-1] - Y
+    cdef float z0 = zz[0] - Z
+    cdef float z1 = zz[nz-1] - Z
+
+    cdef float min_x = min(fabs(x0),fabs(x1))
+    if (x0*x1 < 0):
+        min_x = 0.0
+    cdef float min_y = min(fabs(y0),fabs(y1))
+    if (y0*y1 < 0):
+        min_y = 0.0
+    cdef float min_z = min(fabs(z0),fabs(z1))
+    if (z0*z1 < 0):
+        min_z = 0.0
+
+    cdef float min_rr = min_x*min_x + min_y*min_y + min_z*min_z
+    if min_rr >= logthresh:
+        return out
+
+    cdef float sqrt3 = sqrt(3.0)
+    cdef float sqrt5 = sqrt(5.0)
+    cdef float sqrt15 = sqrt(15.0)
+    cdef float sqrt_35_5 = sqrt(35.0/5.0)
+    cdef float sqrt_35_3 = sqrt(35.0/3.0)
+    cdef float sqrt_35_1 = sqrt(35.0/1.0)
+
+    cdef float dx, dy, dz, rr, radial
+
+    cdef DTYPE_t* denormed_coeffs = shell.denormed_coeffs
+    cdef DTYPE_t* exponents = shell.exponents
+
+    cdef DTYPE_t* expzz
+    cdef DTYPE_t* expyy
+    cdef DTYPE_t* expxx
+
+    expzz = <DTYPE_t*>malloc(nz*nexp*sizeof(DTYPE_t))
+    expyy = <DTYPE_t*>malloc(ny*nexp*sizeof(DTYPE_t))
+    expxx = <DTYPE_t*>malloc(nexp*sizeof(DTYPE_t))
+
+    cdef float xthresh, ythresh, zthresh
+
+
+    for iy in range(ny):
+        dy = yy[iy] - Y
+        for iexp in range(nexp):
+            expyy[iy*nexp + iexp] = exp(-exponents[iexp]*dy*dy)
+
+    for iz in range(nz):
+        dz = zz[iz] - Z
+        for iexp in range(nexp):
+            expzz[iz*nexp + iexp] = exp(-exponents[iexp]*dz*dz)
+
+    for ix in range(nx):
+        dx = xx[ix] - X
+
+        xthresh = dx * dx + min_y*min_y + min_z*min_z
+        if xthresh > logthresh:
+            continue
+
+        for iexp in range(nexp):
+            expxx[iexp] = exp(-exponents[iexp] * dx*dx) * denormed_coeffs[iexp]
+
+        for iy in range(ny):
+            dy = yy[iy] - Y
+
+            ythresh = dx * dx + dy * dy + min_z*min_z
+            if ythresh > logthresh:
+                continue
+
+            for iz in range(nz):
+                dz = zz[iz] - Z
+
+                zthresh = dx * dx + dy * dy + dz*dz
+                if zthresh > logthresh:
+                    continue
+
+                out = True
+
+                ixyz = iz + iy*nz + ix*nz*ny
+
+                radial = 0.0
+                for iexp in range(nexp):
+                    radial += expxx[iexp] * expyy[iy*nexp + iexp] * expzz[iz*nexp + iexp]
+
+                target_ixyz = ix*sx + iy*sy + iz*sz
+
+                if l == 0:
+                    target[target_ixyz] = radial
+                elif l == 1:
+                    target[target_ixyz] = radial * dx
+                    target[target_ixyz+1] = radial * dy
+                    target[target_ixyz+2] = radial * dz
+                elif l == 2:
+                    target[target_ixyz] = radial * dx*dx
+                    target[target_ixyz+1] = radial * dy*dy
+                    target[target_ixyz+2] = radial * dz*dz
+                    target[target_ixyz+3] = radial * dx*dy * sqrt3
+                    target[target_ixyz+4] = radial * dx*dz * sqrt3
+                    target[target_ixyz+5] = radial * dy*dz * sqrt3
+                elif l == 3:
+                    target[target_ixyz] = radial * dx*dx*dx
+                    target[target_ixyz+1] = radial * dy*dy*dy
+                    target[target_ixyz+2] = radial * dz*dz*dz
+                    target[target_ixyz+3] = radial * dx*dy*dy * sqrt5
+                    target[target_ixyz+4] = radial * dx*dx*dy * sqrt5
+                    target[target_ixyz+5] = radial * dx*dx*dz * sqrt5
+                    target[target_ixyz+6] = radial * dx*dz*dz * sqrt5
+                    target[target_ixyz+7] = radial * dy*dz*dz * sqrt5
+                    target[target_ixyz+8] = radial * dy*dy*dz * sqrt5
+                    target[target_ixyz+9] = radial * dx*dy*dz * sqrt15
+                elif l == 4:
+                    target[target_ixyz] = radial * dx*dx*dx*dx
+                    target[target_ixyz+1] = radial * dy*dy*dy*dy
+                    target[target_ixyz+2] = radial * dz*dz*dz*dz
+                    target[target_ixyz+3] = radial * dx*dx*dx*dy * sqrt_35_5
+                    target[target_ixyz+4] = radial * dx*dx*dx*dz * sqrt_35_5
+                    target[target_ixyz+5] = radial * dy*dy*dy*dx * sqrt_35_5
+                    target[target_ixyz+6] = radial * dy*dy*dy*dz * sqrt_35_5
+                    target[target_ixyz+7] = radial * dz*dz*dz*dx * sqrt_35_5
+                    target[target_ixyz+8] = radial * dz*dz*dz*dy * sqrt_35_5
+                    target[target_ixyz+9] = radial * dx*dx*dy*dy * sqrt_35_3
+                    target[target_ixyz+10] = radial * dx*dx*dz*dz * sqrt_35_3
+                    target[target_ixyz+11] = radial * dy*dy*dz*dz * sqrt_35_3
+                    target[target_ixyz+12] = radial * dx*dx*dy*dz * sqrt_35_1
+                    target[target_ixyz+13] = radial * dy*dy*dx*dz * sqrt_35_1
+                    target[target_ixyz+14] = radial * dz*dz*dx*dy * sqrt_35_1
+
+    free(expxx)
+    free(expyy)
+    free(expzz)
+
+    return out
+
 cdef class OrbitalCalculater:
     """Computes value of orbital at real space points"""
     cdef object shells
@@ -939,16 +1110,49 @@ cdef class DensityCalculater:
                             oview[ixy] = oview[ixy] + chivals_f[i,ixy] * chivals_f[j,ixy] * rho[i,j]
         return out
 
-    def box_values(self, np.ndarray[DTYPE_t, ndim=1] xvals,
+    @cython.boundscheck(CYDEBUG)
+    @cython.wraparound(CYDEBUG)
+    @cython.initializedcheck(CYDEBUG)
+    @cython.nonecheck(CYDEBUG)
+    cpdef box_values(self, np.ndarray[DTYPE_t, ndim=1] xvals,
                   np.ndarray[DTYPE_t, ndim=1] yvals,
                   np.ndarray[DTYPE_t, ndim=1] zvals):
         cdef:
             np.ndarray[DTYPE_t, ndim=3] out = np.zeros([len(xvals), len(yvals), len(zvals)], dtype=DTYPE)
-            int k
+            int nshells = self.nshells
             DTYPE_t z_a
+            int nx = len(xvals)
+            int ny = len(yvals)
+            int nz = len(zvals)
+            int nxyz = nx * ny * nz
+            int ixyz, ish, jsh, i, j, istart, iend, jstart, jend, isize, jsize
+            int nao = sum([sh.size for sh in self.shells])
 
-        for k, z_a in enumerate(zvals):
-            out[:,:,k] = self.plane_values(xvals, yvals, z_a)
+            DTYPE_t[:,::1] rho = self.density
+            # notice that the shape of chivals is different from the one in plane_values
+            DTYPE_t[:,:,:,::1] chivals = np.zeros([nx, ny, nz, nao], dtype=DTYPE)
+            DTYPE_t[:,::1] chivals_f = (<float[:nx*ny*nz,:nao]>(&chivals[0,0,0,0]))
+
+            DTYPE_t[::1] logmxorb = self.logmxorb
+            #bint[:] contributes = np.zeros([nshells], dtype=np.int32)
+            DTYPE_t[::1] oview = out.reshape(nx * ny * nz)
+            #float rhoij
+
+            float otmp;
+
+        # TODO consider batching into smaller cubes
+        for ish in range(nshells):
+            istart = self.cshells[ish].start
+            compute_chi_box_shell(&self.cshells[ish], nx, &xvals[0], ny, &yvals[0], nz, &zvals[0],
+                    &chivals[0,0,0,istart], nao*ny*nz, nao*nz, nao, logmxorb[ish])
+
+        phi = np.dot(chivals_f, rho)
+        cdef DTYPE_t[:,:] phiview = phi
+        for ixyz in range(nxyz):
+            otmp = 0.0
+            for i in range(nao):
+                otmp += phiview[ixyz, i] * chivals_f[ixyz, i]
+            oview[ixyz] = otmp
 
         return out
 
