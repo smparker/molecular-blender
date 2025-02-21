@@ -36,7 +36,7 @@ def getExtensionFromPath(path, addonDirectory, includeDirs = [np.get_include()])
         "libraries" : [],
         "runtime_library_dirs" : [],
         "extra_objects" : [],
-        "extra_compile_args" : [ "-march=native" ],
+        "extra_compile_args" : [ "-march=native", "-ffast-math" ],
         "extra_link_args" : [],
         "export_symbols" : [],
         "depends" : []

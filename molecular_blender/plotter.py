@@ -563,7 +563,7 @@ def AnimateMolecule(context, molecule, options):
     return
 
 
-def create_mesh(name, verts, faces, material, context, remesh=6):
+def create_mesh(name, verts, faces, material, context, remesh=8):
     """Some black magic to make a mesh with the given name, verts, and faces"""
     me = bpy.data.meshes.new(name)  # create a new mesh
     me.from_pydata(verts, [], faces)
