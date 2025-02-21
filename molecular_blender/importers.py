@@ -491,7 +491,8 @@ def molecule_from_cube(filename, options):
 
 
 def molecule_from_json(filename, options):
-    data = json.load(open(filename))
+    with open(filename, "r") as f:
+        data = json.load(f)
 
     if "molecules" not in data:
         return
@@ -516,7 +517,6 @@ def molecule_from_json(filename, options):
             pol = os.path.join(os.path.dirname(filename), pol)
             turbopole = read_turbomole_polarizability(pol)
             moldata["polar"] = turbopole
-            print("Polarizability read from %s" % pol)
 
         if not animate:
             break

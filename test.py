@@ -246,7 +246,6 @@ class TestTurbomoleFunctions(unittest.TestCase):
             integrate = np.sum(partial * self.xyz) * self.dvol
             alphax[i] = integrate
 
-        print(alphax)
         self.assertAlmostEqual(alphax[0], 206.0, delta=2.0)
         self.assertAlmostEqual(alphax[1], 33.0, delta=1.0)
         self.assertAlmostEqual(alphax[2], -0.00012, delta=0.05)
