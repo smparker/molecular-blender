@@ -2,7 +2,7 @@
 #
 #  Molecular Blender
 #  Filename: nodes.py
-#  Copyright (C) 2019 Shane Parker
+#  Copyright (C) 2019-2025 Shane Parker
 #
 #  This file is part of Molecular Blender.
 #

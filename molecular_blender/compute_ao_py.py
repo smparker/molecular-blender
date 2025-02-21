@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 #
 #  Molecular Blender
-#  Filename: compute_aos_py.py
-#  Copyright (C) 2017-24 Shane Parker, Joshua Szekely
+#  Filename: compute_ao_py.py
+#  Copyright (C) 2025 Shane Parker
 #
 #  This file is part of Molecular Blender.
 #

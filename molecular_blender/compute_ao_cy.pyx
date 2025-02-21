@@ -1,11 +1,11 @@
 #distutils: language = c++
-#cython: cdivision=True
-#cython: profile=False
+#cython: cdivision = True
+#cython: profile = True
 # -*- coding: utf-8 -*-
 #
 #  Molecular Blender
-#  Filename: orbitals.py
-#  Copyright (C) 2017 Shane Parker, Joshua Szekely
+#  Filename: compute_ao_cy.py
+#  Copyright (C) 2017-2025 Shane Parker
 #
 #  This file is part of Molecular Blender.
 #

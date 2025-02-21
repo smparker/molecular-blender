@@ -2,7 +2,7 @@
 #
 #  Molecular Blender
 #  Filename: importers.py
-#  Copyright (C) 2017 Shane Parker, Joshua Szekely
+#  Copyright (C) 2017-2025 Shane Parker, Joshua Szekely
 #
 #  This file is part of Molecular Blender.
 #

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 #
 #  Molecular Blender
-#  Filename: find_planar_rings.py
-#  Copyright (C) 2014 Shane Parker, Joshua Szekely
+#  Filename: aromatics.py
+#  Copyright (C) 2014-2025 Shane Parker, Joshua Szekely
 #
 #  This file is part of Molecular Blender.
 #
