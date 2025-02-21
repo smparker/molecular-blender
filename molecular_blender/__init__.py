@@ -150,7 +150,7 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
     remesh: IntProperty(
         name="Remesh Octree Depth",
         description="Octree depth for remesh modifier",
-        default=6)
+        default=8)
 
     ## Properties
     gradient: BoolProperty(

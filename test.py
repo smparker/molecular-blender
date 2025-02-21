@@ -193,7 +193,62 @@ class TestMoldenFunctions(unittest.TestCase):
         for i in range(1,25+1):
             orb = self.orbitals.get_orbital(i)
             integration = np.sum(orb.box_values(self.xyz, self.xyz, self.xyz)**2) * self.dvol
-            self.assertAlmostEqual(integration, 1.00, places=1)
+            self.assertAlmostEqual(integration, 1.0, places=1)
+
+    def test_cumulative_orbital_isovalue(self):
+        """Test to verify cumulative isovalue"""
+        orb = self.orbitals.get_orbital(1)
+
+        isovals = orb.isovalue_containing_proportion([0.5, 0.9], resolution=0.25, box=[[-3, -3, -3], [3, 3, 3]])
+        self.assertAlmostEqual(isovals[0], 0.12, places=2)
+        self.assertAlmostEqual(isovals[1], 0.048, places=2)
+
+    def test_density_norm(self):
+        """Test to verify density norm"""
+        density = self.orbitals.get_density()
+        integration = np.sum(density.box_values(self.xyz, self.xyz, self.xyz)) * self.dvol
+        self.assertAlmostEqual(integration, 4.0, places=1)
+
+    def test_cumulative_density_isovalue(self):
+        """Test to verify cumulative isovalue"""
+        orb = self.orbitals.get_density()
+
+        isovals = orb.isovalue_containing_proportion([0.5, 0.9], resolution=0.25, box=([-3, -3, -3], [3, 3, 3]))
+        self.assertAlmostEqual(isovals[0], 0.10, places=2)
+        self.assertAlmostEqual(isovals[1], 0.010, places=2)
+
+class TestTurbomoleFunctions(unittest.TestCase):
+    """Testing turbomole related functions"""
+    def setUp(self):
+        """Setup function"""
+        self.geo = mb.importers.molecule_from_file(
+            'examples/phenanth_polar.json', {})
+        self.orbitals = mb.orbitals.MOData.from_dict(self.geo)
+        self.xyz = np.linspace(-30, 30, 100, dtype=np.float32)
+        self.dvol = (self.xyz[1] - self.xyz[0])**3
+
+    def test_polarizability(self):
+        """Test to verify polarizability"""
+        polar = self.orbitals.get_density("polar 0")
+
+        pxyz = polar.box_values(self.xyz, self.xyz, self.xyz)
+        # the polarization density should integrate to zero
+        integrate = np.sum(pxyz) * self.dvol
+        self.assertLess(np.abs(integrate), 0.5)
+
+        # integrating polarization * r should give the polarizability
+        alphax = np.zeros([3], dtype=np.float32)
+        for i in range(3):
+            # first sum along the other two axes
+            other_axes = tuple([ x for x in range(3) if x != i ])
+            partial = np.sum(pxyz, axis=other_axes)
+            # then integrate along the remaining axis
+            integrate = np.sum(partial * self.xyz) * self.dvol
+            alphax[i] = integrate
+
+        self.assertAlmostEqual(alphax[0], 206.0, delta=2.0)
+        self.assertAlmostEqual(alphax[1], 33.0, delta=1.0)
+        self.assertAlmostEqual(alphax[2], -0.00012, delta=0.05)
 
 def blender_argv(argv):
     """Processes argv to process the Blender specific parts"""
@@ -210,4 +265,6 @@ def blender_argv(argv):
 # When called through Blender, sys.argv includes the blender command. The
 # code block here is constructing argv to match what unittest expects.
 if __name__ == "__main__":
+    import sys
+    print(sys.version)
     unittest.main(argv=blender_argv(sys.argv))

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 #
 #  Molecular Blender
-#  Filename: orbitals.py
-#  Copyright (C) 2017 Shane Parker, Joshua Szekely
+#  Filename: compute_aos_py.py
+#  Copyright (C) 2017-24 Shane Parker, Joshua Szekely
 #
 #  This file is part of Molecular Blender.
 #
@@ -44,7 +44,6 @@ def gamma2n_impl(i):
         return np.sqrt(np.pi)
     else:
         return (0.5 * i - 1.) * gamma2n_impl(i - 2)
-
 
 
 # Polynomial functions
@@ -184,12 +183,17 @@ class Shell(object):
         return None
 
     def plane_values(self, xx, yy, z_a, logmxcoeff=0.0):
-        """compute values of shell on a plane of provided x and y values (each as an array)"""
+        """compute values of shell on a plane of provided x and y values (each as an array)
+
+        xx, yy: 2D arrays of x and y values
+        z_a: z value of plane
+        logmxcoeff: log of maximum coefficient in shell
+
+        Returns: 3D array of values of shell on plane: [ncao, len(xx), len(yy)]
+        """
         pxx = xx - self.X
         pyy = yy - self.Y
         pz  = z_a - self.Z
-
-        out = np.zeros( (xx.shape[0], xx.shape[1], len(self.coeff)) )
 
         rr = pxx*pxx + pyy*pyy + pz * pz
         if np.any(rr < self.logthr - logmxcoeff):
@@ -215,15 +219,17 @@ def gaussian_overlap(axyz, aexp, apoly, bxyz, bexp, bpoly):
     return np.prod(fac * gam)
 
 
-class MOData(object):
+class MOData:
     """Organizes data for computing orbitals in real space"""
 
-    def __init__(self, shells, coeff, nocc):
+    def __init__(self, shells, coeff, nocc, occupations):
         assert sum([sh.size for sh in shells]) == coeff.shape[1]
 
         self.shells = shells
         self.coeff = coeff
         self.nocc = nocc
+        self.nvir = coeff.shape[0] - nocc
+        self.occupations = occupations
 
     def homo(self):
         return self.nocc
@@ -232,6 +238,12 @@ class MOData(object):
         """Returns OrbitalCalculater for orbital"""
         i = (iorb if iorb > 0 else self.nocc + iorb) - 1
         return OrbitalCalculater(self.shells, self.coeff[i, :])
+
+    def get_density(self):
+        """Returns DensityCalculater for the electronic density"""
+        rho = np.einsum("pu,p,pv->uv", self.coeff, self.occupations, self.coeff)
+        nelec = np.sum(self.occupations)
+        return DensityCalculater(self.shells, rho, nelec)
 
     @classmethod
     def from_dict(cls, geo):
@@ -247,15 +259,16 @@ class MOData(object):
                 ico += newshell.size
                 shells.append(newshell)
 
-        nocc = sum([float(x["occup"]) > 0.0 for x in geo["mo"]])
-        nmo = len(geo["mo"])
+        occupations = np.array([ float(x["occup"]) for x in geo["mo"]])
+        nocc = np.sum(occupations > 0.0)
+        nmo = len(occupations)
         nao = sum([sh.size for sh in shells])
 
         coeff = np.zeros([nmo, nao])
         for i in range(nmo):
             coeff[i, :] = geo["mo"][i]["coeff"]
 
-        return cls(shells, coeff, nocc)
+        return cls(shells, coeff, nocc, occupations)
 
 
 class OrbitalCalculater(object):
@@ -316,6 +329,8 @@ class OrbitalCalculater(object):
     def isovalue_containing_proportion(self, values=[0.90], resolution=0.2*ang2bohr, box=None):
         if box is None:
             p0, p1 = self.bounding_box(1e-4)
+        else:
+            p0, p1 = box
 
         npoints = [ int(math.ceil((b - a)/resolution)) for a, b in zip(p0, p1) ]
 
@@ -324,3 +339,106 @@ class OrbitalCalculater(object):
         boxvalues = self.box_values(xvals, yvals, zvals).reshape(-1)
 
         return isovalue_containing_proportion(values, boxvalues, dV)
+
+
+class DensityCalculater(object):
+    """Computes value of densities at real space points"""
+
+    def __init__(self, shells, density, nelec):
+        self.shells = shells
+        self.density = density
+        self.nelec = nelec
+
+        # use very small number to replace zeros
+        nshl = len(self.shells)
+        # shellmxdens[i, j] is the maximum value in density of shell i, j
+        self.shellmxdens = np.zeros([nshl, nshl])
+        for i in range(nshl):
+            istart = shells[i].start
+            iend = istart + shells[i].size
+            for j in range(nshl):
+                jstart = shells[j].start
+                jend = jstart + shells[j].size
+                shelldens = np.max(abs(self.density[istart:iend,jstart:jend]))
+                self.shellmxdens[i,j] = shelldens
+        self.logmxdens = np.log(self.shellmxdens + 1e-30)
+
+        # shellmxorb[i] of shell i in entire density
+        self.shellmxorb = np.array([ np.max(self.shellmxdens[i,:]) for i in range(nshl) ])
+        # log(shellmxorb)
+        self.logmxorb = np.log(self.shellmxorb + 1e-30)
+
+    def bounding_box(self, thr=1.0e-5):
+        """returns lower and upper limits of box (in bohr) that should fully contain orbital"""
+        # find lower bounds
+        p0 = [np.min([sh.center[ixyz] - sh.bounding_box_size(thr, lmx)
+                      for sh, lmx in zip(self.shells, self.logmxorb)]) for ixyz in range(3)]
+
+        # find upper bounds
+        p1 = [np.max([sh.center[ixyz] + sh.bounding_box_size(thr, lmx)
+                      for sh, lmx in zip(self.shells, self.logmxorb)]) for ixyz in range(3)]
+
+        return p0, p1
+
+    def value(self, x, y, z):
+        """Returns value of the density at specified point"""
+        out = 0.0
+        nonzero_shells = []
+
+        nao = sum([sh.size for sh in self.shells])
+        phivals = np.zeros([nao])
+        for i, ish in enumerate(self.shells):
+            ivals = ish.value(x, y, z, logmxcoeff=self.logmxorb[i])
+            if ivals is not None:
+                phivals[ish.start:ish.start + ish.size] = ivals
+                nonzero_shells.append([i, ish])
+
+        for i, ish in nonzero_shells:
+            for j, jsh in nonzero_shells:
+                out += np.einsum("p,q,pq->", phivals[ish.start:ish.start + ish.size], phivals[jsh.start:jsh.start + jsh.size], self.density[ish.start:ish.start + ish.size, jsh.start:jsh.start + jsh.size])
+
+        return out
+
+    def plane_values(self, xvals, yvals, z_a):
+        out = np.zeros([len(xvals), len(yvals)])
+        xx = np.zeros([len(xvals), len(yvals)])
+        yy = np.zeros([len(xvals), len(yvals)])
+        for i, x in enumerate(xvals):
+            xx[i,:] = x
+            yy[i,:] = yvals[:]
+
+        nao = np.sum([sh.size for sh in self.shells])
+        phivals = np.zeros([nao, len(xvals), len(yvals)])
+        nonzero_shells = []
+        for i, ish in enumerate(self.shells):
+            ivals = ish.plane_values(xx, yy, z_a, logmxcoeff=self.logmxorb[i])
+            if ivals is not None:
+                phivals[ish.start:ish.start + ish.size] = ivals
+                nonzero_shells.append([i, ish])
+
+        for i, ish in nonzero_shells:
+            for j, jsh in nonzero_shells:
+                out += np.einsum("pxy,qxy,pq->xy", phivals[ish.start:ish.start + ish.size], phivals[jsh.start:jsh.start + jsh.size], self.density[ish.start:ish.start + ish.size, jsh.start:jsh.start + jsh.size])
+        return out
+
+    def box_values(self, xvals, yvals, zvals):
+        out = np.zeros([len(xvals), len(yvals), len(zvals)])
+
+        for k, z_a in enumerate(zvals):
+            out[:,:,k] = self.plane_values(xvals, yvals, z_a)
+
+        return out
+
+    def isovalue_containing_proportion(self, values=[0.90], resolution=0.2*ang2bohr, box=None):
+        if box is None:
+            p0, p1 = self.bounding_box(1e-7)
+        else:
+            p0, p1 = box
+
+        npoints = [ int(math.ceil((b - a)/resolution)) for a, b in zip(p0, p1) ]
+
+        xvals, yvals, zvals = [ np.linspace(a, b, num=n, endpoint=True ) for a, b, n in zip(p0, p1, npoints) ]
+        dV = (xvals[1] - xvals[0]) * (yvals[1] - yvals[0]) * (zvals[1] - zvals[0])
+        boxvalues = self.box_values(xvals, yvals, zvals).reshape(-1)
+
+        return isovalue_containing_proportion(values, boxvalues, dV, square=False)

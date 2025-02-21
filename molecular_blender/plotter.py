@@ -563,7 +563,7 @@ def AnimateMolecule(context, molecule, options):
     return
 
 
-def create_mesh(name, verts, faces, material, context, remesh=6):
+def create_mesh(name, verts, faces, material, context, remesh=8):
     """Some black magic to make a mesh with the given name, verts, and faces"""
     me = bpy.data.meshes.new(name)  # create a new mesh
     me.from_pydata(verts, [], faces)
@@ -673,26 +673,33 @@ def draw_surfaces(molecule, styler, context, options):
             if ml:
                 neworb = lumo + int(ml.group(1))
 
-            try:
-                neworb = int(o)
-            except ValueError:
-                pass
+            if orbitals.is_density(o):
+                neworb = o
 
             if neworb is None:
-                raise Exception("Could not understand orbital list!")
+                try:
+                    neworb = int(o)
+                except ValueError:
+                    raise Exception(f"Could not understand orbital {o}! Looking for {orbitals.densities.keys()}?")
+                    pass
+
             orblist.append(neworb)
 
         isovals = options["isovalues"]
         resolution = options["resolution"]
 
         for orbname, orbnumber in zip(orbnames, orblist):
-            orb = orbitals.get_orbital(orbnumber)
+            if orbitals.is_density(orbname):
+                orb = orbitals.get_density(orbname)
+            else:
+                orb = orbitals.get_orbital(orbnumber)
             if options["cumulative"]:
                 orbital_isovals = orb.isovalue_containing_proportion(isovals)
             else:
                 orbital_isovals = isovals
             vset = molden_isosurface(orb, orbital_isovals, resolution, orbname, wm)
-            vertex_sets.extend(vset)
+            if vset:
+                vertex_sets.extend(vset)
 
             if molecule.orbitals_trajectory is not None:
                 f0 = fmap(0)
@@ -703,7 +710,10 @@ def draw_surfaces(molecule, styler, context, options):
             if molecule.orbitals_trajectory is not None:
                 for i, orbital_snap in enumerate(molecule.volume_trajectory, 1):
                     name = f"{orbname:s}-{i:4d}"
-                    orb = orbital_snap.get_orbital(orbnumber)
+                    if orbname == "density":
+                        orb = orbital_snap.get_density()
+                    else:
+                        orb = orbital_snap.get_orbital(orbnumber)
                     vsets = molecule_isosurface(orb, orbital_isovals, resolution, name, wm)
 
                     fi = fmap(i)
