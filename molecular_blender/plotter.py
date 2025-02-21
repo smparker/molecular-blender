@@ -673,14 +673,14 @@ def draw_surfaces(molecule, styler, context, options):
             if ml:
                 neworb = lumo + int(ml.group(1))
 
-            if o == "density":
-                neworb = "density"
+            if orbitals.is_density(o):
+                neworb = o
 
             if neworb is None:
                 try:
                     neworb = int(o)
                 except ValueError:
-                    raise Exception(f"Could not understand orbital {o}!")
+                    raise Exception(f"Could not understand orbital {o}! Looking for {orbitals.densities.keys()}?")
                     pass
 
             orblist.append(neworb)
@@ -689,8 +689,8 @@ def draw_surfaces(molecule, styler, context, options):
         resolution = options["resolution"]
 
         for orbname, orbnumber in zip(orbnames, orblist):
-            if orbname == "density": # TODO make this a function (base class?)
-                orb = orbitals.get_density()
+            if orbitals.is_density(orbname):
+                orb = orbitals.get_density(orbname)
             else:
                 orb = orbitals.get_orbital(orbnumber)
             if options["cumulative"]:

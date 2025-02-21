@@ -2,7 +2,7 @@
 #
 #  Molecular Blender
 #  Filename: orbitals.py
-#  Copyright (C) 2017-2024 Shane Parker, Joshua Szekely
+#  Copyright (C) 2017-2025 Shane Parker, Joshua Szekely
 #
 #  This file is part of Molecular Blender.
 #
@@ -29,7 +29,7 @@ from .compute_ao import *
 class MOData:
     """Organizes data for computing orbitals in real space"""
 
-    def __init__(self, shells, coeff, nocc, occupations):
+    def __init__(self, shells, coeff, nocc, occupations, densities=None):
         assert sum([sh.size for sh in shells]) == coeff.shape[1]
 
         self.shells = shells
@@ -37,6 +37,8 @@ class MOData:
         self.nocc = nocc
         self.nvir = coeff.shape[0] - nocc
         self.occupations = occupations
+        # map of density names to AO densities for things like polarizabilities
+        self.densities = {} if densities is None else densities
 
     def homo(self):
         return self.nocc
@@ -46,11 +48,19 @@ class MOData:
         i = (iorb if iorb > 0 else self.nocc + iorb) - 1
         return OrbitalCalculater(self.shells, self.coeff[i, :])
 
-    def get_density(self):
+    def get_density(self, densityname="density"):
         """Returns DensityCalculater for the electronic density"""
-        rho = np.einsum("pu,p,pv->uv", self.coeff, self.occupations, self.coeff).astype(np.float32)
-        nelec = np.sum(self.occupations)
-        return DensityCalculater(self.shells, rho, nelec)
+        if densityname=="density":
+            rho = np.einsum("pu,p,pv->uv", self.coeff, self.occupations, self.coeff).astype(np.float32)
+            nelec = np.sum(self.occupations)
+            return DensityCalculater(self.shells, rho, nelec)
+        elif densityname in self.densities:
+            rho = self.densities[densityname]
+            nelec = np.sum(self.occupations)
+            return DensityCalculater(self.shells, rho, nelec)
+
+    def is_density(self, densityname):
+        return densityname == "density" or densityname in self.densities.keys()
 
     @classmethod
     def from_dict(cls, geo):
@@ -71,8 +81,23 @@ class MOData:
         nmo = len(occupations)
         nao = sum([sh.size for sh in shells])
 
-        coeff = np.zeros([nmo, nao])
+        coeff = np.zeros([nmo, nao], dtype=np.float32)
         for i in range(nmo):
             coeff[i, :] = geo["mo"][i]["coeff"]
 
-        return cls(shells, coeff, nocc, occupations)
+        densities = {}
+        if "polar" in geo:
+            # turbomole polarizabilities in occ-virt MO are stored in geo
+            nvir = nmo - nocc
+            for i, pair in enumerate(geo["polar"]):
+                eigenvalue = pair["eigenvalue"]
+                if False:
+                    vec = pair["vector"].reshape(nvir, nocc)
+                    dens = np.einsum("au,ai,iv->uv", coeff[nocc:, :], vec, coeff[:nocc, :])
+                    densities[f"polar{i:2d}"] = 2.0 * (dens + dens.T)
+                else:
+                    vec = pair["vector"].reshape(nocc, nvir)
+                    dens = np.einsum("iu,ia,av->uv", coeff[:nocc, :], vec, coeff[nocc:, :])
+                    densities[f"polar{i:2d}"] = 2.0*(dens + dens.T)
+
+        return cls(shells, coeff, nocc, occupations, densities)

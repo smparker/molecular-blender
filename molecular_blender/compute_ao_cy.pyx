@@ -775,14 +775,15 @@ cdef class DensityCalculater:
     """Computes value of densities at real space points"""
 
     cdef:
-        readonly list shells
-        readonly np.ndarray density
-        readonly int nelec
-        readonly np.ndarray shellmxdens
-        readonly np.ndarray logmxdens
-        readonly np.ndarray shellmxorb
-        readonly np.ndarray logmxorb
-        int nshl
+        list shells
+        np.ndarray density
+        int nelec
+        np.ndarray shellmxdens
+        np.ndarray logmxdens
+        np.ndarray shellmxorb
+        np.ndarray logmxorb
+        CShell* cshells
+        int nshells
 
     def __init__(self, list shells, np.ndarray[DTYPE_t, ndim=2] density, int nelec):
         self.shells = shells
@@ -790,19 +791,19 @@ cdef class DensityCalculater:
         self.nelec = nelec
 
         # use very small number to replace zeros
-        self.nshl = len(self.shells)
+        self.nshells = len(self.shells)
         # shellmxdens[i, j] is the maximum value in density of shell i, j
-        self.shellmxdens = np.zeros([self.nshl, self.nshl], dtype=DTYPE)
+        self.shellmxdens = np.zeros([self.nshells, self.nshells], dtype=DTYPE)
 
         cdef:
             int i, j
             int istart, iend, jstart, jend
             DTYPE_t shelldens
 
-        for i in range(self.nshl):
+        for i in range(self.nshells):
             istart = shells[i].start
             iend = istart + shells[i].size
-            for j in range(self.nshl):
+            for j in range(self.nshells):
                 jstart = shells[j].start
                 jend = jstart + shells[j].size
                 shelldens = np.max(np.abs(self.density[istart:iend, jstart:jend]))
@@ -811,9 +812,39 @@ cdef class DensityCalculater:
         self.logmxdens = np.log(self.shellmxdens + 1e-30)
 
         # shellmxorb[i] of shell i in entire density
-        self.shellmxorb = np.array([np.max(self.shellmxdens[i,:]) for i in range(self.nshl)], dtype=DTYPE)
+        self.shellmxorb = np.array([np.max(self.shellmxdens[i,:]) for i in range(self.nshells)], dtype=DTYPE)
         # log(shellmxorb)
         self.logmxorb = np.log(self.shellmxorb + 1e-30)
+
+        cdef ndarray[DTYPE_t, ndim=1] sh_exponents
+        cdef ndarray[DTYPE_t, ndim=1] sh_prim_coeffs
+        cdef ndarray[DTYPE_t, ndim=2] sh_norms
+        cdef ndarray[DTYPE_t, ndim=1] sh_denormed_coeffs
+
+        self.nshells = len(shells)
+        self.cshells = <CShell*>malloc(self.nshells * sizeof(CShell))
+        for ish in range(self.nshells):
+            sh = shells[ish]
+            sh_exponents = sh.exponents
+            sh_prim_coeffs = sh.prim_coeffs
+            sh_norms = sh.norms
+            sh_denormed_coeffs = sh.denormed_coeffs
+
+            self.cshells[ish].X = sh.X
+            self.cshells[ish].Y = sh.Y
+            self.cshells[ish].Z = sh.Z
+            self.cshells[ish].l = sh.l
+            self.cshells[ish].start = sh.start
+            self.cshells[ish].size = sh.size
+            self.cshells[ish].nexp = len(sh.exponents)
+            self.cshells[ish].exponents = &sh_exponents[0]
+            self.cshells[ish].prim_coeffs = &sh_prim_coeffs[0]
+            self.cshells[ish].norms = &sh_norms[0,0]
+            self.cshells[ish].denormed_coeffs = &sh_denormed_coeffs[0]
+            self.cshells[ish].mxx = sh.mxx
+            self.cshells[ish].most_diffuse = sh.most_diffuse
+            self.cshells[ish].logthr = sh.logthr
+            self.cshells[ish].mxnorm = sh.mxnorm
 
     def bounding_box(self, DTYPE_t thr=1.0e-5):
         """returns lower and upper limits of box (in bohr) that should fully contain orbital"""
@@ -857,36 +888,55 @@ cdef class DensityCalculater:
                                  optimize=True)
         return out
 
+    @cython.boundscheck(CYDEBUG)
+    @cython.wraparound(CYDEBUG)
+    @cython.initializedcheck(CYDEBUG)
+    @cython.nonecheck(CYDEBUG)
     def plane_values(self, np.ndarray[DTYPE_t, ndim=1] xvals,
                     np.ndarray[DTYPE_t, ndim=1] yvals,
                     DTYPE_t z_a):
         cdef:
             np.ndarray[DTYPE_t, ndim=2] out = np.zeros([len(xvals), len(yvals)], dtype=DTYPE)
-            np.ndarray[DTYPE_t, ndim=2] xx = np.zeros([len(xvals), len(yvals)], dtype=DTYPE)
-            np.ndarray[DTYPE_t, ndim=2] yy = np.zeros([len(xvals), len(yvals)], dtype=DTYPE)
-            int i, j
+            DTYPE_t[::1] oview = out.reshape(len(xvals) * len(yvals))
+            int i, j, ish, jsh, ixy
             int nao = sum([sh.size for sh in self.shells])
-            np.ndarray[DTYPE_t, ndim=3] phivals = np.zeros([nao, len(xvals), len(yvals)], dtype=DTYPE)
+            float[:,:,:] chivals = np.zeros([nao, len(xvals), len(yvals)], dtype=DTYPE)
+            float[:,:] chivals_f = (<float[:nao,:len(xvals)*len(yvals)]>(&chivals[0,0,0]))
+            float[:,:] rho = self.density
             list nonzero_shells = []
             np.ndarray ivals
+            int nshls = len(self.shells)
+            int nxy = len(xvals) * len(yvals)
+            int istart, iend, jstart, jend
 
-        for i, x in enumerate(xvals):
-            xx[i,:] = x
-            yy[i,:] = yvals[:]
+            float[:] xxvals = xvals
+            float[:] yyvals = yvals
+            bint[:] contributes = np.zeros([nshls], dtype=np.int32)
+            bint cont
 
-        for i, ish in enumerate(self.shells):
-            contributes = ish.compute_chi_plane(xvals, yvals, z_a, phivals[ish.start:ish.start + ish.size],
-                                  logmxcoeff=self.logmxorb[i])
-            if contributes:
-                nonzero_shells.append([i, ish])
+        for ish in range(nshls):
+            ishell = self.shells[ish]
+            istart = self.cshells[ish].start
+            iend = istart + self.cshells[ish].size
+            cont = ishell.compute_chi_plane(xxvals, yyvals, z_a, chivals[istart:iend],
+                                  logmxcoeff=self.logmxorb[ish])
+            contributes[ish] = cont
 
-        for i, ish in nonzero_shells:
-            for j, jsh in nonzero_shells:
-                out += np.einsum("pxy,qxy,pq->xy",
-                               phivals[ish.start:ish.start + ish.size],
-                               phivals[jsh.start:jsh.start + jsh.size],
-                               self.density[ish.start:ish.start + ish.size,
-                                          jsh.start:jsh.start + jsh.size])
+        for ish in range(nshls):
+            if not contributes[ish]:
+                continue
+            istart = self.cshells[ish].start
+            iend = istart + self.cshells[ish].size
+            for jsh in range(nshls):
+                if not contributes[jsh]:
+                    continue
+
+                jstart = self.cshells[jsh].start
+                jend = jstart + self.cshells[jsh].size
+                for i in range(istart, iend):
+                    for j in range(jstart, jend):
+                        for ixy in range(nxy):
+                            oview[ixy] = oview[ixy] + chivals_f[i,ixy] * chivals_f[j,ixy] * rho[i,j]
         return out
 
     def box_values(self, np.ndarray[DTYPE_t, ndim=1] xvals,

@@ -32,7 +32,7 @@ from .util import stopwatch
 from .periodictable import symbols
 from .constants import bohr2ang
 from .transform import transform_sph_to_cart
-
+from .turbomole_reader import read_turbomole_polarizability
 
 class Reader(object):
     """Convenience class to read a line, store it, and throw if file is over"""
@@ -510,6 +510,14 @@ def molecule_from_json(filename, options):
         moldata = molecule_from_file(filnam, options)
         iframe = mol["frame"] if "frame" in mol else i
         molecules.append( { "molecule" : moldata, "frame" : iframe } )
+
+        if "polar" in mol:
+            pol = mol["polar"]
+            pol = os.path.join(os.path.dirname(filename), pol)
+            turbopole = read_turbomole_polarizability(pol)
+            moldata["polar"] = turbopole
+            print("Polarizability read from %s" % pol)
+
         if not animate:
             break
 
