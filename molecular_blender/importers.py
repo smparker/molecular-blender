@@ -341,10 +341,10 @@ def molecule_from_molden(filename, _options):
              "atoms": ATOMS_RE,
              "gto": GTO_RE,
              "mo": MO_RE,
-             "5d": re.compile(r"\[5D\]"),
-             "5d10f": re.compile(r"\[5D10F\]"),
-             "5d7f": re.compile(r"\[5D7F\]"),
-             "9g": re.compile(r"\[9G\]")}
+             "5d": re.compile(r"\[5D\]", flags=re.IGNORECASE),
+             "5d10f": re.compile(r"\[5D10F\]", flags=re.IGNORECASE),
+             "5d7f": re.compile(r"\[5D7F\]", flags=re.IGNORECASE),
+             "9g": re.compile(r"\[9G\]", flags=re.IGNORECASE)}
 
     # Molden defaults to Cartesian basis functions
     shelldegen = {"s": 1, "sp": 4, "p": 3, "d": 6, "f": 10, "g": 15}
