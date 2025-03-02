@@ -630,8 +630,6 @@ def draw_surfaces(molecule, styler, context, options):
 
     # set up collections
     molecule_collection = bpy.data.collections[molecule.name]
-    isosurface_collection = bpy.data.collections.new('{}-iso'.format(molecule.name))
-    molecule_collection.children.link(isosurface_collection)
 
     if molecule.volume is not None:  # volumetric data was read
         vol = molecule.volume
@@ -641,7 +639,8 @@ def draw_surfaces(molecule, styler, context, options):
 
         # marching cubes to make the surface
         vsets = cube_isosurface(vol.data, vol.origin, vol.axes, isovals, name="cube", wm=wm)
-        vertex_sets.extend(vsets)
+        if vsets:
+            vertex_sets.extend(vsets)
         if molecule.volume_trajectory is not None:
             f0 = fmap(0)
             if f0 not in vertex_trajectory_map:
@@ -729,19 +728,30 @@ def draw_surfaces(molecule, styler, context, options):
 
     meshes = []
     materials = make_iso_materials(molecule, styler, vertex_sets, options)
-
-    for v in vertex_sets:
-        # add surfaces to the scene
-        name = "{0}_{1}_{2}".format(molecule.name, v["name"], v["isovalue"])
-        verts, faces = create_geometry(v["triangles"])
-        vmesh = create_mesh(name, verts, faces, v["material"], context, remesh=options["remesh"])
-        v["mesh"] = vmesh
-        meshes.append(vmesh)
-
     mol_obj = bpy.data.objects[molecule.name]
-    for m in meshes:
-        isosurface_collection.objects.link(m)
-        m.select_set(True)
+
+    # collect meshes by name
+    function_names = set([ v["name"] for v in vertex_sets ])
+    for func in function_names:
+        fsets = [ v for v in vertex_sets if v["name"] == func ]
+        fmeshes = []
+        for v in fsets:
+            # add surfaces to the scene
+            name = "{0}_{1}_{2}".format(molecule.name, v["name"], v["isovalue"])
+            verts, faces = create_geometry(v["triangles"])
+            vmesh = create_mesh(name, verts, faces, v["material"], context, remesh=options["remesh"])
+            v["mesh"] = vmesh
+            fmeshes.append(vmesh)
+
+        # create collection for this function
+        function_collection = bpy.data.collections.new(f"{molecule.name}-isosurface-{func}")
+        molecule_collection.children.link(function_collection)
+        # link to molecule collection
+        for m in fmeshes:
+            function_collection.objects.link(m)
+            m.select_set(True)
+
+        meshes.extend(fmeshes)
 
     mol_obj.select_set(True)
     # parent them
