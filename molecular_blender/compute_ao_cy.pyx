@@ -136,7 +136,7 @@ cdef class Shell:
     def bounding_box_size(self, thr, logmxcoeff=0.0):
         """Returns half the edgelength of a box outside of which the shell
         is guaranteed to be below the given threshold"""
-        xx = self.l * (np.log(self.mxx) - np.log(thr / self.mxnorm) + logmxcoeff) / self.most_diffuse
+        xx = (self.l + 1) * (np.log(self.mxx) - np.log(thr / self.mxnorm) + logmxcoeff) / self.most_diffuse
         if xx < 0:
             return 0.0
         return np.sqrt(xx, dtype=DTYPE)
