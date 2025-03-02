@@ -148,14 +148,18 @@ def make_iso_materials(molecule, styler, vertex_sets, options):
             if not surf_list:
                 continue
 
-            # should be at least one element in surf_list, and this one gets the
-            # "inner" material
+            nsurf = len(surf_list)
             vset = surf_list.pop(0)
             iv = vertex_sets.index(vset)
             matname = "{orbital}_{type}_inner".format(orbital=o, type=mat_basename)
             if not (options["recycle_materials"] and matname in bpy.data.materials.keys()):
                 matname = unique_name(matname, bpy.data.materials.keys())
-                material = styler.isosurface_material(matname)
+                if nsurf > 1:
+                    # if more than one surface, first one is "inner"
+                    material = styler.isosurface_material(matname)
+                else:
+                    # but the outer is so cool, so use that if there's only one
+                    material = styler.outer_isosurface_material(matname)
             else:
                 material = bpy.data.materials.get(matname)
             out[matname] = material
