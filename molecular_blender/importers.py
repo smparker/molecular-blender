@@ -169,7 +169,7 @@ def molecule_from_xyz(filename, options):
 
 ANY_RE = re.compile(r"\[[a-zA-Z0-9 ]*\]")
 MOLDEN_RE = re.compile(r"\[\s*molden\s+format\s*\]", flags=re.IGNORECASE)
-ATOMS_RE = re.compile(r"\[\s*atoms\s*\]\s*(angs|au)?", flags=re.IGNORECASE)
+ATOMS_RE = re.compile(r"\[\s*atoms\s*\]\s*(?:\(?(angs|au)\)?)?", flags=re.IGNORECASE)
 GTO_RE = re.compile(r"\[\s*gto\s*\]", flags=re.IGNORECASE)
 MO_RE = re.compile(r"\[\s*mo\s*\]", flags=re.IGNORECASE)
 NEWSECTION_RE = re.compile(r"\s*\[")
@@ -182,7 +182,8 @@ def molden_read_atoms(f, ignore_h=False, animate=False):
     m = ATOMS_RE.search(line)
 
     # conversion factor incase atomic units are input
-    factor = 1.0 if m.group(1).lower() in "angs" else bohr2ang
+    unit = "au" if m.group(1) and m.group(1).lower() in "au" else "angs"
+    factor = 1.0 if unit == "angs" else bohr2ang
 
     # advance until a line starts with [
     try:

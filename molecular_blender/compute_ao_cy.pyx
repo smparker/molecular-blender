@@ -1018,7 +1018,7 @@ cdef class DensityCalculater:
             self.cshells[ish].mxnorm = sh.mxnorm
 
     def bounding_box(self, DTYPE_t thr=1.0e-5):
-        """returns lower and upper limits of box (in bohr) that should fully contain orbital"""
+        """returns lower and upper limits of box (in bohr) that should fully contain density"""
         cdef:
             list p0, p1
             int ixyz
