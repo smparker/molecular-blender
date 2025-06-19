@@ -43,7 +43,8 @@ class PaletteElementStyler(object):
             metallic=0.0, specular=0.5, specular_tint = 0.0,
             roughness=0.0, anisotropic=0.0, anisotropic_rotation=0.0,
             sheen=0.0, sheen_tint=0.0, clearcoat=0.0, clearcoat_roughness=0.0,
-            IOR=1.45, transmission=0.0, transmission_roughness=0.0):
+            IOR=1.45, transmission=0.0, transmission_roughness=0.0,
+            emission_color=None, emission_strength=0.0):
 
         mat = bpy.data.materials.new(name)
         mat.use_nodes = True
@@ -53,6 +54,9 @@ class PaletteElementStyler(object):
             print("Warning: Specular tint is not supported by the Principled BSDF shader")
         if sheen_tint != 0.0:
             print("Warning: Sheen tint is not supported by the Principled BSDF shader")
+
+        if emission_color is None:
+            emission_color = base_color
 
         options = {
             'Base Color' : base_color,
@@ -68,7 +72,9 @@ class PaletteElementStyler(object):
             'Clearcoat Roughness' : clearcoat_roughness,
             'IOR' : IOR,
             'Transmission' : transmission,
-            'Transmission Roughness' : transmission_roughness
+            'Transmission Roughness' : transmission_roughness,
+            'Emission' : emission_color,
+            'Emission Strength' : emission_strength
         }
 
         nodes = mat.node_tree.nodes
@@ -110,11 +116,20 @@ class PaletteElementStyler(object):
     def atom_material(self, name, element):
         """Return atom material"""
         color = self.element_color(element)
-        return self.make_diffuse_material(name, color)
+        mat = self.make_principled_material(name, base_color=color,
+                                      roughness=0.5,
+                                      clearcoat=1.0,
+                                      clearcoat_roughness=0.5,
+                                      emission_color=color,
+                                      emission_strength=0.2)
+        return mat
 
     def bond_material(self, name, bond):
         """Return bond material"""
-        return self.make_diffuse_material(name, self.bond_color, roughness=1.0)
+        mat = self.make_principled_material(name, base_color=self.bond_color,
+            roughness=0.5, clearcoat=1.0, clearcoat_roughness=0.2,
+            emission_color=self.bond_color, emission_strength=0.2)
+        return mat
 
     def ring_material(self, name):
         """Return ring material"""
