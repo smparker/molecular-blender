@@ -142,7 +142,7 @@ class Shell(object):
 
     def __norms(self):
         """Returns [nL, nexp] array of norms"""
-        out = np.zeros([self.size, len(self.exponents)])
+        out = np.zeros([self.size, len(self.exponents)], dtype=np.float32)
         for ixyz, xyz in enumerate(self.shorder[self.l]):
             cxyz = [xyz.count("x"), xyz.count("y"), xyz.count("z")]
             for ig, ex in enumerate(self.exponents):
@@ -156,7 +156,7 @@ class Shell(object):
         Returns [nexp] array of shell norms, i.e., norms of Gaussians with all angular
         in the x-direction. For example, for L=2, norms of exp(-zeta r^2) x x.
         """
-        out = np.zeros_like(self.exponents)
+        out = np.zeros_like(self.exponents, dtype=np.float32)
         for ig, ex in enumerate(self.exponents):
             out[ig] = gaussian_overlap(self.center, ex, [ self.l, 0, 0 ], self.center, ex, [ self.l, 0, 0 ])
         return out
@@ -197,11 +197,14 @@ class Shell(object):
 
         rr = pxx*pxx + pyy*pyy + pz * pz
         if np.any(rr < self.logthr - logmxcoeff):
-            expz = np.exp(np.einsum("xy,e->xye", -1.0*rr, self.exponents))
-            radial = np.einsum("xye,e->xy", expz, self.denormedcoeffs)
+            # Memory-efficient vectorized computation
+            exp_terms = np.exp(-1.0 * rr.reshape(-1, 1) * self.exponents)
+            radial = np.dot(exp_terms, self.denormedcoeffs).reshape(rr.shape)
             out = self.plane_polynomial(pxx, pyy, pz)
-            for p in range(out.shape[0]):
-                out[p,:,:] *= radial
+            # out -> [npoly, nx, ny]
+            # for p in range(out.shape[0]):
+            #     out[p,:,:] *= radial
+            out *= radial # does this really do the same thing?
             return out
         else:
             return None
@@ -210,10 +213,10 @@ def gaussian_overlap(axyz, aexp, apoly, bxyz, bexp, bpoly):
     """returns overlap integral for gaussians centered at xyz with exponents exp
     and angular momentum poly"""
     assert (axyz == bxyz).all()  # too lazy to do two-center overlap for now
-    abpoly = [k + n for k, n in zip(apoly, bpoly)]
-    if any([i % 2 == 1 for i in abpoly]):
+    abpoly = np.array(apoly) + np.array(bpoly)
+    if np.any(abpoly % 2 == 1):
         return 0.0
-    abpoly = np.array(abpoly) + 1.
+    abpoly = abpoly + 1.
     fac = np.power(aexp + bexp, -0.5 * abpoly)
     gam = gamma2n(abpoly)
     return np.prod(fac * gam)
@@ -264,7 +267,7 @@ class MOData:
         nmo = len(occupations)
         nao = sum([sh.size for sh in shells])
 
-        coeff = np.zeros([nmo, nao])
+        coeff = np.zeros([nmo, nao], dtype=np.float32)
         for i in range(nmo):
             coeff[i, :] = geo["mo"][i]["coeff"]
 
@@ -285,14 +288,12 @@ class OrbitalCalculater(object):
 
     def bounding_box(self, thr=1.0e-5):
         """returns lower and upper limits of box (in bohr) that should fully contain orbital"""
-        # find lower bounds
-        p0 = [np.min([sh.center[ixyz] - sh.bounding_box_size(thr, lmx)
-                      for sh, lmx in zip(self.shells, self.logmxcoeff)]) for ixyz in range(3)]
+        centers = np.array([sh.center for sh in self.shells])
+        sizes = np.array([sh.bounding_box_size(thr, lmx)
+                         for sh, lmx in zip(self.shells, self.logmxcoeff)])
 
-        # find upper bounds
-        p1 = [np.max([sh.center[ixyz] + sh.bounding_box_size(thr, lmx)
-                      for sh, lmx in zip(self.shells, self.logmxcoeff)]) for ixyz in range(3)]
-
+        p0 = np.min(centers - sizes[:, None], axis=0)
+        p1 = np.max(centers + sizes[:, None], axis=0)
         return p0, p1
 
     def value(self, x, y, z):
@@ -305,26 +306,22 @@ class OrbitalCalculater(object):
         return out
 
     def plane_values(self, xvals, yvals, z_a):
-        xx = np.zeros([len(xvals), len(yvals)])
-        yy = np.zeros([len(xvals), len(yvals)])
-        for i, x in enumerate(xvals):
-            xx[i,:] = x
-            yy[i,:] = yvals[:]
+        xx, yy = np.meshgrid(xvals, yvals, indexing='ij')
 
-        out = np.zeros([len(xvals), len(yvals)])
+        out = np.zeros([len(xvals), len(yvals)], dtype=np.float32)
+        out_flat = out.reshape(-1)
         for sh, lmx in zip(self.shells, self.logmxcoeff):
             vals = sh.plane_values(xx, yy, z_a, logmxcoeff=lmx)
             if vals is not None:
-                out += np.einsum("pxy,p->xy", vals, self.coeff[sh.start:sh.start+sh.size])
+                out_flat += np.dot(self.coeff[sh.start:sh.start+sh.size], vals.reshape(sh.size, -1))
         return out
 
     def box_values(self, xvals, yvals, zvals):
-        out = np.zeros([len(xvals), len(yvals), len(zvals)])
-
+        out_contiguous = np.empty([len(zvals), len(xvals), len(yvals)], dtype=np.float32)
         for k, z_a in enumerate(zvals):
-            out[:,:,k] = self.plane_values(xvals, yvals, z_a)
+            out_contiguous[k,:,:] = self.plane_values(xvals, yvals, z_a)
 
-        return out
+        return out_contiguous.transpose(1,2,0)
 
     def isovalue_containing_proportion(self, values=[0.90], resolution=0.2*ang2bohr, box=None):
         if box is None:
@@ -348,11 +345,12 @@ class DensityCalculater(object):
         self.shells = shells
         self.density = density
         self.nelec = nelec
+        self.nao = np.sum([sh.size for sh in shells])
 
         # use very small number to replace zeros
         nshl = len(self.shells)
         # shellmxdens[i, j] is the maximum value in density of shell i, j
-        self.shellmxdens = np.zeros([nshl, nshl])
+        self.shellmxdens = np.zeros([nshl, nshl], dtype=np.float32)
         for i in range(nshl):
             istart = shells[i].start
             iend = istart + shells[i].size
@@ -361,23 +359,21 @@ class DensityCalculater(object):
                 jend = jstart + shells[j].size
                 shelldens = np.max(abs(self.density[istart:iend,jstart:jend]))
                 self.shellmxdens[i,j] = shelldens
-        self.logmxdens = np.log(self.shellmxdens + 1e-30)
+        self.logmxdens = np.log(self.shellmxdens + 1e-10)
 
         # shellmxorb[i] of shell i in entire density
-        self.shellmxorb = np.array([ np.max(self.shellmxdens[i,:]) for i in range(nshl) ])
+        self.shellmxorb = np.array([ np.max(self.shellmxdens[i,:]) for i in range(nshl) ], dtype=np.float32)
         # log(shellmxorb)
-        self.logmxorb = np.log(self.shellmxorb + 1e-30)
+        self.logmxorb = np.log(self.shellmxorb + 1e-10)
 
     def bounding_box(self, thr=1.0e-5):
         """returns lower and upper limits of box (in bohr) that should fully contain orbital"""
-        # find lower bounds
-        p0 = [np.min([sh.center[ixyz] - sh.bounding_box_size(thr, lmx)
-                      for sh, lmx in zip(self.shells, self.logmxorb)]) for ixyz in range(3)]
+        centers = np.array([sh.center for sh in self.shells])
+        sizes = np.array([sh.bounding_box_size(thr, lmx)
+                         for sh, lmx in zip(self.shells, self.logmxorb)])
 
-        # find upper bounds
-        p1 = [np.max([sh.center[ixyz] + sh.bounding_box_size(thr, lmx)
-                      for sh, lmx in zip(self.shells, self.logmxorb)]) for ixyz in range(3)]
-
+        p0 = np.min(centers - sizes[:, None], axis=0)
+        p1 = np.max(centers + sizes[:, None], axis=0)
         return p0, p1
 
     def value(self, x, y, z):
@@ -385,8 +381,7 @@ class DensityCalculater(object):
         out = 0.0
         nonzero_shells = []
 
-        nao = sum([sh.size for sh in self.shells])
-        phivals = np.zeros([nao])
+        phivals = np.zeros([self.nao], dtype=np.float32)
         for i, ish in enumerate(self.shells):
             ivals = ish.value(x, y, z, logmxcoeff=self.logmxorb[i])
             if ivals is not None:
@@ -400,15 +395,11 @@ class DensityCalculater(object):
         return out
 
     def plane_values(self, xvals, yvals, z_a):
-        out = np.zeros([len(xvals), len(yvals)])
-        xx = np.zeros([len(xvals), len(yvals)])
-        yy = np.zeros([len(xvals), len(yvals)])
-        for i, x in enumerate(xvals):
-            xx[i,:] = x
-            yy[i,:] = yvals[:]
+        out = np.zeros([len(xvals), len(yvals)], dtype=np.float32)
+        out_flat = out.reshape(-1)
+        xx, yy = np.meshgrid(xvals, yvals, indexing='ij')
 
-        nao = np.sum([sh.size for sh in self.shells])
-        phivals = np.zeros([nao, len(xvals), len(yvals)])
+        phivals = np.zeros([self.nao, len(xvals), len(yvals)], dtype=np.float32)
         nonzero_shells = []
         for i, ish in enumerate(self.shells):
             ivals = ish.plane_values(xx, yy, z_a, logmxcoeff=self.logmxorb[i])
@@ -416,18 +407,18 @@ class DensityCalculater(object):
                 phivals[ish.start:ish.start + ish.size] = ivals
                 nonzero_shells.append([i, ish])
 
+        chivals = np.dot(self.density, phivals.reshape(self.nao, -1))
         for i, ish in nonzero_shells:
-            for j, jsh in nonzero_shells:
-                out += np.einsum("pxy,qxy,pq->xy", phivals[ish.start:ish.start + ish.size], phivals[jsh.start:jsh.start + jsh.size], self.density[ish.start:ish.start + ish.size, jsh.start:jsh.start + jsh.size])
+            phiimat = phivals[ish.start:ish.start + ish.size].reshape(ish.size, -1)
+            out_flat += np.sum(phiimat * chivals[ish.start:ish.start + ish.size,:], axis=0)
         return out
 
     def box_values(self, xvals, yvals, zvals):
-        out = np.zeros([len(xvals), len(yvals), len(zvals)])
-
+        out_contiguous = np.empty([len(zvals), len(xvals), len(yvals)], dtype=np.float32)
         for k, z_a in enumerate(zvals):
-            out[:,:,k] = self.plane_values(xvals, yvals, z_a)
+            out_contiguous[k,:,:] = self.plane_values(xvals, yvals, z_a)
 
-        return out
+        return out_contiguous.transpose(1,2,0)
 
     def isovalue_containing_proportion(self, values=[0.90], resolution=0.2*ang2bohr, box=None):
         if box is None:
