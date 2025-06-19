@@ -713,7 +713,7 @@ def draw_surfaces(molecule, styler, context, options):
             if molecule.orbitals_trajectory is not None:
                 for i, orbital_snap in enumerate(molecule.volume_trajectory, 1):
                     name = f"{orbname:s}-{i:4d}"
-                    if orbname == "density":
+                    if orbname in ["density", "spin", "alpha", "beta"]:
                         orb = orbital_snap.get_density()
                     else:
                         orb = orbital_snap.get_orbital(orbnumber)
