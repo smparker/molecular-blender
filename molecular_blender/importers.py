@@ -79,7 +79,7 @@ def molecule_from_file(filename, options):
     """Tries to guess filetype based on extension, then calls the appropriate reader"""
     if filename.lower().endswith(".xyz"):
         return molecule_from_xyz(filename, options)
-    elif filename.lower().endswith(".molden"):
+    elif filename.lower().endswith(".molden") or filename.lower().endswith("molden.input"):
         return molecule_from_molden(filename, options)
     elif filename.lower().endswith(".cub") or filename.lower().endswith(".cube"):
         return molecule_from_cube(filename, options)
@@ -336,6 +336,7 @@ def molecule_from_molden(filename, _options):
     ignore_h = _options.get("ignore_hydrogen", False)
     animate = _options.get("plot_type", "") == "animate"
     out = {"atoms": []}
+    out["denorm"] = not _options.get("orca_fix", False)
 
     marks = {"molden": MOLDEN_RE,
              "atoms": ATOMS_RE,

@@ -126,6 +126,11 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         description="Set isovalues so they contain given proportion of the total density",
         default=True)
 
+    orca_fix: BoolProperty(
+            name="Orca molden fix",
+            description="Fix for orca molden files with incorrect AO norms",
+            default=False)
+
     volume: EnumProperty(
         name="Volume",
         description="Type of volume to plot",
@@ -237,6 +242,7 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
         box.row().prop(self, "orbital")
         box.row().prop(self, "resolution")
         box.row().prop(self, "remesh")
+        box.row().prop(self, "orca_fix")
 
         box = layout.box()
         box.label(text="Properties")
@@ -278,6 +284,7 @@ class MolecularBlender(bpy.types.Operator, bpy_extras.io_utils.ImportHelper):
                       orbital=self.orbital,
                       resolution=self.resolution,
                       remesh=self.remesh,
+                      orca_fix=self.orca_fix,
                       colors=self.colors)
 
         return {'FINISHED'}

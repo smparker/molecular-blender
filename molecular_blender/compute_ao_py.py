@@ -103,7 +103,7 @@ def plane_polynomial_g(XX, YY, Z):
 class Shell(object):
     """Container for shell data"""
 
-    def __init__(self, center, l, exponents, coeff, start=0, thr=1e-6, mxx=1.0):
+    def __init__(self, center, l, exponents, coeff, start=0, thr=1e-6, mxx=1.0, denorm=True):
         self.center = np.array(center)
         self.X, self.Y, self.Z = center[0], center[1], center[2]
         self.l = int(l)
@@ -114,7 +114,7 @@ class Shell(object):
         self.size = (self.l + 1) * (self.l + 2) // 2
 
         self.norms = 1.0 / np.sqrt(self.__norms())
-        self.shellnorms = 1.0 / np.sqrt(self.__shellnorms())
+        self.shellnorms = 1.0 / np.sqrt(self.__shellnorms()) if denorm else np.ones_like(self.exponents, dtype=np.float32)
         self.denormedcoeffs = self.coeff * self.shellnorms
         self.polynomial = [polynomial_s, polynomial_p,
                            polynomial_d, polynomial_f, polynomial_g][l]

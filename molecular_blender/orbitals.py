@@ -80,6 +80,7 @@ class MOData:
     @classmethod
     def from_dict(cls, geo):
         """Builds MOData out of the dict object available in MolecularBlender"""
+        denorm = geo.get("denorm", True)
         shells = []
         ico = 0
         for atom, ash in zip(geo["atoms"], geo["basis"]):
@@ -87,7 +88,8 @@ class MOData:
             xyz = [x * ang2bohr for x in atom["position"]]
             for sh in ash:
                 newshell = Shell(xyz, "spdfg".index(
-                    sh["shell"]), sh["exponents"], sh["contractions"], start=ico)
+                    sh["shell"]), sh["exponents"], sh["contractions"], start=ico,
+                                 denorm=denorm)
                 ico += newshell.size
                 shells.append(newshell)
 

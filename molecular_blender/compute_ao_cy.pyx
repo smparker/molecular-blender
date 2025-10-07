@@ -84,7 +84,8 @@ cdef class Shell:
 
     def __init__(self, center, int l,
             exponents, coeff,
-            int start, float thr=1e-6, float mxx=1.0):
+            int start, float thr=1e-6, float mxx=1.0,
+            bool denorm=True):
         self.center = np.array(center, dtype=DTYPE)
 
         self.X = center[0]
@@ -100,7 +101,8 @@ cdef class Shell:
         self.prim_coeffs = np.array(coeff, dtype=DTYPE)
 
         self.norms = 1.0 / np.sqrt(self.__norms(), dtype=DTYPE)
-        self.denormed_coeffs = np.array(coeff, dtype=DTYPE) / np.sqrt(self.__shellnorms(), dtype=DTYPE)
+        sh_norms = 1.0 / np.sqrt(self.__shellnorms(), dtype=DTYPE) if denorm else 1.0
+        self.denormed_coeffs = np.array(coeff, dtype=DTYPE) * sh_norms
 
         # most diffuse exponent in shell
         cdef int imin = np.argmin(self.exponents)
