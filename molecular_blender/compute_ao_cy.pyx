@@ -101,6 +101,8 @@ cdef class Shell:
         self.prim_coeffs = np.array(coeff, dtype=DTYPE)
 
         self.norms = 1.0 / np.sqrt(self.__norms(), dtype=DTYPE)
+        if not denorm:
+            self.norms[:,:] = 1.0
         sh_norms = 1.0 / np.sqrt(self.__shellnorms(), dtype=DTYPE) if denorm else 1.0
         self.denormed_coeffs = np.array(coeff, dtype=DTYPE) * sh_norms
 
