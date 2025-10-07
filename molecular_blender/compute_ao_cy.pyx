@@ -85,7 +85,7 @@ cdef class Shell:
     def __init__(self, center, int l,
             exponents, coeff,
             int start, float thr=1e-6, float mxx=1.0,
-            bool denorm=True):
+            bint denorm=True):
         self.center = np.array(center, dtype=DTYPE)
 
         self.X = center[0]
