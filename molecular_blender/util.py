@@ -106,3 +106,30 @@ def round_sigfigs(num, sig_figs):
         return round(num, -int(math.floor(math.log10(abs(num))) - (sig_figs - 1)))
     else:
         return 0  # Can't take the log of 0
+
+def darken_color(color, amount=0.1):
+    """
+    Darken a color by a specified amount.
+
+    Args:
+        color: tuple of (R, G, B) or (R, G, B, A) values in range 0-1
+        amount: float, percentage to darken (0.1 = 10% darker)
+
+    Returns:
+        tuple: darkened color in same format as input
+    """
+    # Extract RGB values
+    r, g, b = color[0], color[1], color[2]
+
+    # Darken by multiplying by (1 - amount)
+    darkened = (
+        r * (1 - amount),
+        g * (1 - amount),
+        b * (1 - amount)
+    )
+
+    # Preserve alpha channel if present
+    if len(color) == 4:
+        darkened = darkened + (color[3],)
+
+    return darkened

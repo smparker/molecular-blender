@@ -27,6 +27,7 @@ import bpy
 import mathutils
 
 from .nodes import arrange_nodes
+from .util import darken_color
 
 class PaletteElementStyler(object):
     """Base class to color atom based on element"""
@@ -44,7 +45,7 @@ class PaletteElementStyler(object):
             roughness=0.0, anisotropic=0.0, anisotropic_rotation=0.0,
             sheen=0.0, sheen_tint=0.0, clearcoat=0.0, clearcoat_roughness=0.0,
             IOR=1.45, transmission=0.0, transmission_roughness=0.0,
-            emission_color=None, emission_strength=0.0):
+            emission_color=None, emission_strength=0.1):
 
         mat = bpy.data.materials.new(name)
         mat.use_nodes = True
@@ -56,24 +57,23 @@ class PaletteElementStyler(object):
             print("Warning: Sheen tint is not supported by the Principled BSDF shader")
 
         if emission_color is None:
-            emission_color = base_color
+            emission_color = darken_color(base_color, 0.3)
 
         options = {
             'Base Color' : base_color,
-            'Subsurface' : subsurface,
+            'Subsurface Weight' : subsurface,
             'Subsurface Color' : subsurface_color,
             'Metallic' : metallic,
-            'Specular' : specular,
             'Roughness'  : roughness,
             'Anisotropic' : anisotropic,
             'Anisotropic Rotation' : anisotropic_rotation,
-            'Sheen'      : sheen,
-            'Clearcoat'  : clearcoat,
-            'Clearcoat Roughness' : clearcoat_roughness,
+            'Sheen Weight'      : sheen,
+            'Coat Weight'  : clearcoat,
+            'Coat Roughness' : clearcoat_roughness,
             'IOR' : IOR,
-            'Transmission' : transmission,
+            'Transmission Weight' : transmission,
             'Transmission Roughness' : transmission_roughness,
-            'Emission' : emission_color,
+            'Emission Color' : emission_color,
             'Emission Strength' : emission_strength
         }
 
@@ -120,15 +120,14 @@ class PaletteElementStyler(object):
                                       roughness=0.5,
                                       clearcoat=1.0,
                                       clearcoat_roughness=0.5,
-                                      emission_color=color,
-                                      emission_strength=0.2)
+                                      emission_strength=0.1)
         return mat
 
     def bond_material(self, name, bond):
         """Return bond material"""
         mat = self.make_principled_material(name, base_color=self.bond_color,
             roughness=0.5, clearcoat=1.0, clearcoat_roughness=0.2,
-            emission_color=self.bond_color, emission_strength=0.2)
+            emission_strength=0.1)
         return mat
 
     def ring_material(self, name):
@@ -139,6 +138,7 @@ class PaletteElementStyler(object):
             clearcoat_roughness=0.2,
             transmission=1.0,
             transmission_roughness=0.2,
+            emission_strength=0.1,
             IOR=1.25)
         mat.blend_method = 'BLEND'
         mat.use_screen_refraction = True
