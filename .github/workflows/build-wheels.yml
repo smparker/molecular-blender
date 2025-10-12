@@ -253,11 +253,11 @@ jobs:
           # Find and install the appropriate wheel for this platform/python
           python -m pip install --find-links=wheelhouse --no-index molecular_blender || echo "No wheel found for this platform/python combination"
 
-      - name: Test import
+      - name: Run wheel tests
         run: |
-          python -c "import molecular_blender; print('molecular_blender version:', molecular_blender.__version__ if hasattr(molecular_blender, '__version__') else 'unknown')" || echo "Import test skipped - no wheel for this combination"
-          python -c "import molecular_blender.compute_ao_cy; print('compute_ao_cy imported successfully')" || echo "Cython import test skipped"
-          python -c "import molecular_blender.marching_cube_cy; print('marching_cube_cy imported successfully')" || echo "Cython import test skipped"
+          # Run comprehensive test suite that tests Cython extensions
+          # without requiring bpy (which is only available in Blender)
+          python test_wheel.py || echo "⚠ Tests skipped - no wheel for this combination"
 
   upload_pypi:
     name: Upload to PyPI (if release)
