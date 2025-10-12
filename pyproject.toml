@@ -79,8 +79,15 @@ environment = {MACOSX_DEPLOYMENT_TARGET = "10.13"}
 
 # Linux-specific settings
 [tool.cibuildwheel.linux]
-# Use manylinux2014 for broad compatibility
-archs = ["x86_64", "aarch64"]
+# Use manylinux_2_28 (AlmaLinux 8 - newer, avoids CentOS 7 EOL issues)
+# This provides good compatibility for modern Linux systems (glibc 2.28+, ~2018+)
+# which covers all systems that can run modern Blender versions
+# Only build x86_64 for now - aarch64 uses QEMU emulation which is very slow (10-20x)
+# and times out in GitHub Actions. Enable aarch64 if needed for native ARM Linux systems.
+archs = ["x86_64"]
+build-frontend = "build"
+# Use the newer manylinux_2_28 image based on AlmaLinux 8
+manylinux-x86_64-image = "manylinux_2_28"
 # Before building, ensure we have a C++ compiler
 before-all = "yum install -y gcc-c++ || apk add g++"
 
