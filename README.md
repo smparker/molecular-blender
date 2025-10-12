@@ -15,46 +15,91 @@ quantum chemistry
 - draw molecular orbital and density isosurfaces with .cube files or .molden files
 
 ## Installation
-There are two basic ways to install Molecular Blender, depending on whether you
+
+### For Blender Users (Recommended)
+
+The easiest way to install Molecular Blender in Blender is using the pre-built addon zip:
+
+1. **Download** `molecular_blender.zip` from the [GitHub Releases](https://github.com/smparker/molecular-blender/releases) page
+2. **In Blender**: Edit → Preferences → Add-ons → Install
+3. **Select** the downloaded zip file (do not extract it!)
+4. **Enable** the "Molecular Blender" addon
+
+The zip includes pre-compiled Cython extensions for all platforms (Linux, macOS, Windows). Blender automatically uses the correct ones for your system.
+
+### For Python Developers (Advanced)
+
+If you want to use molecular_blender as a Python package outside of Blender, or contribute to development:
+
+**Install from PyPI** (once published):
+```bash
+pip install molecular_blender
+```
+
+**Or download wheels** from [GitHub Releases](https://github.com/smparker/molecular-blender/releases):
+```bash
+pip install molecular_blender-*.whl
+```
+
+See [WHEEL_BUILDING_QUICKSTART.md](WHEEL_BUILDING_QUICKSTART.md) for more information about wheels.
+
+### Building from Source
+
+There are two basic ways to install Molecular Blender from source, depending on whether you
 want to use the optional cython enhanced isosurface routines (highly recommended,
 if you're drawing isosurfaces at all).
 
-### Using setup.py (cython compatible)
-The most robust way to install is to use the included `setup.py`.
+#### Using setup.py (cython compatible)
+The most robust way to install from source is to use the included `setup.py`.
 
-    cd /path/to/molecular/blender/repo
-    python3 setup.py build
-    python3 setup.py link
+**To create a Blender-ready zip file:**
+```bash
+cd /path/to/molecular/blender/repo
+python3 setup.py build
+python3 setup.py export
+```
 
-This will build the cython extensions to the code and then create symlinks to all of
-the versions of blender found in the normal blender install directories (only tested on macOS).
-For this to work, you'll need to use python 3.7 (the same version used in Blender 2.80),
-and have cython installed for it. The same setup can be used to export a build:
+This creates a zip file that can be installed directly in Blender (Edit → Preferences → Add-ons → Install).
 
-    python3 setup.py build
-    python3 setup.py export
+**To install directly to Blender's addon directory:**
+```bash
+python3 setup.py build
+python3 setup.py install  # or use --mode=link for a symlink
+```
 
-This will create a zip file that should be compatible with the add-on installation
-machinery of blender itself.
+This will build the Cython extensions and install/link to all Blender versions found in the standard directories (tested on macOS).
 
-### Direct symlink (no cython)
-If you are okay with skipping sython, you can directly symlink from the python
-package to the blender scripts directory. The non-cython version has all the same
-functionality as the cython version, but may be significantly slower for certain
-tasks (cython version is roughly 100 times faster at drawing orbitals from molden
-files).
+**Requirements:**
+- Python version matching your Blender version (3.9 for Blender 3.0-3.1, 3.10 for 3.2-3.6, 3.11 for 4.0-4.1, 3.12 for 4.2+)
+- Cython installed: `pip install cython`
+- NumPy installed: `pip install numpy`
+- C++ compiler (gcc, clang, or MSVC)
 
-    ln -s /path/to/molecular/blender/repo/molecular_blender /path/to/blender/scripts/addons/
+#### Direct symlink (no cython - not recommended)
+If you are okay with skipping Cython compilation, you can directly symlink from the python
+package to the Blender scripts directory. **Note:** The non-cython version is roughly 100x slower
+at drawing orbitals from molden files, so this is not recommended if you're using isosurfaces.
 
-and then it should appear in the list of Import-Export addons that can be
-activated like any other addon.
+```bash
+ln -s /path/to/molecular/blender/repo/molecular_blender /path/to/blender/scripts/addons/
+```
 
-On Mac OS X, the path for a user supplied addon is
+On macOS, the user addon path is:
+```
+/Users/<username>/Library/Application Support/Blender/<version>/scripts/addons
+```
 
-    /Users/<username>/Library/Application\ Support/Blender/<version>/scripts/addons
+On Linux:
+```
+~/.config/blender/<version>/scripts/addons
+```
 
-where `<username>` and `<version>` should be replaced with your username and the
-Blender version you are using.
+On Windows:
+```
+%APPDATA%\Blender Foundation\Blender\<version>\scripts\addons
+```
+
+After symlinking, activate the addon in Blender's preferences.
 
 ## Isosurfaces
 
@@ -74,3 +119,37 @@ For example:
 The only guiding design principle so far has been to try and separate the molecular
 data structures (Molecule, Bond, Atom) from the Blender manipulations. This is
 subject to change.
+
+## Development and Contributing
+
+### For Blender Addon Development
+
+The standard development workflow for working on the addon:
+
+```bash
+python setup.py build      # Build Cython extensions
+python setup.py install    # Install to Blender (or --mode=link for symlink)
+python setup.py export     # Export Blender-ready addon zip
+```
+
+This creates a zip file that can be distributed to Blender users or uploaded to GitHub releases.
+
+### For Python Package Development
+
+This project also includes automated wheel building via GitHub Actions for distributing
+the package via PyPI or for use outside of Blender. Wheels are built for:
+- Python 3.9, 3.10, 3.11, 3.12, 3.13 (covering Blender 3.0 through 4.2+)
+- Linux (x86_64, aarch64)
+- macOS (Intel x86_64, Apple Silicon arm64)
+- Windows (AMD64)
+
+Wheels are useful for:
+- Installing via pip for development/testing
+- Using molecular_blender as a library outside Blender
+- Automated testing and CI/CD
+
+For detailed information about wheel building, see:
+- [BUILDING_WHEELS.md](BUILDING_WHEELS.md) - Comprehensive documentation
+- [WHEEL_BUILDING_QUICKSTART.md](WHEEL_BUILDING_QUICKSTART.md) - Quick reference
+
+**Note:** The `setup_wheels.py` file is used exclusively for CI/CD wheel building and does not affect addon development.

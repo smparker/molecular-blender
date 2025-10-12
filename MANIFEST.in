@@ -1,0 +1,41 @@
+# Include source files needed for building from sdist
+include README.md
+include AUTHORS
+include COPYING
+include setup_wheels.py
+include pyproject.toml
+
+# Include Cython source files
+recursive-include molecular_blender *.pyx
+recursive-include molecular_blender *.pxd
+
+# Include generated C/C++ files (for sdist)
+recursive-include molecular_blender *.c
+recursive-include molecular_blender *.cpp
+
+# Include Python files
+recursive-include molecular_blender *.py
+
+# Include data files if any
+recursive-include molecular_blender *.json
+
+# Exclude build artifacts
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude *.so
+global-exclude *.o
+global-exclude __pycache__
+prune build
+prune dist
+prune *.egg-info
+
+# Exclude setup utilities (not needed in wheels)
+prune _setuputils
+
+# Exclude examples and tests
+prune examples
+prune util
+exclude test.py
+exclude run_test.sh
+exclude marching_profile.py
+

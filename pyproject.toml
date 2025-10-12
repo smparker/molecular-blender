@@ -1,0 +1,91 @@
+[build-system]
+requires = [
+    "setuptools>=45",
+    "wheel",
+    "Cython>=0.29.0",
+    "numpy>=1.19.0",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "molecular_blender"
+dynamic = ["version"]
+description = "Blender addon for molecular visualization with quantum chemistry support"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "GPL-3.0"}
+authors = [
+    {name = "Shane Parker"}
+]
+keywords = ["blender", "molecular", "visualization", "chemistry", "quantum"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Cython",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+
+dependencies = [
+    "numpy>=1.19.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/smparker/molecular-blender"
+Repository = "https://github.com/smparker/molecular-blender"
+Issues = "https://github.com/smparker/molecular-blender/issues"
+
+[tool.cibuildwheel]
+# Build for Python 3.9 through 3.14 (covering all recent Blender versions)
+# Python 3.9: Blender 3.0-3.1
+# Python 3.10: Blender 3.2-3.6
+# Python 3.11: Blender 4.0-4.1
+# Python 3.12: Blender 4.2+
+# Python 3.13, 3.14: Future Blender versions
+build = "cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
+
+# Skip 32-bit builds (not needed for modern Blender)
+skip = [
+    "*-win32",           # Skip 32-bit Windows
+    "*-manylinux_i686",  # Skip 32-bit Linux
+    "*-musllinux_i686",  # Skip 32-bit musllinux
+    "pp*",               # Skip PyPy
+]
+
+# Test that the wheels import correctly
+test-command = "python -c \"import molecular_blender.compute_ao_cy; import molecular_blender.marching_cube_cy; print('Import test passed')\""
+
+# Skip tests on emulated architectures (ARM on x86, etc.)
+test-skip = "*-*linux_{aarch64,ppc64le,s390x} *-macosx_arm64 *-macosx_universal2:arm64"
+
+# Additional build environment variables
+[tool.cibuildwheel.environment]
+# Ensure numpy is available during build
+PIP_PREFER_BINARY = "1"
+
+# macOS-specific settings
+[tool.cibuildwheel.macos]
+# Build for both Intel and Apple Silicon
+archs = ["x86_64", "arm64"]
+# macOS deployment target - support back to 10.13
+environment = {MACOSX_DEPLOYMENT_TARGET = "10.13"}
+
+# Linux-specific settings
+[tool.cibuildwheel.linux]
+# Use manylinux2014 for broad compatibility
+archs = ["x86_64", "aarch64"]
+# Before building, ensure we have a C++ compiler
+before-all = "yum install -y gcc-c++ || apk add g++"
+
+# Windows-specific settings
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]
+# MSVC is used by default on Windows
+
