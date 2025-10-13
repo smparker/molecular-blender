@@ -27,10 +27,15 @@ def getExtensionFromPath(path, addonDirectory, includeDirs = [np.get_include()])
     moduleName = getModuleNameOfPath(path, addonDirectory)
     print("moduleName: ", moduleName)
 
+    # Use relative path to avoid deep nested build directories with setuptools
+    # Get the current working directory and make path relative to it
+    cwd = os.getcwd()
+    rel_path = os.path.relpath(path, cwd)
+
     kwargs = {
-        "sources" : [path],
+        "sources" : [rel_path],
         "include_dirs" : includeDirs,
-        "define_macros" : [],
+        "define_macros" : [("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")],
         "undef_macros" : [],
         "library_dirs" : [],
         "libraries" : [],
