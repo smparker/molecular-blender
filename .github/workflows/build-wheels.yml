@@ -257,7 +257,7 @@ jobs:
         run: |
           # Run comprehensive test suite that tests Cython extensions
           # without requiring bpy (which is only available in Blender)
-          python test_wheel.py || echo "⚠ Tests skipped - no wheel for this combination"
+          python test_wheel.py || echo "[SKIP] Tests skipped - no wheel for this combination"
 
   upload_pypi:
     name: Upload to PyPI (if release)
