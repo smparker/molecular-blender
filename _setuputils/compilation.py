@@ -10,7 +10,7 @@ from Cython.Build import cythonize
 def compile_cython(addon_dir):
     cython_files = [ os.path.join(addon_dir, f) for f in os.listdir(addon_dir) if f.endswith('.pyx') ]
     for f in cython_files:
-        cythonize(f, compiler_directives = {"language_level" : "3"}, include_path = [ np.get_include() ])
+        cythonize(f, language_level="3", compiler_directives = {"language_level" : "3"}, include_path = [ np.get_include() ])
 
 def compile_cxx(addon_dir):
     print("Compile:\n{:40s}".format('-'))
@@ -23,7 +23,7 @@ def compile_cxx(addon_dir):
         buildExtensionInplace(ext)
 
 def getExtensionFromPath(path, addonDirectory, includeDirs = [np.get_include()]):
-    from distutils.core import Extension
+    from setuptools import Extension
     moduleName = getModuleNameOfPath(path, addonDirectory)
     print("moduleName: ", moduleName)
 
@@ -67,7 +67,7 @@ def getExtensionsArgsFromInfoFile(infoFilePath):
     return data[fName](Utils)
 
 def buildExtensionInplace(extension):
-    from distutils.core import setup
+    from setuptools import setup
     oldArgs = sys.argv
     sys.argv = [oldArgs[0], "build_ext", "--inplace" ]
     setup(ext_modules = [extension])

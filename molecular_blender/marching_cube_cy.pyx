@@ -1,4 +1,4 @@
-#distutils: language = c++
+#setuptools: language = c++
 #cython: profile=True
 #cython: cdivision=True
 # -*- coding: utf-8 -*-
