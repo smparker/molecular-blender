@@ -15,6 +15,9 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: write
+
 jobs:
   build_wheels:
     name: Build wheels on ${{ matrix.os }}
@@ -214,7 +217,7 @@ jobs:
         with:
           name: blender-addon-universal
           path: molecular_blender.zip
-          retention-days: 30
+          retention-days: 90
 
   test_wheels:
     name: Test wheels on ${{ matrix.os }} with Python ${{ matrix.python }}
@@ -259,31 +262,6 @@ jobs:
           # without requiring bpy (which is only available in Blender)
           python test_wheel.py || echo "[SKIP] Tests skipped - no wheel for this combination"
 
-  upload_pypi:
-    name: Upload to PyPI (if release)
-    needs: [build_wheels, build_sdist, build_blender_addon, test_wheels]
-    runs-on: ubuntu-latest
-    # Only upload to PyPI on release
-    if: github.event_name == 'release' && github.event.action == 'published'
-
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
-
-      - name: Display structure of downloaded files
-        run: ls -R dist
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          user: __token__
-          password: ${{ secrets.PYPI_API_TOKEN }}
-          skip-existing: true
-          # Remove this line to publish to real PyPI
-          # repository-url: https://test.pypi.org/legacy/
 
   create_release_assets:
     name: Create release with wheels and Blender addons
@@ -330,10 +308,6 @@ jobs:
             ```bash
             pip install molecular_blender-*.whl
             ```
-
-            Or install from PyPI:
-            ```bash
-            pip install molecular_blender
             ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
