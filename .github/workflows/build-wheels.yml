@@ -286,7 +286,6 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/wheels-*/*.whl
             artifacts/sdist/*.tar.gz
             artifacts/blender-addon-universal/*.zip
           draft: false
@@ -305,14 +304,6 @@ jobs:
             4. Enable **Import-Export: Molecular Blender**
 
             The zip includes pre-compiled extensions for all platforms. Blender will automatically use the correct ones for your system.
-
-            ### For Python Developers
-
-            Download and install the wheel (`.whl`) file for your platform and Python version:
-            ```bash
-            pip install molecular_blender-*.whl
-            ```
-            ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
