@@ -41,8 +41,6 @@ pip install molecular_blender
 pip install molecular_blender-*.whl
 ```
 
-See [WHEEL_BUILDING_QUICKSTART.md](WHEEL_BUILDING_QUICKSTART.md) for more information about wheels.
-
 ### Building from Source
 
 There are two basic ways to install Molecular Blender from source, depending on whether you
@@ -114,12 +112,6 @@ For example:
   - `4` would compute the 4th molecular orbital
   - `density` would compute the density
 
-## Design
-
-The only guiding design principle so far has been to try and separate the molecular
-data structures (Molecule, Bond, Atom) from the Blender manipulations. This is
-subject to change.
-
 ## Development and Contributing
 
 ### For Blender Addon Development
@@ -133,23 +125,3 @@ python setup.py export     # Export Blender-ready addon zip
 ```
 
 This creates a zip file that can be distributed to Blender users or uploaded to GitHub releases.
-
-### For Python Package Development
-
-This project also includes automated wheel building via GitHub Actions for distributing
-the package via PyPI or for use outside of Blender. Wheels are built for:
-- Python 3.9, 3.10, 3.11, 3.12, 3.13 (covering Blender 3.0 through 4.2+)
-- Linux (x86_64, aarch64)
-- macOS (Intel x86_64, Apple Silicon arm64)
-- Windows (AMD64)
-
-Wheels are useful for:
-- Installing via pip for development/testing
-- Using molecular_blender as a library outside Blender
-- Automated testing and CI/CD
-
-For detailed information about wheel building, see:
-- [BUILDING_WHEELS.md](BUILDING_WHEELS.md) - Comprehensive documentation
-- [WHEEL_BUILDING_QUICKSTART.md](WHEEL_BUILDING_QUICKSTART.md) - Quick reference
-
-**Note:** The `setup_wheels.py` file is used exclusively for CI/CD wheel building and does not affect addon development.

@@ -52,6 +52,10 @@ jobs:
           cp setup_wheels.py setup.py
 
       - name: Build wheels
+        env:
+          # On macOS, only build for the native architecture to avoid duplicates
+          # macos-13 is Intel (x86_64), macos-14 is Apple Silicon (arm64)
+          CIBW_ARCHS_MACOS: ${{ matrix.os == 'macos-13' && 'x86_64' || matrix.os == 'macos-14' && 'arm64' || 'auto' }}
         run: python -m cibuildwheel --output-dir wheelhouse
 
       - name: Restore original setup.py
