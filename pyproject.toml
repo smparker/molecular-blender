@@ -59,8 +59,9 @@ skip = [
     "pp*",               # Skip PyPy
 ]
 
-# Test that the wheels import correctly
-test-command = "python -c \"import molecular_blender.compute_ao_cy; import molecular_blender.marching_cube_cy; print('Import test passed')\""
+# Test that the wheels work correctly using our test suite
+# Note: We use test_wheel.py which tests Cython extensions without requiring bpy
+test-command = "python {project}/test_wheel.py"
 
 # Skip tests on emulated architectures (ARM on x86, etc.)
 test-skip = "*-*linux_{aarch64,ppc64le,s390x} *-macosx_arm64 *-macosx_universal2:arm64"
