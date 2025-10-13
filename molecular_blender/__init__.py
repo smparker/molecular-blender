@@ -32,7 +32,7 @@ from .marching_cube import CYTHON_ENABLED
 bl_info = {  # pylint: disable=invalid-name
     "name": "Molecular Blender",
     "author": "Shane Parker and Josh Szekely",
-    "version": (0, 6, 1),
+    "version": (0, 6, 3),
     "location": "File > Import",
     "blender" : (3, 6, 7),
     "description": "Import XYZ files",
