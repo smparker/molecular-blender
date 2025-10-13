@@ -13,7 +13,7 @@ dynamic = ["version"]
 description = "Blender addon for molecular visualization with quantum chemistry support"
 readme = "README.md"
 requires-python = ">=3.9"
-license = "GPL-3.0-or-later"
+license = {text = "GPL-3.0-or-later"}
 authors = [
     {name = "Shane Parker"}
 ]
