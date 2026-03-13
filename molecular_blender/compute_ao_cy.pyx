@@ -35,6 +35,7 @@ cimport numpy as np
 from numpy cimport ndarray
 from libc.math cimport sqrt, exp, fabs, ceil
 from libc.stdlib cimport malloc, free
+from libcpp.vector cimport vector
 
 DTYPE = np.float32
 ctypedef np.float32_t DTYPE_t
@@ -265,7 +266,7 @@ cdef class Shell:
         cdef float min_y = min(abs(y0),abs(y1))
         if (y0*y1 < 0):
             min_y = 0.0
-        cdef float min_z = z_a
+        cdef float min_z = fabs(z_a - Z)
 
         cdef float min_rr = min_x*min_x + min_y*min_y + min_z*min_z
         if min_rr >= logthresh:
@@ -389,7 +390,7 @@ cdef class Shell:
         cdef float min_y = min(abs(y0),abs(y1))
         if (y0*y1 < 0):
             min_y = 0.0
-        cdef float min_z = z_a
+        cdef float min_z = fabs(z_a - z)
 
         cdef float min_rr = min_x*min_x + min_y*min_y + min_z*min_z
         if min_rr >= logthresh:
@@ -558,6 +559,7 @@ cdef void add_box_values(CShell* shell,
     cdef float sqrt_35_1 = sqrt(35.0/1.0)
 
     cdef float dx, dy, dz, rr, radial
+    cdef int ixyz
 
     cdef DTYPE_t* denormed_coeffs = shell.denormed_coeffs
     cdef DTYPE_t* exponents = shell.exponents
@@ -728,6 +730,7 @@ cdef bint compute_chi_box_shell(CShell* shell,
     cdef float sqrt_35_1 = sqrt(35.0/1.0)
 
     cdef float dx, dy, dz, rr, radial
+    cdef int ixyz
 
     cdef DTYPE_t* denormed_coeffs = shell.denormed_coeffs
     cdef DTYPE_t* exponents = shell.exponents
@@ -840,7 +843,7 @@ cdef class OrbitalCalculater:
     cdef object coeff
     cdef DTYPE_t[:] logmxcoeff
     cdef int nshells
-    cdef CShell* cshells
+    cdef vector[CShell] cshells
     cdef Shell sh
 
     def __init__(self, shells, coeff):
@@ -853,7 +856,7 @@ cdef class OrbitalCalculater:
         cdef ndarray[DTYPE_t, ndim=1] sh_denormed_coeffs
 
         self.nshells = len(shells)
-        self.cshells = <CShell*>malloc(self.nshells * sizeof(CShell))
+        self.cshells.resize(self.nshells)
         for ish in range(self.nshells):
             sh = shells[ish]
             sh_exponents = sh.exponents
@@ -957,7 +960,7 @@ cdef class DensityCalculater:
         np.ndarray logmxdens
         np.ndarray shellmxorb
         np.ndarray logmxorb
-        CShell* cshells
+        vector[CShell] cshells
         int nshells
 
     def __init__(self, list shells, np.ndarray[DTYPE_t, ndim=2] density, int nelec):
@@ -997,7 +1000,7 @@ cdef class DensityCalculater:
         cdef ndarray[DTYPE_t, ndim=1] sh_denormed_coeffs
 
         self.nshells = len(shells)
-        self.cshells = <CShell*>malloc(self.nshells * sizeof(CShell))
+        self.cshells.resize(self.nshells)
         for ish in range(self.nshells):
             sh = shells[ish]
             sh_exponents = sh.exponents

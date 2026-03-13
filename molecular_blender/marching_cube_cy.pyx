@@ -472,8 +472,8 @@ cpdef marching_cube_box(ndarray[DTYPE_t, ndim=3, mode="c"] data, object isovalue
     for iiso in range(niso):
         isovals.push_back(isovalues[iiso])
 
-    cdef ndarray[DTYPE_t, ndim=1, mode="c"] cornervalues = np.zeros(8, dtype=DTYPE)
-    cdef ndarray[DTYPE_t, ndim=2, mode="c"] cornerpos = np.zeros([8,3], dtype=DTYPE)
+    cdef DTYPE_t cornervalues[8]
+    cdef DTYPE_t cornerpos[24]
 
     cdef iso_triangles c_triangles = iso_triangles(niso)
 
@@ -506,40 +506,40 @@ cpdef marching_cube_box(ndarray[DTYPE_t, ndim=3, mode="c"] data, object isovalue
                 y2 = <float>(iy2)
                 z2 = <float>(iz2)
 
-                cornerpos[0,0] =  x
-                cornerpos[0,1] =  y
-                cornerpos[0,2] =  z
+                cornerpos[0*3+0] =  x
+                cornerpos[0*3+1] =  y
+                cornerpos[0*3+2] =  z
 
-                cornerpos[1,0] =  x
-                cornerpos[1,1] = y2
-                cornerpos[1,2] =  z
+                cornerpos[1*3+0] =  x
+                cornerpos[1*3+1] = y2
+                cornerpos[1*3+2] =  z
 
-                cornerpos[2,0] = x2
-                cornerpos[2,1] = y2
-                cornerpos[2,2] =  z
+                cornerpos[2*3+0] = x2
+                cornerpos[2*3+1] = y2
+                cornerpos[2*3+2] =  z
 
-                cornerpos[3,0] = x2
-                cornerpos[3,1] =  y
-                cornerpos[3,2] =  z
+                cornerpos[3*3+0] = x2
+                cornerpos[3*3+1] =  y
+                cornerpos[3*3+2] =  z
 
-                cornerpos[4,0] =  x
-                cornerpos[4,1] =  y
-                cornerpos[4,2] = z2
+                cornerpos[4*3+0] =  x
+                cornerpos[4*3+1] =  y
+                cornerpos[4*3+2] = z2
 
-                cornerpos[5,0] =  x
-                cornerpos[5,1] = y2
-                cornerpos[5,2] = z2
+                cornerpos[5*3+0] =  x
+                cornerpos[5*3+1] = y2
+                cornerpos[5*3+2] = z2
 
-                cornerpos[6,0] = x2
-                cornerpos[6,1] = y2
-                cornerpos[6,2] = z2
+                cornerpos[6*3+0] = x2
+                cornerpos[6*3+1] = y2
+                cornerpos[6*3+2] = z2
 
-                cornerpos[7,0] = x2
-                cornerpos[7,1] =  y
-                cornerpos[7,2] = z2
+                cornerpos[7*3+0] = x2
+                cornerpos[7*3+1] =  y
+                cornerpos[7*3+2] = z2
 
                 for iiso in range(niso):
-                    polygonise(&c_triangles[iiso], &cornervalues[0], &cornerpos[0,0], isovals[iiso])
+                    polygonise(&c_triangles[iiso], &cornervalues[0], &cornerpos[0], isovals[iiso])
 
     # now repackage in a python friendly format
     tri_list = [[] for iso in isovalues]
@@ -581,7 +581,7 @@ def marching_cube_outline(ndarray[DTYPE_t, ndim=3, mode="c"] data,
     for iiso in range(niso):
         isovals.push_back(isovalues[iiso])
 
-    cdef ndarray[DTYPE_t, ndim=1, mode="c"] cornervalues = np.zeros(8, dtype=DTYPE)
+    cdef DTYPE_t cornervalues[8]
 
     outlines = []
 
