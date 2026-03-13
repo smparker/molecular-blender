@@ -845,10 +845,12 @@ cdef class OrbitalCalculater:
     cdef int nshells
     cdef vector[CShell] cshells
     cdef Shell sh
+    cdef DTYPE_t[::1] _coeff_c
 
     def __init__(self, shells, coeff):
         self.shells = shells
-        self.coeff = np.array(coeff, dtype=DTYPE)
+        self.coeff = np.ascontiguousarray(coeff, dtype=DTYPE)
+        self._coeff_c = self.coeff
 
         cdef ndarray[DTYPE_t, ndim=1] sh_exponents
         cdef ndarray[DTYPE_t, ndim=1] sh_prim_coeffs
@@ -927,11 +929,11 @@ cdef class OrbitalCalculater:
         nz = len(zvals)
 
         cdef ndarray[DTYPE_t, ndim=3, mode="c"] out = np.zeros([nx, ny, nz], dtype=DTYPE)
-        cdef ndarray[DTYPE_t, ndim=1, mode="c"] coeff = np.array(self.coeff, dtype=DTYPE)
+        cdef DTYPE_t[::1] coeff_view = self._coeff_c
 
         for ish in range(nshells):
             add_box_values(&self.cshells[ish], nx, &xvals[0], ny, &yvals[0], nz, &zvals[0],
-                    &coeff[self.cshells[ish].start], &out[0,0,0], self.logmxcoeff[ish])
+                    &coeff_view[self.cshells[ish].start], &out[0,0,0], self.logmxcoeff[ish])
 
         return out
 

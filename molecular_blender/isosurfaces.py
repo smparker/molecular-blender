@@ -82,7 +82,6 @@ def isosurface(p0, p1, resolution, isovalues, box_func, axes, name, wm=None, met
 def isosurface_adaptive(p0, p1, resolution_start, resolution_end, max_subdivide, isovalues, box_func, axes, name, wm=None):
     """Return set of triangles from function object from multi-pass adaptive algorithm"""
 
-    # let's start by finding the nearest integer that provides a rough layer of at least 0.25 A
     np_start = [ int(math.ceil((b - a)/resolution_start))+1 for a, b in zip(p0, p1) ]
     np_min_end = [ int(math.ceil((b - a)/resolution_end))+1 for a, b in zip(p0, p1) ]
 
@@ -90,11 +89,9 @@ def isosurface_adaptive(p0, p1, resolution_start, resolution_end, max_subdivide,
 
     outlines = isosurface_outline(p0, p1, np_start, isovalues, box_func, axes, name)
 
-    # np_now is the effective number of points that would be produced by the final pass
     np_now = [ a * s for a, s in zip(np_start, subdivide) ]
 
     while not all([now > want for now, want in zip(np_now, np_min_end)]):
-        new_outlines = []
         boxgen = ( (pp0, pp1, subdivide, isovalues, box_func, axes, name, wm) for pp0, pp1 in outlines )
         new_outlines = starmap(isosurface_outline, boxgen)
 
@@ -102,20 +99,61 @@ def isosurface_adaptive(p0, p1, resolution_start, resolution_end, max_subdivide,
 
         np_now = [ a * s for a, s in zip(np_now, subdivide) ]
 
-    # now build actual triangles from the list of active boxes from above
-    triangles = None
-    vertlist = None
-    boxgen = ( (pp0, pp1, subdivide, isovalues, box_func, axes, name) for pp0, pp1 in outlines )
-    vertlist = starmap(isosurface_simple, boxgen)
+    if not outlines:
+        return [{"isovalue": iso, "name" : name, "triangles": []} for iso in isovalues]
 
-    for verts in vertlist:
-        if triangles is None:
-            triangles = verts
-        else:
-            for i in range(len(verts)):
-                triangles[i]["triangles"].extend(verts[i]["triangles"])
+    # optimal fine_subdivide: only subdivide as much as needed to reach target resolution
+    fine_subdivide = [ min(max_subdivide, max(2, int(math.ceil(want * s / now))))
+                       for want, now, s in zip(np_min_end, np_now, subdivide) ]
 
-    return triangles
+    # pre-compute grid parameters (same for all boxes in this pass)
+    pp0_ref, pp1_ref = outlines[0]
+    xstep = DTYPE((pp1_ref[0] - pp0_ref[0]) / fine_subdivide[0])
+    ystep = DTYPE((pp1_ref[1] - pp0_ref[1]) / fine_subdivide[1])
+    zstep = DTYPE((pp1_ref[2] - pp0_ref[2]) / fine_subdivide[2])
+
+    scaled_axes = np.array(axes, dtype=DTYPE) * np.array([xstep, ystep, zstep], dtype=DTYPE)
+
+    dx = np.arange(fine_subdivide[0] + 1, dtype=DTYPE) * xstep
+    dy = np.arange(fine_subdivide[1] + 1, dtype=DTYPE) * ystep
+    dz = np.arange(fine_subdivide[2] + 1, dtype=DTYPE) * zstep
+
+    niso = len(isovalues)
+    raw_tris = [[] for _ in range(niso)]
+    tri_box_info = [[] for _ in range(niso)]
+
+    for pp0, pp1 in outlines:
+        xvals = DTYPE(pp0[0]) + dx
+        yvals = DTYPE(pp0[1]) + dy
+        zvals = DTYPE(pp0[2]) + dz
+
+        box_data = box_func(xvals, yvals, zvals)
+        tri_list = marching_cube_box(box_data, isovalues)
+
+        origin_x = DTYPE(pp0[0]) * bohr2ang
+        origin_y = DTYPE(pp0[1]) * bohr2ang
+        origin_z = DTYPE(pp0[2]) * bohr2ang
+
+        for iiso in range(niso):
+            tris = tri_list[iiso]
+            if tris:
+                start = len(raw_tris[iiso])
+                raw_tris[iiso].extend(tris)
+                tri_box_info[iiso].append((start, len(tris), origin_x, origin_y, origin_z))
+
+    triangle_sets = [{"isovalue": iso, "name" : name, "triangles": []} for iso in isovalues]
+
+    for iiso in range(niso):
+        if raw_tris[iiso]:
+            coords = np.array(raw_tris[iiso], dtype=DTYPE)
+            transformed = np.dot(coords, scaled_axes)
+            for start, count, ox, oy, oz in tri_box_info[iiso]:
+                transformed[start:start+count, :, 0] += ox
+                transformed[start:start+count, :, 1] += oy
+                transformed[start:start+count, :, 2] += oz
+            triangle_sets[iiso]["triangles"] = [ transformed[i] for i in range(transformed.shape[0]) ]
+
+    return triangle_sets
 
 def isosurface_outline(p0, p1, nvoxels, isovalues, box_func, axes, name, wm=None):
     """Returns low resolution outline of an isosurface"""
