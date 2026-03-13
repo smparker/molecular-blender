@@ -10,8 +10,13 @@ import re
 import molecular_blender as mb
 import numpy as np
 
-import bpy
+try:
+    import bpy
+    HAS_BPY = True
+except ImportError:
+    HAS_BPY = False
 
+@unittest.skipUnless(HAS_BPY, "requires bpy (Blender Python API)")
 class TestBlendSticksRings(unittest.TestCase):
     """Test Suite for plotting with sticks and drawing rings"""
     def setUp(self):
@@ -43,6 +48,7 @@ class TestBlendSticksRings(unittest.TestCase):
         self.assertEqual(nobj, 87, 'Incorrect number of objects created.')
 
 
+@unittest.skipUnless(HAS_BPY, "requires bpy (Blender Python API)")
 class TestAnimateBallAndSticks(unittest.TestCase):
     """Test Suite for animation"""
     def setUp(self):
@@ -70,6 +76,7 @@ class TestAnimateBallAndSticks(unittest.TestCase):
         self.assertEqual(nkeyframe_points, 4,
                          'Incorrect number of keyframe points registered.')
 
+@unittest.skipUnless(HAS_BPY, "requires bpy (Blender Python API)")
 class TestAnimateSticksAndCharges(unittest.TestCase):
     """Test suite for animation including charges"""
     def setUp(self):

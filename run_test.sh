@@ -73,7 +73,7 @@ cd $(dirname $0)
 args="$@"
 
 if [ "$do_test" == "yes" ]; then
-  run_blender test.py $args
+  run_blender test/test_blender.py $args
 fi
 
 if [ "$do_prof" == "yes" ]; then

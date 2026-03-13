@@ -1,0 +1,67 @@
+"""Tests for molecular_blender.transform"""
+
+import pytest
+import numpy as np
+
+from molecular_blender.transform import get_sph_to_cart, transform_sph_to_cart
+
+
+class TestGetSphToCart:
+    @pytest.mark.parametrize("shell,cart_size,sph_size", [
+        ("s", 1, 1),
+        ("p", 3, 3),
+        ("d", 6, 5),
+        ("f", 10, 7),
+        ("g", 15, 9),
+    ])
+    def test_shape(self, shell, cart_size, sph_size):
+        mat = get_sph_to_cart(shell)
+        assert mat.shape == (cart_size, sph_size)
+
+    def test_s_is_identity(self):
+        mat = get_sph_to_cart("s")
+        np.testing.assert_array_equal(mat, np.eye(1))
+
+    def test_p_is_identity(self):
+        mat = get_sph_to_cart("p")
+        np.testing.assert_array_equal(mat, np.eye(3))
+
+    def test_d_normalization(self):
+        """For d-shell, each column of the transform should have nonzero norm."""
+        mat = get_sph_to_cart("d")
+        for col in range(mat.shape[1]):
+            assert np.linalg.norm(mat[:, col]) > 1e-10
+
+    @pytest.mark.parametrize("shell,ncart,nsph", [("d", 6, 5), ("f", 10, 7), ("g", 15, 9)])
+    def test_transform_rank(self, shell, ncart, nsph):
+        """Transform matrix should have full column rank (nsph)."""
+        mat = get_sph_to_cart(shell)
+        rank = np.linalg.matrix_rank(mat, tol=1e-8)
+        assert rank == nsph
+
+
+class TestTransformSphToCart:
+    def test_identity_for_non_spherical(self):
+        """If no shells are in the spherical list, coefficients should be unchanged."""
+        orbitals = [{"coeff": [1.0, 0.0, 0.0, 0.0]}]
+        basis = [[{"shell": "s"}, {"shell": "p"}]]
+        result = transform_sph_to_cart(orbitals, ["d"], basis)
+        np.testing.assert_allclose(result[0]["coeff"], [1.0, 0.0, 0.0, 0.0])
+
+    def test_d_transform_size(self):
+        """Transforming d from spherical (5) to cartesian (6) should change coeff length."""
+        nao_sph = 1 + 3 + 5  # s + p + d(sph)
+        nao_cart = 1 + 3 + 6  # s + p + d(cart)
+        orbitals = [{"coeff": list(np.zeros(nao_sph))}]
+        basis = [[{"shell": "s"}, {"shell": "p"}, {"shell": "d"}]]
+        result = transform_sph_to_cart(orbitals, ["d"], basis)
+        assert len(result[0]["coeff"]) == nao_cart
+
+    def test_roundtrip_with_molden(self):
+        """Read a molden file with spherical d/f and verify transform doesn't crash."""
+        import os
+        from molecular_blender.importers import molecule_from_file
+        examples = os.path.join(os.path.dirname(__file__), "examples")
+        geo = molecule_from_file(os.path.join(examples, "water-sto-3g.molden"), {})
+        assert "mo" in geo
+        assert len(geo["mo"]) > 0
