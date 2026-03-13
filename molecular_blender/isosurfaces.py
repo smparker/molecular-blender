@@ -86,7 +86,7 @@ def isosurface_adaptive(p0, p1, resolution_start, resolution_end, max_subdivide,
     np_start = [ int(math.ceil((b - a)/resolution_start))+1 for a, b in zip(p0, p1) ]
     np_min_end = [ int(math.ceil((b - a)/resolution_end))+1 for a, b in zip(p0, p1) ]
 
-    subdivide = [ max_subdivide for x in range(3) ]
+    subdivide = [ min(max_subdivide, max(2, int(math.ceil(want / start)))) for start, want in zip(np_start, np_min_end) ]
 
     outlines = isosurface_outline(p0, p1, np_start, isovalues, box_func, axes, name)
 

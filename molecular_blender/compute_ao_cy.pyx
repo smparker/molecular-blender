@@ -1127,38 +1127,87 @@ cdef class DensityCalculater:
         cdef:
             np.ndarray[DTYPE_t, ndim=3] out = np.zeros([len(xvals), len(yvals), len(zvals)], dtype=DTYPE)
             int nshells = self.nshells
-            DTYPE_t z_a
             int nx = len(xvals)
             int ny = len(yvals)
             int nz = len(zvals)
             int nxyz = nx * ny * nz
-            int ixyz, ish, jsh, i, j, istart, iend, jstart, jend, isize, jsize
-            int nao = sum([sh.size for sh in self.shells])
-
-            DTYPE_t[:,::1] rho = self.density
-            # notice that the shape of chivals is different from the one in plane_values
-            DTYPE_t[:,:,:,::1] chivals = np.zeros([nx, ny, nz, nao], dtype=DTYPE)
-            DTYPE_t[:,::1] chivals_f = (<float[:nx*ny*nz,:nao]>(&chivals[0,0,0,0]))
+            int ixyz, ish, i, j, istart, isize, offset
+            float otmp
 
             DTYPE_t[::1] logmxorb = self.logmxorb
-            #bint[:] contributes = np.zeros([nshells], dtype=np.int32)
-            DTYPE_t[::1] oview = out.reshape(nx * ny * nz)
-            #float rhoij
+            DTYPE_t[::1] oview = out.reshape(nxyz)
 
-            float otmp;
+            float X, Y, Z, logthresh
+            float x0, x1, y0, y1, z0, z1
+            float min_x, min_y, min_z, min_rr
 
-        # TODO consider batching into smaller cubes
+            int* active_shells_arr
+            int* compact_offs
+            int n_active = 0
+            int nactive_ao = 0
+
+        active_shells_arr = <int*>malloc(nshells * sizeof(int))
+        compact_offs = <int*>malloc(nshells * sizeof(int))
+
         for ish in range(nshells):
-            istart = self.cshells[ish].start
-            compute_chi_box_shell(&self.cshells[ish], nx, &xvals[0], ny, &yvals[0], nz, &zvals[0],
-                    &chivals[0,0,0,istart], nao*ny*nz, nao*nz, nao, logmxorb[ish])
+            X = self.cshells[ish].X
+            Y = self.cshells[ish].Y
+            Z = self.cshells[ish].Z
+            logthresh = self.cshells[ish].logthr - logmxorb[ish]
 
-        phi = np.dot(chivals_f, rho)
-        cdef DTYPE_t[:,:] phiview = phi
+            x0 = xvals[0] - X; x1 = xvals[nx-1] - X
+            y0 = yvals[0] - Y; y1 = yvals[ny-1] - Y
+            z0 = zvals[0] - Z; z1 = zvals[nz-1] - Z
+
+            min_x = fabs(x0) if fabs(x0) < fabs(x1) else fabs(x1)
+            if x0 * x1 < 0: min_x = 0.0
+            min_y = fabs(y0) if fabs(y0) < fabs(y1) else fabs(y1)
+            if y0 * y1 < 0: min_y = 0.0
+            min_z = fabs(z0) if fabs(z0) < fabs(z1) else fabs(z1)
+            if z0 * z1 < 0: min_z = 0.0
+
+            min_rr = min_x*min_x + min_y*min_y + min_z*min_z
+            if min_rr < logthresh:
+                active_shells_arr[n_active] = ish
+                compact_offs[n_active] = nactive_ao
+                n_active += 1
+                nactive_ao += self.cshells[ish].size
+
+        if nactive_ao == 0:
+            free(active_shells_arr)
+            free(compact_offs)
+            return out
+
+        cdef np.ndarray[DTYPE_t, ndim=4] chivals = np.zeros([nx, ny, nz, nactive_ao], dtype=DTYPE)
+
+        for i in range(n_active):
+            ish = active_shells_arr[i]
+            offset = compact_offs[i]
+            compute_chi_box_shell(&self.cshells[ish], nx, &xvals[0], ny, &yvals[0], nz, &zvals[0],
+                    &chivals[0,0,0,offset], nactive_ao*ny*nz, nactive_ao*nz, nactive_ao, logmxorb[ish])
+
+        active_ao_list = []
+        for i in range(n_active):
+            ish = active_shells_arr[i]
+            istart = self.cshells[ish].start
+            isize = self.cshells[ish].size
+            for j in range(istart, istart + isize):
+                active_ao_list.append(j)
+
+        free(active_shells_arr)
+        free(compact_offs)
+
+        idx = np.array(active_ao_list, dtype=np.intp)
+        cdef np.ndarray[DTYPE_t, ndim=2] rho_compact = np.ascontiguousarray(
+            self.density[np.ix_(idx, idx)])
+
+        cdef DTYPE_t[:,::1] chivals_f = (<float[:nxyz,:nactive_ao]>(&chivals[0,0,0,0]))
+        phi = np.dot(chivals_f, rho_compact)
+        cdef DTYPE_t[:,::1] phiview = phi
         for ixyz in range(nxyz):
             otmp = 0.0
-            for i in range(nao):
-                otmp += phiview[ixyz, i] * chivals_f[ixyz, i]
+            for i in range(nactive_ao):
+                otmp += chivals_f[ixyz, i] * phiview[ixyz, i]
             oview[ixyz] = otmp
 
         return out
