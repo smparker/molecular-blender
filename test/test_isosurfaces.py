@@ -10,7 +10,7 @@ from molecular_blender.isosurfaces import (
 )
 from molecular_blender.constants import bohr2ang
 
-EXAMPLES = os.path.join(os.path.dirname(__file__), "examples")
+EXAMPLES = os.path.join(os.path.dirname(__file__), "../examples")
 DTYPE = np.float32
 
 

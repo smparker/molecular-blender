@@ -61,7 +61,7 @@ class TestTransformSphToCart:
         """Read a molden file with spherical d/f and verify transform doesn't crash."""
         import os
         from molecular_blender.importers import molecule_from_file
-        examples = os.path.join(os.path.dirname(__file__), "examples")
+        examples = os.path.join(os.path.dirname(__file__), "../examples")
         geo = molecule_from_file(os.path.join(examples, "water-sto-3g.molden"), {})
         assert "mo" in geo
         assert len(geo["mo"]) > 0

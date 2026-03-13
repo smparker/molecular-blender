@@ -7,7 +7,7 @@ import numpy as np
 from molecular_blender.importers import molecule_from_file
 from molecular_blender.orbitals import MOData
 
-EXAMPLES = os.path.join(os.path.dirname(__file__), "examples")
+EXAMPLES = os.path.join(os.path.dirname(__file__), "../examples")
 
 
 @pytest.fixture

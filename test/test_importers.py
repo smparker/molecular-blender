@@ -14,7 +14,7 @@ from molecular_blender.turbomole_reader import (
     DiplParser, read_dipl_file, read_turbomole_polarizability,
 )
 
-EXAMPLES = os.path.join(os.path.dirname(__file__), "examples")
+EXAMPLES = os.path.join(os.path.dirname(__file__), "../examples")
 
 
 # -- helper constructors --
