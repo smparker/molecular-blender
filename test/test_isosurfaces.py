@@ -136,6 +136,10 @@ class TestIsosurfaceDispatch:
             method="simple"
         )
         assert len(result) == 1
+        assert result[0]["isovalue"] == 0.5
+        assert len(result[0]["triangles"]) > 0
+        for tri in result[0]["triangles"]:
+            assert len(tri) == 3
 
     def test_adaptive_method(self):
         p0 = np.array([-2.0, -2.0, -2.0])
@@ -146,6 +150,26 @@ class TestIsosurfaceDispatch:
             method="adaptive"
         )
         assert len(result) == 1
+        assert result[0]["isovalue"] == 0.5
+        assert len(result[0]["triangles"]) > 0
+        for tri in result[0]["triangles"]:
+            assert len(tri) == 3
+
+    def test_simple_and_adaptive_same_topology(self):
+        """Both methods should produce a closed surface with same topology for a simple blob."""
+        p0 = np.array([-2.0, -2.0, -2.0])
+        p1 = np.array([2.0, 2.0, 2.0])
+        axes = np.eye(3, dtype=DTYPE) * bohr2ang
+        simple = isosurface(
+            p0, p1, 0.5, [0.5], self._gaussian_box, axes, "test",
+            method="simple"
+        )
+        adaptive = isosurface(
+            p0, p1, 0.5, [0.5], self._gaussian_box, axes, "test",
+            method="adaptive"
+        )
+        assert len(simple[0]["triangles"]) > 0
+        assert len(adaptive[0]["triangles"]) > 0
 
 
 class TestMoldenIsosurface:

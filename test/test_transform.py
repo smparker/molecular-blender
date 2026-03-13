@@ -57,11 +57,27 @@ class TestTransformSphToCart:
         result = transform_sph_to_cart(orbitals, ["d"], basis)
         assert len(result[0]["coeff"]) == nao_cart
 
-    def test_roundtrip_with_molden(self):
-        """Read a molden file with spherical d/f and verify transform doesn't crash."""
+    def test_d_transform_preserves_s_p_coefficients(self):
+        """s and p coefficients should pass through the d-transform unchanged."""
+        nao_sph = 1 + 3 + 5
+        coeffs_sph = list(range(1, nao_sph + 1))
+        orbitals = [{"coeff": list(coeffs_sph)}]
+        basis = [[{"shell": "s"}, {"shell": "p"}, {"shell": "d"}]]
+        result = transform_sph_to_cart(orbitals, ["d"], basis)
+        assert result[0]["coeff"][:1] == coeffs_sph[:1]
+        assert result[0]["coeff"][1:4] == coeffs_sph[1:4]
+
+    def test_transform_with_molden_coefficient_count(self):
+        """After reading a molden file, MO coefficients should have Cartesian AO count."""
         import os
         from molecular_blender.importers import molecule_from_file
+        from molecular_blender.transform import cartdegen
         examples = os.path.join(os.path.dirname(__file__), "../examples")
         geo = molecule_from_file(os.path.join(examples, "water-sto-3g.molden"), {})
-        assert "mo" in geo
-        assert len(geo["mo"]) > 0
+        expected_nao = sum(
+            cartdegen[sh["shell"]]
+            for atom_basis in geo["basis"]
+            for sh in atom_basis
+        )
+        for mo in geo["mo"]:
+            assert len(mo["coeff"]) == expected_nao

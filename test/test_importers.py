@@ -94,7 +94,8 @@ class TestMoleculeFromFileDispatch:
 
     def test_json(self):
         geo = molecule_from_file(os.path.join(EXAMPLES, "phenanth_polar.json"), {})
-        assert len(geo["atoms"]) > 0
+        assert len(geo["atoms"]) == 22
+        assert "polar" in geo
 
     def test_babel_raises(self):
         with pytest.raises(Exception, match="babel"):
@@ -190,6 +191,10 @@ class TestMoldenRead:
             os.path.join(EXAMPLES, "phenanthroline_pbe0_ris.molden"), {}
         )
         assert len(geo["atoms"]) == 22
+        elements = {a["symbol"] for a in geo["atoms"]}
+        assert elements == {"c", "h", "n"}
+        assert "basis" in geo
+        assert "mo" in geo
 
     def test_missing_molden_format(self, tmp_path):
         f = tmp_path / "bad.molden"
@@ -216,8 +221,11 @@ class TestMoldenRead:
 class TestJsonRead:
     def test_phenanth_polar(self):
         geo = molecule_from_json(os.path.join(EXAMPLES, "phenanth_polar.json"), {})
-        assert len(geo["atoms"]) > 0
+        assert len(geo["atoms"]) == 22
         assert "polar" in geo
+        assert "basis" in geo
+        assert "mo" in geo
+        assert geo["atoms"][0]["symbol"] == "c"
 
     def test_returns_none_for_missing_molecules(self, tmp_path):
         f = tmp_path / "empty.json"

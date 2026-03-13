@@ -38,19 +38,39 @@ class TestMODataBasics:
         assert water_modata.nvir >= 0
         assert water_modata.nocc + water_modata.nvir == water_modata.coeff.shape[0]
 
-    def test_get_orbital_positive(self, water_modata):
-        orb = water_modata.get_orbital(1)
-        assert orb is not None
+    def test_different_orbitals_give_different_values(self, water_modata):
+        """get_orbital(1) and get_orbital(2) should produce distinct orbital values."""
+        orb1 = water_modata.get_orbital(1)
+        orb2 = water_modata.get_orbital(2)
+        v1 = orb1.value(0.0, 0.0, 0.2)
+        v2 = orb2.value(0.0, 0.0, 0.2)
+        assert abs(v1 - v2) > 1e-6, "Different orbitals should have different values"
 
-    def test_get_orbital_negative(self, water_modata):
-        orb = water_modata.get_orbital(-1)
-        assert orb is not None
+    def test_get_orbital_homo_indexing(self, water_modata):
+        """get_orbital(0) = HOMO = get_orbital(nocc)."""
+        homo_orb = water_modata.get_orbital(0)
+        homo_abs = water_modata.get_orbital(water_modata.nocc)
+        v_rel = homo_orb.value(0.0, 0.1, 0.0)
+        v_abs = homo_abs.value(0.0, 0.1, 0.0)
+        assert abs(v_rel - v_abs) < 1e-6
 
 
 class TestMODataDensity:
-    def test_density(self, fake_modata):
+    def test_density_nonnegative_on_grid(self, fake_modata):
+        """Electron density should be non-negative everywhere."""
         dens = fake_modata.get_density("density")
-        assert dens is not None
+        xyz = np.linspace(-5, 5, 10, dtype=np.float32)
+        box = dens.box_values(xyz, xyz, xyz)
+        assert np.all(box >= -1e-6), f"Density has negative values: min={np.min(box)}"
+
+    def test_density_peaks_at_nucleus(self, fake_modata):
+        """For an s-type atom, density should peak near the nucleus."""
+        dens = fake_modata.get_density("density")
+        xyz_near = np.array([0.0], dtype=np.float32)
+        xyz_far = np.array([5.0], dtype=np.float32)
+        val_origin = dens.box_values(xyz_near, xyz_near, xyz_near)[0, 0, 0]
+        val_far = dens.box_values(xyz_far, xyz_far, xyz_far)[0, 0, 0]
+        assert val_origin > val_far
 
     def test_is_density(self, fake_modata):
         assert fake_modata.is_density("density")
@@ -87,17 +107,31 @@ class TestMODataPolarizability:
 
 
 class TestMODataSpinDensities:
-    def test_spin_density(self, water_modata):
-        spin = water_modata.get_density("spin")
-        assert spin is not None
-
-    def test_alpha_density(self, water_modata):
+    def test_alpha_plus_beta_equals_total_on_grid(self, water_modata):
+        """Alpha + beta density values should equal total density at every grid point."""
         alpha = water_modata.get_density("alpha")
-        assert alpha is not None
-
-    def test_beta_density(self, water_modata):
         beta = water_modata.get_density("beta")
-        assert beta is not None
+        total = water_modata.get_density("density")
+        xyz = np.linspace(-5, 5, 10, dtype=np.float32)
+        alpha_box = alpha.box_values(xyz, xyz, xyz)
+        beta_box = beta.box_values(xyz, xyz, xyz)
+        total_box = total.box_values(xyz, xyz, xyz)
+        np.testing.assert_allclose(
+            alpha_box + beta_box, total_box, atol=1e-4
+        )
+
+    def test_spin_density_is_alpha_minus_beta_on_grid(self, water_modata):
+        """Spin density = alpha - beta at every grid point."""
+        alpha = water_modata.get_density("alpha")
+        beta = water_modata.get_density("beta")
+        spin = water_modata.get_density("spin")
+        xyz = np.linspace(-5, 5, 10, dtype=np.float32)
+        alpha_box = alpha.box_values(xyz, xyz, xyz)
+        beta_box = beta.box_values(xyz, xyz, xyz)
+        spin_box = spin.box_values(xyz, xyz, xyz)
+        np.testing.assert_allclose(
+            alpha_box - beta_box, spin_box, atol=1e-4
+        )
 
     def test_is_density_spin(self, water_modata):
         assert water_modata.is_density("spin")
@@ -108,11 +142,18 @@ class TestMODataSpinDensities:
 
 
 class TestMODataFromDict:
-    def test_denorm_flag(self):
-        geo = molecule_from_file(os.path.join(EXAMPLES, "water-sto-3g.molden"),
-                                 {"orca_fix": True})
-        modata = MOData.from_dict(geo)
-        assert modata is not None
+    def test_orca_fix_changes_orbital_values(self):
+        """orca_fix should change denormalization, producing different orbital values."""
+        geo_normal = molecule_from_file(os.path.join(EXAMPLES, "water-sto-3g.molden"), {})
+        geo_orca = molecule_from_file(os.path.join(EXAMPLES, "water-sto-3g.molden"),
+                                      {"orca_fix": True})
+        modata_normal = MOData.from_dict(geo_normal)
+        modata_orca = MOData.from_dict(geo_orca)
+        orb_n = modata_normal.get_orbital(1)
+        orb_o = modata_orca.get_orbital(1)
+        val_n = orb_n.value(0.0, 0.0, 0.0)
+        val_o = orb_o.value(0.0, 0.0, 0.0)
+        assert abs(val_n - val_o) > 1e-6, "orca_fix should change orbital values"
 
     def test_coeff_shape(self, water_modata):
         nmo = water_modata.coeff.shape[0]
