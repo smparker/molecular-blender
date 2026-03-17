@@ -18,13 +18,13 @@ def orbital_isosurface():
     geo = mb.importers.molecule_from_file('examples/zine.molden', {})
     orbitals = mb.orbitals.MOData.from_dict(geo)
 
-    mb.isosurfaces.molden_isosurface(orbitals.get_orbital(12), [0.01, -0.01], 0.01)
+    mb.isosurfaces.molden_isosurface(orbitals.get_orbital(12), [0.01, -0.01], 0.1)
 
 def density_isosurface():
     geo = mb.importers.molecule_from_file('examples/zine.molden', {})
     orbitals = mb.orbitals.MOData.from_dict(geo)
 
-    mb.isosurfaces.molden_isosurface(orbitals.get_density("density"), [0.01], 0.01)
+    mb.isosurfaces.molden_isosurface(orbitals.get_density("density"), [0.01], 0.1)
 
 def run():
     density_isosurface()
