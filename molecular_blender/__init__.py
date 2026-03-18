@@ -33,7 +33,8 @@ try:
     import bpy
     from bpy.props import StringProperty, BoolProperty, EnumProperty, IntProperty, FloatProperty
     import bpy_extras
-    from .plotter import BlendMolecule
+    from .plotter import BlendMolecule, BlendMoleculeSetup, compute_surface_vertex_sets, create_surface_meshes
+    import threading
     _HAS_BPY = True
 except ImportError:
     _HAS_BPY = False
@@ -270,34 +271,114 @@ if _HAS_BPY:
             row.prop(self, "use_cython")
             row.enabled = False
 
+        def _build_options(self):
+            return dict(
+                bonds=(self.bond_thickness != 0.0),
+                bond_thickness=self.bond_thickness,
+                hook_atoms=self.hook_atoms,
+                plot_style=self.plot_style,
+                object_type=self.object_type,
+                keystride=self.keystride,
+                animate_bonds=self.animate_bonds,
+                universal_bonds=self.universal_bonds,
+                ignore_hydrogen=self.ignore_hydrogen,
+                gradient=self.gradient,
+                charges=self.charges,
+                charge_offset=self.charge_offset,
+                charge_factor=self.charge_factor,
+                find_aromatic=self.find_aromatic,
+                recycle_materials=self.recycle_materials,
+                isovalues=self.isovalues,
+                cumulative=self.cumulative,
+                volume=self.volume,
+                orbital=self.orbital,
+                resolution=self.resolution,
+                remesh=self.remesh,
+                orca_fix=self.orca_fix,
+                colors=self.colors,
+            )
+
         def execute(self, context):
-            """Function called to plot molecule"""
-            BlendMolecule(context, self.filepath,
-                          bonds=(self.bond_thickness != 0.0),
-                          bond_thickness=self.bond_thickness,
-                          hook_atoms=self.hook_atoms,
-                          plot_style=self.plot_style,
-                          object_type=self.object_type,
-                          keystride=self.keystride,
-                          animate_bonds=self.animate_bonds,
-                          universal_bonds=self.universal_bonds,
-                          ignore_hydrogen=self.ignore_hydrogen,
-                          gradient=self.gradient,
-                          charges=self.charges,
-                          charge_offset=self.charge_offset,
-                          charge_factor=self.charge_factor,
-                          find_aromatic=self.find_aromatic,
-                          recycle_materials=self.recycle_materials,
-                          isovalues=self.isovalues,
-                          cumulative=self.cumulative,
-                          volume=self.volume,
-                          orbital=self.orbital,
-                          resolution=self.resolution,
-                          remesh=self.remesh,
-                          orca_fix=self.orca_fix,
-                          colors=self.colors)
+            """Load molecule, plot atoms/bonds, then compute isosurfaces in background if needed."""
+            try:
+                molecule, styler, options = BlendMoleculeSetup(context, self.filepath, **self._build_options())
+            except Exception as e:
+                self.report({'ERROR'}, str(e))
+                return {'CANCELLED'}
+
+            if not options.get("isosurfaces"):
+                return {'FINISHED'}
+
+            # Start background thread for isosurface computation
+            self._molecule = molecule
+            self._styler = styler
+            self._options = options
+            self._result = {"vertex_sets": None, "vertex_trajectory_map": None, "error": None}
+            self._progress = {"completed": 0, "total": 1}
+
+            self._thread = threading.Thread(target=self._compute_isosurfaces, daemon=True)
+            self._thread.start()
+
+            wm = context.window_manager
+            self._timer = wm.event_timer_add(0.1, window=context.window)
+            wm.modal_handler_add(self)
+            wm.progress_begin(0, 100)
+            context.workspace.status_text_set("Molecular Blender: computing isosurfaces... (Esc to cancel)")
+
+            return {'RUNNING_MODAL'}
+
+        def _compute_isosurfaces(self):
+            """Run isosurface computation in background thread (no Blender API calls)."""
+            try:
+                vertex_sets, vertex_trajectory_map = compute_surface_vertex_sets(
+                    self._molecule, self._options, self._progress
+                )
+                self._result["vertex_sets"] = vertex_sets
+                self._result["vertex_trajectory_map"] = vertex_trajectory_map
+            except Exception as e:
+                self._result["error"] = str(e)
+
+        def modal(self, context, event):
+            """Called by Blender's event loop while isosurface thread is running."""
+            if event.type != 'TIMER':
+                return {'PASS_THROUGH'}
+
+            wm = context.window_manager
+            total = self._progress.get("total", 1)
+            completed = self._progress.get("completed", 0)
+            wm.progress_update(int(completed / total * 100))
+
+            if self._thread.is_alive():
+                return {'RUNNING_MODAL'}
+
+            # Thread finished - clean up timer, progress bar, and status text
+            wm.event_timer_remove(self._timer)
+            self._timer = None
+            wm.progress_end()
+            context.workspace.status_text_set(None)
+
+            if self._result.get("error"):
+                self.report({'ERROR'}, self._result["error"])
+                return {'CANCELLED'}
+
+            try:
+                create_surface_meshes(
+                    self._molecule, self._styler, context, self._options,
+                    self._result["vertex_sets"], self._result["vertex_trajectory_map"]
+                )
+            except Exception as e:
+                self.report({'ERROR'}, str(e))
+                return {'CANCELLED'}
 
             return {'FINISHED'}
+
+        def cancel(self, context):
+            """Called if operator is cancelled while modal (e.g. Escape key)."""
+            if self._timer is not None:
+                context.window_manager.event_timer_remove(self._timer)
+                self._timer = None
+            context.window_manager.progress_end()
+            context.workspace.status_text_set(None)
 
 
     def menu_func_import(self, _context):

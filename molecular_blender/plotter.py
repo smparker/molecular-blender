@@ -611,25 +611,33 @@ def create_geometry(verts):
     return list(chain.from_iterable(verts)), faces
 
 
-@stopwatch("draw surfaces")
-def draw_surfaces(molecule, styler, context, options):
-    """Draws isosurfaces"""
+def compute_surface_vertex_sets(molecule, options, progress_state=None):
+    """Compute isosurface triangle data. No Blender API calls - safe to run in a background thread.
 
-    # quick return if no data
+    progress_state is an optional dict with keys 'completed' and 'total' that this function
+    updates as isosurfaces are computed, for use by a modal progress bar.
+    """
     if molecule.volume is None and molecule.orbitals is None:
-        return
+        return [], {}
 
-    # master list of all sets of vertices for plotting
     vertex_sets = []
-    # map set names to the frame at which they are active
     vertex_trajectory_map = {}
-
     fmap = get_frame_mapper(options)
 
-    wm = context.window_manager
+    # Count total tasks for progress tracking
+    if progress_state is not None:
+        if molecule.volume is not None:
+            total = 1 + (len(molecule.volume_trajectory) if molecule.volume_trajectory else 0)
+        elif molecule.orbitals is not None:
+            total = len([x.strip() for x in options["orbital"].split(',')])
+        else:
+            total = 1
+        progress_state["total"] = max(total, 1)
+        progress_state["completed"] = 0
 
-    # set up collections
-    molecule_collection = bpy.data.collections[molecule.name]
+    def tick():
+        if progress_state is not None:
+            progress_state["completed"] = progress_state.get("completed", 0) + 1
 
     if molecule.volume is not None:  # volumetric data was read
         vol = molecule.volume
@@ -637,29 +645,26 @@ def draw_surfaces(molecule, styler, context, options):
         if options["cumulative"]:
             isovals = vol.isovalue_containing_proportion(isovals)
 
-        # marching cubes to make the surface
-        vsets = cube_isosurface(vol.data, vol.origin, vol.axes, isovals, name="cube", wm=wm)
+        vsets = cube_isosurface(vol.data, vol.origin, vol.axes, isovals, name="cube")
+        tick()
         if vsets:
             vertex_sets.extend(vsets)
         if molecule.volume_trajectory is not None:
             f0 = fmap(0)
-            if f0 not in vertex_trajectory_map:
-                vertex_trajectory_map[f0] = []
-            vertex_trajectory_map[f0].extend( [ v["name"] for v in vsets ] )
-
-            for i, vol in enumerate(molecule.volume_trajectory, 1):
+            vertex_trajectory_map.setdefault(f0, []).extend([v["name"] for v in vsets])
+            for i, vol_snap in enumerate(molecule.volume_trajectory, 1):
                 name = "cube-{:5d}".format(i)
-                vsets = cube_isosurface(vol.data, vol.origin, vol.axes, isovals, name=name, wm=wm)
+                vsets = cube_isosurface(vol_snap.data, vol_snap.origin, vol_snap.axes, isovals, name=name)
+                tick()
                 fi = fmap(i)
-                if fi not in vertex_trajectory_map:
-                    vertex_trajectory_map[fi] = []
-                vertex_trajectory_map[fi].extend( [ v["name"] for v in vsets ] )
+                vertex_trajectory_map.setdefault(fi, []).extend([v["name"] for v in vsets])
                 vertex_sets.extend(vsets)
+
     elif molecule.orbitals is not None:  # orbital data was read
         orbitals = molecule.orbitals
         homo = orbitals.homo()
-        lumo = homo+1
-        orbnames = [ x.strip() for x in options["orbital"].split(',') ]
+        lumo = homo + 1
+        orbnames = [x.strip() for x in options["orbital"].split(',')]
         orblist = []
         for o in orbnames:
             neworb = None
@@ -684,7 +689,6 @@ def draw_surfaces(molecule, styler, context, options):
                     neworb = int(o)
                 except ValueError:
                     raise Exception(f"Could not understand orbital {o}! Looking for {orbitals.densities.keys()}?")
-                    pass
 
             orblist.append(neworb)
 
@@ -700,53 +704,51 @@ def draw_surfaces(molecule, styler, context, options):
                 orbital_isovals = orb.isovalue_containing_proportion(isovals)
             else:
                 orbital_isovals = isovals
-            vset = molden_isosurface(orb, orbital_isovals, resolution, orbname, wm)
+            vset = molden_isosurface(orb, orbital_isovals, resolution, orbname)
+            tick()
             if vset:
                 vertex_sets.extend(vset)
 
             if molecule.orbitals_trajectory is not None:
                 f0 = fmap(0)
-                if f0 not in vertex_trajectory_map:
-                    vertex_trajectory_map[f0] = []
-                vertex_trajectory_map[f0].extend( [ v["name"] for v in vsets ] )
-
-            if molecule.orbitals_trajectory is not None:
-                for i, orbital_snap in enumerate(molecule.volume_trajectory, 1):
-                    name = f"{orbname:s}-{i:4d}"
-                    if orbname in ["density", "spin", "alpha", "beta"]:
-                        orb = orbital_snap.get_density()
+                vertex_trajectory_map.setdefault(f0, []).extend([v["name"] for v in vset])
+                for i, orbital_snap in enumerate(molecule.orbitals_trajectory, 1):
+                    snap_name = f"{orbname:s}-{i:4d}"
+                    if orbitals.is_density(orbname):
+                        orb_snap = orbital_snap.get_density(orbname)
                     else:
-                        orb = orbital_snap.get_orbital(orbnumber)
-                    vsets = molecule_isosurface(orb, orbital_isovals, resolution, name, wm)
-
+                        orb_snap = orbital_snap.get_orbital(orbnumber)
+                    vsets_snap = molden_isosurface(orb_snap, orbital_isovals, resolution, snap_name)
                     fi = fmap(i)
-                    if fi not in vertex_trajectory_map:
-                        vertex_trajectory_map[fi] = []
-                    vertex_trajectory_map[fi].extend( [ v["name"] for v in vsets ] )
+                    vertex_trajectory_map.setdefault(fi, []).extend([v["name"] for v in vsets_snap])
+                    vertex_sets.extend(vsets_snap)
 
-                    vertex_sets.extend(vsets)
+    return vertex_sets, vertex_trajectory_map
 
-    meshes = []
+
+def create_surface_meshes(molecule, styler, context, options, vertex_sets, vertex_trajectory_map):
+    """Create Blender mesh objects from precomputed isosurface data. Must run on main thread."""
+    if not vertex_sets:
+        return
+
+    molecule_collection = bpy.data.collections[molecule.name]
     materials = make_iso_materials(molecule, styler, vertex_sets, options)
     mol_obj = bpy.data.objects[molecule.name]
 
-    # collect meshes by name
-    function_names = set([ v["name"] for v in vertex_sets ])
+    meshes = []
+    function_names = set([v["name"] for v in vertex_sets])
     for func in function_names:
-        fsets = [ v for v in vertex_sets if v["name"] == func ]
+        fsets = [v for v in vertex_sets if v["name"] == func]
         fmeshes = []
         for v in fsets:
-            # add surfaces to the scene
             name = "{0}_{1}_{2}".format(molecule.name, v["name"], v["isovalue"])
             verts, faces = create_geometry(v["triangles"])
             vmesh = create_mesh(name, verts, faces, v["material"], context, remesh=options["remesh"])
             v["mesh"] = vmesh
             fmeshes.append(vmesh)
 
-        # create collection for this function
         function_collection = bpy.data.collections.new(f"{molecule.name}-isosurface-{func}")
         molecule_collection.children.link(function_collection)
-        # link to molecule collection
         for m in fmeshes:
             function_collection.objects.link(m)
             m.select_set(True)
@@ -754,11 +756,10 @@ def draw_surfaces(molecule, styler, context, options):
         meshes.extend(fmeshes)
 
     mol_obj.select_set(True)
-    # parent them
     context.view_layer.objects.active = mol_obj
     bpy.ops.object.parent_set(type='OBJECT', keep_transform=False)
 
-    if vertex_trajectory_map: # keyframe visibility for surfaces
+    if vertex_trajectory_map:
         for frame in vertex_trajectory_map:
             for v in vertex_sets:
                 obj = v["mesh"]
@@ -768,6 +769,13 @@ def draw_surfaces(molecule, styler, context, options):
                 obj.hide_render = hide
                 obj.keyframe_insert(data_path="hide_viewport", frame=frame)
                 obj.keyframe_insert(data_path="hide_render", frame=frame)
+
+
+@stopwatch("draw surfaces")
+def draw_surfaces(molecule, styler, context, options):
+    """Draws isosurfaces"""
+    vertex_sets, vertex_trajectory_map = compute_surface_vertex_sets(molecule, options)
+    create_surface_meshes(molecule, styler, context, options, vertex_sets, vertex_trajectory_map)
 
 @stopwatch("draw rings")
 def plot_rings(context, molecule, options):
@@ -873,9 +881,11 @@ def get_frame_mapper(options):
     return f
 
 
-def BlendMolecule(context, filename, **options):
-    """basic driver that calls the appropriate plot functions"""
+def BlendMoleculeSetup(context, filename, **options):
+    """Load molecule and create atoms/bonds. Returns (molecule, styler, options).
 
+    Does not draw isosurfaces - call draw_surfaces separately if needed.
+    """
     options = default_options(options)
     name = filename.rsplit('.', 1)[0].rsplit('/')[-1]
     molecule = Molecule.from_dict(name, molecule_from_file(filename, options))
@@ -897,5 +907,11 @@ def BlendMolecule(context, filename, **options):
     if options["find_aromatic"]:
         plot_rings(context, molecule, options)
 
+    return molecule, styler, options
+
+
+def BlendMolecule(context, filename, **options):
+    """basic driver that calls the appropriate plot functions"""
+    molecule, styler, options = BlendMoleculeSetup(context, filename, **options)
     if options["isosurfaces"]:
         draw_surfaces(molecule, styler, context, options)
