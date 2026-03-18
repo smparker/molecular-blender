@@ -1,7 +1,7 @@
 """Tests for molecular_blender.aromatics"""
 
+import unittest
 import numpy as np
-import pytest
 
 from molecular_blender.aromatics import (
     create_graph, depth_first, find_specific_cycles,
@@ -35,7 +35,7 @@ class _MockAtom:
         self.position = _Vec([x, y, z])
 
 
-class TestCreateGraph:
+class TestCreateGraph(unittest.TestCase):
     def test_simple_chain(self):
         graph = create_graph([0, 1, 2], [(0, 1), (1, 2)])
         assert 1 in graph[0]
@@ -55,7 +55,7 @@ class TestCreateGraph:
         assert len(graph[1]) == 0
 
 
-class TestDepthFirst:
+class TestDepthFirst(unittest.TestCase):
     def test_triangle_start_to_neighbor(self):
         """depth_first finds paths from start to goal (different vertices)."""
         graph = create_graph([0, 1, 2], [(0, 1), (1, 2), (2, 0)])
@@ -78,7 +78,7 @@ class TestDepthFirst:
         assert len(paths) > 0
 
 
-class TestFindCycles:
+class TestFindCycles(unittest.TestCase):
     def test_triangle(self):
         graph = create_graph([0, 1, 2], [(0, 1), (1, 2), (2, 0)])
         cycles = find_unique_cycles(graph)
@@ -109,7 +109,7 @@ class TestFindCycles:
         assert len(cycles) >= 2
 
 
-class TestOrderedCycle:
+class TestOrderedCycle(unittest.TestCase):
     def test_triangle(self):
         edges = [(0, 1), (1, 2), (2, 0)]
         graph = create_graph([0, 1, 2], edges)
@@ -127,7 +127,7 @@ class TestOrderedCycle:
         assert len(result) == 6
 
 
-class TestFindSpecificCycles:
+class TestFindSpecificCycles(unittest.TestCase):
     def test_triangle_from_vertex(self):
         edges = [(0, 1), (1, 2), (2, 0)]
         graph = create_graph([0, 1, 2], edges)
@@ -136,7 +136,7 @@ class TestFindSpecificCycles:
         assert all(0 in c for c in cycles)
 
 
-class TestIsPlanar:
+class TestIsPlanar(unittest.TestCase):
     def test_triangle_always_planar(self):
         atoms = [_MockAtom(0, 0, 0), _MockAtom(1, 0, 0), _MockAtom(0, 1, 0)]
         assert is_planar(atoms, {0, 1, 2}) is True

@@ -1,6 +1,6 @@
 """Tests for molecular_blender.containing_isovalues"""
 
-import pytest
+import unittest
 import numpy as np
 
 from molecular_blender.containing_isovalues import (
@@ -22,7 +22,7 @@ def _make_gaussian_grid(n=30, sigma=1.0):
     return data, dV
 
 
-class TestBinaryMethod:
+class TestBinaryMethod(unittest.TestCase):
     def _verify_containment(self, data, dV, isovalue, target, square=True):
         """Check that the isovalue actually contains ~target proportion."""
         mask = np.abs(data) >= abs(isovalue)
@@ -60,7 +60,7 @@ class TestBinaryMethod:
         self._verify_containment(data, dV, isovals[0], 0.5, square=False)
 
 
-class TestSortedMethod:
+class TestSortedMethod(unittest.TestCase):
     def test_50_percent(self):
         data, dV = _make_gaussian_grid(n=20)
         isovals = isovalue_containing_proportion_sorted([0.5], data, dV)
@@ -75,7 +75,7 @@ class TestSortedMethod:
         assert isovals[0] > isovals[1]
 
 
-class TestDispatch:
+class TestDispatch(unittest.TestCase):
     def test_binary_dispatch_produces_valid_isovalue(self):
         data, dV = _make_gaussian_grid(n=20)
         result = isovalue_containing_proportion([0.5], data, dV, method='binary')

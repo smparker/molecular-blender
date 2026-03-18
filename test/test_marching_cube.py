@@ -1,6 +1,6 @@
 """Tests for marching cube implementations (pure Python and Cython)"""
 
-import pytest
+import unittest
 import numpy as np
 
 import molecular_blender.marching_cube_py as mc_py
@@ -14,27 +14,9 @@ except ImportError:
 DTYPE = np.float32
 
 
-def _implementations():
-    """Yield (label, module) for each available implementation."""
-    yield pytest.param(mc_py, id="python")
-    if HAS_CYTHON_MC:
-        yield pytest.param(mc_cy, id="cython")
-    else:
-        yield pytest.param(
-            pytest.importorskip("molecular_blender.marching_cube_cy"),
-            id="cython",
-            marks=pytest.mark.skip(reason="Cython marching cube not available"),
-        )
-
-
-@pytest.fixture(params=list(_implementations()))
-def mc(request):
-    return request.param
-
-
 # -- vertexinterp (python only, cython may not expose it) --
 
-class TestVertexInterp:
+class TestVertexInterp(unittest.TestCase):
     def test_at_p1(self):
         result = mc_py.vertexinterp(0.0, [0, 0, 0], [1, 1, 1], 0.0, 1.0)
         assert result == [0, 0, 0]
@@ -56,7 +38,7 @@ class TestVertexInterp:
 
 # -- active_box (python only) --
 
-class TestActiveBox:
+class TestActiveBox(unittest.TestCase):
     def test_all_inside(self):
         corners = [0.0] * 8
         assert mc_py.active_box(corners, [0.5]) is False
@@ -77,7 +59,7 @@ class TestActiveBox:
 
 # -- polygonise (python only) --
 
-class TestPolygonise:
+class TestPolygonise(unittest.TestCase):
     def test_no_crossing(self):
         corners = [0.0] * 8
         tris = mc_py.polygonise(corners, 0.5, 0, 0, 0, 1, 1, 1)
@@ -91,60 +73,82 @@ class TestPolygonise:
             assert len(tri) == 3
 
 
-# -- marching_cube_box --
+# -- marching_cube_box (parametrized over implementations) --
 
-class TestMarchingCubeBox:
-    def test_empty_grid(self, mc):
+class _TestMarchingCubeBoxMixin:
+    def test_empty_grid(self):
         data = np.zeros((3, 3, 3), dtype=DTYPE)
-        result = mc.marching_cube_box(data, [0.5])
+        result = self.mc.marching_cube_box(data, [0.5])
         assert len(result) == 1
         assert len(result[0]) == 0
 
-    def test_single_peak(self, mc):
+    def test_single_peak(self):
         data = np.zeros((5, 5, 5), dtype=DTYPE)
         data[2, 2, 2] = 1.0
-        result = mc.marching_cube_box(data, [0.5])
+        result = self.mc.marching_cube_box(data, [0.5])
         assert len(result) == 1
         assert len(result[0]) > 0
 
-    def test_multiple_isovalues(self, mc):
+    def test_multiple_isovalues(self):
         data = np.zeros((5, 5, 5), dtype=DTYPE)
         data[2, 2, 2] = 1.0
-        result = mc.marching_cube_box(data, [0.3, 0.7])
+        result = self.mc.marching_cube_box(data, [0.3, 0.7])
         assert len(result) == 2
         assert len(result[0]) >= len(result[1])
 
-    def test_negative_isovalue(self, mc):
+    def test_negative_isovalue(self):
         data = np.zeros((5, 5, 5), dtype=DTYPE)
         data[2, 2, 2] = -1.0
-        result = mc.marching_cube_box(data, [-0.5])
+        result = self.mc.marching_cube_box(data, [-0.5])
         assert len(result[0]) > 0
 
-    def test_full_grid(self, mc):
+    def test_full_grid(self):
         data = np.ones((3, 3, 3), dtype=DTYPE)
-        result = mc.marching_cube_box(data, [0.5])
+        result = self.mc.marching_cube_box(data, [0.5])
         assert len(result[0]) == 0
 
 
-# -- marching_cube_outline --
+class TestMarchingCubeBoxPy(_TestMarchingCubeBoxMixin, unittest.TestCase):
+    def setUp(self):
+        self.mc = mc_py
 
-class TestMarchingCubeOutline:
-    def test_empty_grid(self, mc):
+
+@unittest.skipUnless(HAS_CYTHON_MC, "Cython marching cube not available")
+class TestMarchingCubeBoxCy(_TestMarchingCubeBoxMixin, unittest.TestCase):
+    def setUp(self):
+        self.mc = mc_cy
+
+
+# -- marching_cube_outline (parametrized over implementations) --
+
+class _TestMarchingCubeOutlineMixin:
+    def test_empty_grid(self):
         data = np.zeros((4, 4, 4), dtype=DTYPE)
         xvals = np.linspace(0, 1, 4, dtype=DTYPE)
         yvals = np.linspace(0, 1, 4, dtype=DTYPE)
         zvals = np.linspace(0, 1, 4, dtype=DTYPE)
-        result = mc.marching_cube_outline(data, xvals, yvals, zvals, [0.5])
+        result = self.mc.marching_cube_outline(data, xvals, yvals, zvals, [0.5])
         assert len(result) == 0
 
-    def test_with_peak(self, mc):
+    def test_with_peak(self):
         data = np.zeros((4, 4, 4), dtype=DTYPE)
         data[2, 2, 2] = 1.0
         xvals = np.linspace(0, 1, 4, dtype=DTYPE)
         yvals = np.linspace(0, 1, 4, dtype=DTYPE)
         zvals = np.linspace(0, 1, 4, dtype=DTYPE)
-        result = mc.marching_cube_outline(data, xvals, yvals, zvals, [0.5])
+        result = self.mc.marching_cube_outline(data, xvals, yvals, zvals, [0.5])
         assert len(result) > 0
         for p0, p1 in result:
             assert len(p0) == 3
             assert len(p1) == 3
+
+
+class TestMarchingCubeOutlinePy(_TestMarchingCubeOutlineMixin, unittest.TestCase):
+    def setUp(self):
+        self.mc = mc_py
+
+
+@unittest.skipUnless(HAS_CYTHON_MC, "Cython marching cube not available")
+class TestMarchingCubeOutlineCy(_TestMarchingCubeOutlineMixin, unittest.TestCase):
+    def setUp(self):
+        self.mc = mc_cy

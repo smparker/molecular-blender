@@ -1,19 +1,21 @@
 """Tests for molecular_blender.util"""
 
+import io
 import time
-import pytest
+import unittest
+from contextlib import redirect_stdout
 
 from molecular_blender.util import Timer, stopwatch, unique_name, round_sigfigs, darken_color
 
 
-class TestTimer:
+class TestTimer(unittest.TestCase):
     def test_tick_returns_elapsed(self):
         t = Timer()
         time.sleep(0.05)
         elapsed = t.tick()
         assert elapsed >= 0.04
 
-    def test_tick_print(self, capsys):
+    def test_tick_print(self):
         import os
         os.environ["MB_DEBUG"] = "1"
         try:
@@ -22,44 +24,47 @@ class TestTimer:
             util.DEBUG = True
             t = Timer()
             time.sleep(0.01)
-            elapsed = t.tick_print("test label")
+            f = io.StringIO()
+            with redirect_stdout(f):
+                elapsed = t.tick_print("test label")
             assert elapsed >= 0.005
-            captured = capsys.readouterr()
-            assert "test label" in captured.out
+            assert "test label" in f.getvalue()
         finally:
             util.DEBUG = old_debug
             os.environ.pop("MB_DEBUG", None)
 
-    def test_tick_print_silent(self, capsys):
+    def test_tick_print_silent(self):
         from molecular_blender import util
         old_debug = util.DEBUG
         util.DEBUG = False
         try:
             t = Timer()
-            t.tick_print("silent")
-            captured = capsys.readouterr()
-            assert captured.out == ""
+            f = io.StringIO()
+            with redirect_stdout(f):
+                t.tick_print("silent")
+            assert f.getvalue() == ""
         finally:
             util.DEBUG = old_debug
 
 
-class TestStopwatch:
+class TestStopwatch(unittest.TestCase):
     def test_decorator_returns_value(self):
         @stopwatch("test_routine", verbose=False)
         def add(a, b):
             return a + b
         assert add(2, 3) == 5
 
-    def test_decorator_verbose(self, capsys):
+    def test_decorator_verbose(self):
         @stopwatch("verbose_routine", verbose=True)
         def noop():
             pass
-        noop()
-        captured = capsys.readouterr()
-        assert "verbose_routine" in captured.out
+        f = io.StringIO()
+        with redirect_stdout(f):
+            noop()
+        assert "verbose_routine" in f.getvalue()
 
 
-class TestUniqueName:
+class TestUniqueName(unittest.TestCase):
     def test_no_conflict(self):
         assert unique_name("foo", ["bar", "baz"]) == "foo"
 
@@ -78,7 +83,7 @@ class TestUniqueName:
         assert result == "x0"
 
 
-class TestRoundSigfigs:
+class TestRoundSigfigs(unittest.TestCase):
     def test_zero(self):
         assert round_sigfigs(0, 4) == 0
 
@@ -95,7 +100,7 @@ class TestRoundSigfigs:
         assert abs(round_sigfigs(3.1415, 2) - 3.1) < 0.05
 
 
-class TestDarkenColor:
+class TestDarkenColor(unittest.TestCase):
     def test_rgb(self):
         result = darken_color((1.0, 0.5, 0.0), 0.1)
         assert len(result) == 3

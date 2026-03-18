@@ -56,17 +56,21 @@ class MOData:
             nelec = np.sum(self.occupations)
             return DensityCalculater(self.shells, rho, nelec)
         elif densityname == "spin":
-            alphaoccs = np.array( [ self.occupations[i] if self.spins[i] == 'Alpha' else 0.0 for i in range(len(self.occupations)) ] )
-            betaoccs = np.array( [ self.occupations[i] if self.spins[i] == 'Beta' else 0.0 for i in range(len(self.occupations)) ] )
+            spins = np.array(self.spins)
+            occs = self.occupations.ravel()
+            alphaoccs = np.where(spins == 'Alpha', occs, 0.0)
+            betaoccs = np.where(spins == 'Beta', occs, 0.0)
             alpha = np.einsum("pu,p,pv->uv", self.coeff, alphaoccs, self.coeff)
             beta = np.einsum("pu,p,pv->uv", self.coeff, betaoccs, self.coeff)
             return DensityCalculater(self.shells, (alpha - beta).astype(np.float32), np.sum(alphaoccs) + np.sum(betaoccs))
         elif densityname == "alpha":
-            alphaoccs = np.array( [ self.occupations[i] if self.spins[i] == 'Alpha' else 0.0 for i in range(len(self.occupations)) ] )
+            spins = np.array(self.spins)
+            alphaoccs = np.where(spins == 'Alpha', self.occupations.ravel(), 0.0)
             alpha = np.einsum("pu,p,pv->uv", self.coeff, alphaoccs, self.coeff)
             return DensityCalculater(self.shells, alpha.astype(np.float32), np.sum(alphaoccs))
         elif densityname == "beta":
-            betaoccs = np.array( [ self.occupations[i] if self.spins[i] == 'Beta' else 0.0 for i in range(len(self.occupations)) ] )
+            spins = np.array(self.spins)
+            betaoccs = np.where(spins == 'Beta', self.occupations.ravel(), 0.0)
             beta = np.einsum("pu,p,pv->uv", self.coeff, betaoccs, self.coeff)
             return DensityCalculater(self.shells, beta.astype(np.float32), np.sum(betaoccs))
         elif densityname in self.densities:

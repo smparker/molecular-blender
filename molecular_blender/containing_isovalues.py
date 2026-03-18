@@ -59,7 +59,6 @@ def isovalue_containing_proportion_sorted(values, volume_data_sh, dV, square=Tru
             # does desired integration fall between y1 and y2
             if y2 >= abs(val) and y1 < abs(val):
                 # linearly interpolate measured value
-                print("x1: {}, y1: {}, x2: {}, y2: {}, val: {}".format(x1, y1, x2, y2, val))
                 xval = x1 + (abs(val) - y1)/(y2 - y1)*(x2 - x1)
                 isovals[ival] = math.copysign(xval, val)
 

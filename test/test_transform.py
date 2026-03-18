@@ -1,22 +1,21 @@
 """Tests for molecular_blender.transform"""
 
-import pytest
+import unittest
 import numpy as np
 
 from molecular_blender.transform import get_sph_to_cart, transform_sph_to_cart
 
 
-class TestGetSphToCart:
-    @pytest.mark.parametrize("shell,cart_size,sph_size", [
-        ("s", 1, 1),
-        ("p", 3, 3),
-        ("d", 6, 5),
-        ("f", 10, 7),
-        ("g", 15, 9),
-    ])
-    def test_shape(self, shell, cart_size, sph_size):
+class TestGetSphToCart(unittest.TestCase):
+    def _check_shape(self, shell, cart_size, sph_size):
         mat = get_sph_to_cart(shell)
         assert mat.shape == (cart_size, sph_size)
+
+    def test_shape_s(self): self._check_shape("s", 1, 1)
+    def test_shape_p(self): self._check_shape("p", 3, 3)
+    def test_shape_d(self): self._check_shape("d", 6, 5)
+    def test_shape_f(self): self._check_shape("f", 10, 7)
+    def test_shape_g(self): self._check_shape("g", 15, 9)
 
     def test_s_is_identity(self):
         mat = get_sph_to_cart("s")
@@ -32,15 +31,18 @@ class TestGetSphToCart:
         for col in range(mat.shape[1]):
             assert np.linalg.norm(mat[:, col]) > 1e-10
 
-    @pytest.mark.parametrize("shell,ncart,nsph", [("d", 6, 5), ("f", 10, 7), ("g", 15, 9)])
-    def test_transform_rank(self, shell, ncart, nsph):
+    def _check_transform_rank(self, shell, ncart, nsph):
         """Transform matrix should have full column rank (nsph)."""
         mat = get_sph_to_cart(shell)
         rank = np.linalg.matrix_rank(mat, tol=1e-8)
         assert rank == nsph
 
+    def test_transform_rank_d_6_5(self): self._check_transform_rank("d", 6, 5)
+    def test_transform_rank_f_10_7(self): self._check_transform_rank("f", 10, 7)
+    def test_transform_rank_g_15_9(self): self._check_transform_rank("g", 15, 9)
 
-class TestTransformSphToCart:
+
+class TestTransformSphToCart(unittest.TestCase):
     def test_identity_for_non_spherical(self):
         """If no shells are in the spherical list, coefficients should be unchanged."""
         orbitals = [{"coeff": [1.0, 0.0, 0.0, 0.0]}]

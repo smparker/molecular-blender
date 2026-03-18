@@ -1,7 +1,7 @@
 """Tests for molecular_blender.isosurfaces"""
 
 import os
-import pytest
+import unittest
 import numpy as np
 
 from molecular_blender.isosurfaces import (
@@ -14,7 +14,7 @@ EXAMPLES = os.path.join(os.path.dirname(__file__), "../examples")
 DTYPE = np.float32
 
 
-class TestTransformTriangles:
+class TestTransformTriangles(unittest.TestCase):
     def test_empty(self):
         assert transform_triangles([], np.zeros(3), np.eye(3)) == []
 
@@ -41,7 +41,7 @@ class TestTransformTriangles:
         np.testing.assert_allclose(result[0], [2, 0, 0], atol=1e-5)
 
 
-class TestCubeIsosurface:
+class TestCubeIsosurface(unittest.TestCase):
     def test_basic(self):
         data = np.zeros((5, 5, 5), dtype=DTYPE)
         data[2, 2, 2] = 1.0
@@ -61,7 +61,7 @@ class TestCubeIsosurface:
         assert len(result[0]["triangles"]) == 0
 
 
-class TestIsosurfaceSimple:
+class TestIsosurfaceSimple(unittest.TestCase):
     def _gaussian_box(self, xvals, yvals, zvals):
         """Simple Gaussian blob for testing."""
         out = np.empty((len(xvals), len(yvals), len(zvals)), dtype=DTYPE)
@@ -84,7 +84,7 @@ class TestIsosurfaceSimple:
         assert len(result[0]["triangles"]) > 0
 
 
-class TestIsosurfaceAdaptive:
+class TestIsosurfaceAdaptive(unittest.TestCase):
     def _gaussian_box(self, xvals, yvals, zvals):
         out = np.empty((len(xvals), len(yvals), len(zvals)), dtype=DTYPE)
         for i, x in enumerate(xvals):
@@ -117,7 +117,7 @@ class TestIsosurfaceAdaptive:
         assert len(result[0]["triangles"]) == 0
 
 
-class TestIsosurfaceDispatch:
+class TestIsosurfaceDispatch(unittest.TestCase):
     def _gaussian_box(self, xvals, yvals, zvals):
         out = np.empty((len(xvals), len(yvals), len(zvals)), dtype=DTYPE)
         for i, x in enumerate(xvals):
@@ -172,7 +172,7 @@ class TestIsosurfaceDispatch:
         assert len(adaptive[0]["triangles"]) > 0
 
 
-class TestMoldenIsosurface:
+class TestMoldenIsosurface(unittest.TestCase):
     def test_small_orbital(self):
         from molecular_blender.importers import molecule_from_file
         from molecular_blender.orbitals import MOData

@@ -57,6 +57,7 @@ if [ -z $BLENDER ]; then
   exit 1
 fi
 
+
 # if profiling turned on, change default behavior of test
 if [ "$do_prof" == "yes" ]; then
   test_default="no"
@@ -73,7 +74,7 @@ cd $(dirname $0)
 args="$@"
 
 if [ "$do_test" == "yes" ]; then
-  run_blender test/test_blender.py $args
+  run_blender test/run_tests.py $args
 fi
 
 if [ "$do_prof" == "yes" ]; then

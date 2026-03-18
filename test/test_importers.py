@@ -1,9 +1,9 @@
 """Tests for molecular_blender.importers and molecular_blender.turbomole_reader"""
 
 import os
-import pytest
-import numpy as np
 import tempfile
+import unittest
+import numpy as np
 
 from molecular_blender.importers import (
     Reader, molecule_from_file, molecule_from_xyz, molecule_from_cube,
@@ -19,7 +19,7 @@ EXAMPLES = os.path.join(os.path.dirname(__file__), "../examples")
 
 # -- helper constructors --
 
-class TestMakeAtomDict:
+class TestMakeAtomDict(unittest.TestCase):
     def test_basic(self):
         d = make_atom_dict("C", [1.0, 2.0, 3.0], 0, 0.5, [0.1, 0.2, 0.3], False)
         assert d["symbol"] == "c"
@@ -35,7 +35,7 @@ class TestMakeAtomDict:
         assert d["hidden"] is True
 
 
-class TestMakeSnapDict:
+class TestMakeSnapDict(unittest.TestCase):
     def test_basic(self):
         d = make_snap_dict([1.0, 2.0, 3.0], 0.5, [0.1, 0.2, 0.3])
         assert d["position"] == [1.0, 2.0, 3.0]
@@ -45,26 +45,36 @@ class TestMakeSnapDict:
 
 # -- Reader class --
 
-class TestReader:
-    def test_context_manager(self, tmp_path):
-        f = tmp_path / "test.txt"
-        f.write_text("line1\nline2\n")
-        with Reader(str(f)) as r:
+class TestReader(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _write(self, name, content):
+        path = os.path.join(self.tmp, name)
+        with open(path, "w") as f:
+            f.write(content)
+        return path
+
+    def test_context_manager(self):
+        f = self._write("test.txt", "line1\nline2\n")
+        with Reader(f) as r:
             assert r.readline().strip() == "line1"
             assert r.readline().strip() == "line2"
 
-    def test_eof_raises(self, tmp_path):
-        f = tmp_path / "test.txt"
-        f.write_text("only\n")
-        with Reader(str(f)) as r:
+    def test_eof_raises(self):
+        f = self._write("test.txt", "only\n")
+        with Reader(f) as r:
             r.readline()
-            with pytest.raises(EOFError):
+            with self.assertRaises(EOFError):
                 r.readline()
 
-    def test_marks(self, tmp_path):
-        f = tmp_path / "test.txt"
-        f.write_text("aaa\nbbb\nccc\n")
-        with Reader(str(f)) as r:
+    def test_marks(self):
+        f = self._write("test.txt", "aaa\nbbb\nccc\n")
+        with Reader(f) as r:
             line = r.readline()
             r.set_mark("first", line)
             r.readline()
@@ -77,7 +87,7 @@ class TestReader:
 
 # -- molecule_from_file dispatch --
 
-class TestMoleculeFromFileDispatch:
+class TestMoleculeFromFileDispatch(unittest.TestCase):
     def test_xyz(self):
         geo = molecule_from_file(os.path.join(EXAMPLES, "tetracene_dimer.xyz"), {})
         assert len(geo["atoms"]) == 60
@@ -98,13 +108,26 @@ class TestMoleculeFromFileDispatch:
         assert "polar" in geo
 
     def test_babel_raises(self):
-        with pytest.raises(Exception, match="babel"):
+        with self.assertRaisesRegex(Exception, "babel"):
             molecule_from_file("something.pdb", {})
 
 
 # -- XYZ reading --
 
-class TestXYZRead:
+class TestXYZRead(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _write(self, name, content):
+        path = os.path.join(self.tmp, name)
+        with open(path, "w") as f:
+            f.write(content)
+        return path
+
     def test_basic_read(self):
         geo = molecule_from_xyz(os.path.join(EXAMPLES, "tetracene_dimer.xyz"), {})
         assert len(geo["atoms"]) == 60
@@ -136,22 +159,20 @@ class TestXYZRead:
         all_h = [a for a in geo["atoms"] if a["symbol"] == "h"]
         assert len(hidden_h) == len(all_h)
 
-    def test_mismatched_atoms_raises(self, tmp_path):
-        f = tmp_path / "bad.xyz"
-        f.write_text("2\nframe1\nC 0 0 0\nH 1 0 0\n2\nframe2\nC 0 0 0\nC 1 0 0\n")
-        with pytest.raises(Exception, match="order of the atoms"):
-            molecule_from_xyz(str(f), {"plot_type": "animate"})
+    def test_mismatched_atoms_raises(self):
+        f = self._write("bad.xyz", "2\nframe1\nC 0 0 0\nH 1 0 0\n2\nframe2\nC 0 0 0\nC 1 0 0\n")
+        with self.assertRaisesRegex(Exception, "order of the atoms"):
+            molecule_from_xyz(f, {"plot_type": "animate"})
 
-    def test_mismatched_natoms_raises(self, tmp_path):
-        f = tmp_path / "bad.xyz"
-        f.write_text("2\nframe1\nC 0 0 0\nH 1 0 0\n3\nframe2\nC 0 0 0\nH 1 0 0\nO 2 0 0\n")
-        with pytest.raises(Exception, match="same number of atoms"):
-            molecule_from_xyz(str(f), {"plot_type": "animate"})
+    def test_mismatched_natoms_raises(self):
+        f = self._write("bad.xyz", "2\nframe1\nC 0 0 0\nH 1 0 0\n3\nframe2\nC 0 0 0\nH 1 0 0\nO 2 0 0\n")
+        with self.assertRaisesRegex(Exception, "same number of atoms"):
+            molecule_from_xyz(f, {"plot_type": "animate"})
 
 
 # -- Cube reading --
 
-class TestCubeRead:
+class TestCubeRead(unittest.TestCase):
     def test_read_and_density(self):
         geo = molecule_from_cube(os.path.join(EXAMPLES, "water.cube"), {})
         assert len(geo["atoms"]) == 3
@@ -173,7 +194,20 @@ class TestCubeRead:
 
 # -- Molden reading --
 
-class TestMoldenRead:
+class TestMoldenRead(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _write(self, name, content):
+        path = os.path.join(self.tmp, name)
+        with open(path, "w") as f:
+            f.write(content)
+        return path
+
     def test_water_sto3g(self):
         geo = molecule_from_molden(os.path.join(EXAMPLES, "water-sto-3g.molden"), {})
         assert len(geo["atoms"]) == 3
@@ -196,17 +230,15 @@ class TestMoldenRead:
         assert "basis" in geo
         assert "mo" in geo
 
-    def test_missing_molden_format(self, tmp_path):
-        f = tmp_path / "bad.molden"
-        f.write_text("[Atoms]\nC 1 6 0.0 0.0 0.0\n")
-        with pytest.raises(Exception, match="Molden Format"):
-            molecule_from_molden(str(f), {})
+    def test_missing_molden_format(self):
+        f = self._write("bad.molden", "[Atoms]\nC 1 6 0.0 0.0 0.0\n")
+        with self.assertRaisesRegex(Exception, "Molden Format"):
+            molecule_from_molden(f, {})
 
-    def test_missing_atoms(self, tmp_path):
-        f = tmp_path / "bad.molden"
-        f.write_text("[Molden Format]\n[GTO]\n")
-        with pytest.raises(Exception, match="Atoms"):
-            molecule_from_molden(str(f), {})
+    def test_missing_atoms(self):
+        f = self._write("bad.molden", "[Molden Format]\n[GTO]\n")
+        with self.assertRaisesRegex(Exception, "Atoms"):
+            molecule_from_molden(f, {})
 
     def test_orca_fix(self):
         geo = molecule_from_molden(
@@ -218,7 +250,20 @@ class TestMoldenRead:
 
 # -- JSON reading --
 
-class TestJsonRead:
+class TestJsonRead(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _write(self, name, content):
+        path = os.path.join(self.tmp, name)
+        with open(path, "w") as f:
+            f.write(content)
+        return path
+
     def test_phenanth_polar(self):
         geo = molecule_from_json(os.path.join(EXAMPLES, "phenanth_polar.json"), {})
         assert len(geo["atoms"]) == 22
@@ -227,22 +272,20 @@ class TestJsonRead:
         assert "mo" in geo
         assert geo["atoms"][0]["symbol"] == "c"
 
-    def test_returns_none_for_missing_molecules(self, tmp_path):
-        f = tmp_path / "empty.json"
-        f.write_text('{"other": "stuff"}')
-        result = molecule_from_json(str(f), {})
+    def test_returns_none_for_missing_molecules(self):
+        f = self._write("empty.json", '{"other": "stuff"}')
+        result = molecule_from_json(f, {})
         assert result is None
 
-    def test_json_referencing_json_raises(self, tmp_path):
-        f = tmp_path / "bad.json"
-        f.write_text('{"molecules": [{"filename": "inner.json"}]}')
-        with pytest.raises(Exception, match="json"):
-            molecule_from_json(str(f), {})
+    def test_json_referencing_json_raises(self):
+        f = self._write("bad.json", '{"molecules": [{"filename": "inner.json"}]}')
+        with self.assertRaisesRegex(Exception, "json"):
+            molecule_from_json(f, {})
 
 
 # -- Turbomole reader --
 
-class TestPeriodicTable:
+class TestPeriodicTable(unittest.TestCase):
     def test_element_lookup(self):
         from molecular_blender.periodictable import elements
         c = elements["c"]
@@ -263,7 +306,7 @@ class TestPeriodicTable:
         assert symbols[8] == "o"
 
 
-class TestTurbomoleReader:
+class TestTurbomoleReader(unittest.TestCase):
     def test_dipl_parser(self):
         with open(os.path.join(EXAMPLES, "dipl_a"), "r") as f:
             content = f.read()
