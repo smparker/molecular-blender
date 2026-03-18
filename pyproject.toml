@@ -41,6 +41,10 @@ Homepage = "https://github.com/smparker/molecular-blender"
 Repository = "https://github.com/smparker/molecular-blender"
 Issues = "https://github.com/smparker/molecular-blender/issues"
 
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["molecular_blender*"]
+
 [tool.cibuildwheel]
 # Build for Python 3.9 through 3.14 (covering all recent Blender versions)
 # Python 3.9: Blender 3.0-3.1

@@ -1,124 +1,97 @@
-'''
-Setup originally created by JacquesLucke
-Modified for molecular_blender by Shane Parker 2019-2024
-'''
+"""
+Setup file for building wheels with cibuildwheel
+Modified from the original setup.py for molecular_blender
+This file is specifically for wheel building and CI/CD purposes.
+For local development, continue using setup.py
+"""
 
 import os
 import sys
-import subprocess
-import argparse
-import importlib
-import shutil
+import numpy as np
+from setuptools import setup, Extension
+from Cython.Build import cythonize
 
-currentDirectory = os.path.dirname(os.path.abspath(__file__))
+# Get version from __init__.py
+def get_version():
+    init_file = os.path.join(os.path.dirname(__file__), "molecular_blender", "__init__.py")
+    with open(init_file, "r") as f:
+        for line in f:
+            if line.startswith("bl_info"):
+                # Parse the bl_info dictionary to get version
+                for i in range(20):  # Look ahead a few lines
+                    line = f.readline()
+                    if '"version"' in line or "'version'" in line:
+                        # Extract version tuple like (1, 2, 3)
+                        import re
+                        match = re.search(r'\((\d+),\s*(\d+),\s*(\d+)\)', line)
+                        if match:
+                            return f"{match.group(1)}.{match.group(2)}.{match.group(3)}"
+    return "0.0.0"
 
-if not os.path.samefile(currentDirectory, os.getcwd()):
-    print("You are not in the correct directory.")
-    print("Expected:", currentDirectory)
-    print("Got:     ", os.getcwd())
-    raise RuntimeError("setup.py should be run from the directory it is in.")
+# Compiler flags - portable version (no -march=native for wheels)
+extra_compile_args = ["-O3", "-ffast-math"]
+if sys.platform != "win32":
+    extra_compile_args.append("-std=c++11")
 
-from _setuputils.generic import *
-from _setuputils.compilation import compile_cxx, compile_cython
-from _setuputils.setup_info_files import getSetupInfoList
-from _setuputils.export import execute_Export
+# Define Cython extensions
+extensions = [
+    Extension(
+        "molecular_blender.compute_ao_cy",
+        sources=["molecular_blender/compute_ao_cy.pyx"],
+        include_dirs=[np.get_include()],
+        define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")],
+        extra_compile_args=extra_compile_args,
+        language="c++",
+    ),
+    Extension(
+        "molecular_blender.marching_cube_cy",
+        sources=["molecular_blender/marching_cube_cy.pyx"],
+        include_dirs=[np.get_include()],
+        define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")],
+        extra_compile_args=extra_compile_args,
+        language="c++",
+    ),
+]
 
-addonName = "molecular_blender"
-addonDirectory = os.path.join(currentDirectory, addonName)
+# Cythonize extensions
+extensions = cythonize(
+    extensions,
+    compiler_directives={
+        "language_level": "3",
+        "cdivision": True,
+        "profile": True,
+    },
+    include_path=[np.get_include()],
+)
 
-addonVersion = getAddonVersion(os.path.join(addonDirectory, "__init__.py"))
-exportName = "{}_v{}_{}_{}_py{}_{}".format(
-    addonName, *addonVersion[:2], currentOS, *sys.version_info[:2])
-
-exportPath = os.path.join(currentDirectory, exportName + ".zip")
-
-# Main
-####################################################
-def main():
-    parser = argparse.ArgumentParser("Setup molecular_blender")
-    parser.add_argument("command", choices=['build', 'install', 'export'])
-    parser.add_argument("--mode", "-m", choices=['link', 'copy'], default='copy',
-        help='install by either linking of copying')
-    parser.add_argument("--check-version", action='store_true', help='check python version')
-    parser.add_argument("--link-target", default='all', help='which available blender versions to symlink (default: all found)')
-
-    args = parser.parse_args()
-
-    if args.command == 'build':
-        build(check_environment=args.check_version)
-    elif args.command == 'install':
-        install(install_mode=args.mode)
-    elif args.command == 'export':
-        export()
-
-# Build
-####################################################
-
-def build(check_environment=False):
-    if check_environment:
-        check_build_environment()
-
-    changedFileStates = build_impl()
-    printChangedFileStates(changedFileStates, currentDirectory)
-
-def install(install_mode='copy'):
-    if install_mode not in ('link', 'copy'):
-        raise ValueError("install_mode must be either 'link' or 'copy'")
-    paths = find_user_blender_dirs()
-
-    source = os.path.join(currentDirectory, addonName)
-    for p in paths:
-        addon = os.path.join(p, 'scripts', 'addons')
-        os.makedirs(addon, exist_ok=True)
-        target = os.path.join(addon, addonName)
-
-        if os.path.isdir(target):
-            print("  - removing directory {}".format(target))
-            if os.path.islink(target):
-                os.unlink(target)
-            else:
-                shutil.rmtree(target)
-
-        if install_mode == 'copy':
-            print("  - copying directory {} to {}".format(source, target))
-            shutil.copytree(source, target)
-        else:
-            print("  - creating symlink from {} to {}".format(source, target))
-            os.symlink(source, target)
-
-def export():
-    execute_Export(addonDirectory, exportPath, addonName)
-
-def printChangedFileStates(states, basepath):
-    print()
-    print('Change Summary')
-    for p in states['new']:
-        print(' + {}'.format(p))
-    for p in states['removed']:
-        print(' - {}'.format(p))
-    for p in states['changed']:
-        print(' ~ {}'.format(p))
-
-@returnChangedFileStates(currentDirectory)
-def build_impl():
-    compile_cython(addonDirectory)
-    setupInfoList = getSetupInfoList(addonDirectory)
-
-    compile_cxx(addonDirectory)
-
-def check_build_environment(cython=True, python=True):
-    fail = False
-    if cython and (importlib.util.find_spec("Cython") is None):
-        print("Cython is not installed for this Python version.")
-        print(sys.version)
-        fail = True
-    if python and not (sys.version_info.major, sys.version_info.minor) == (3, 10):
-        print("Blender 3.6 uses Python 3.10")
-        print(f"You are using {sys.version}")
-        fail = True
-    if fail:
-        raise Exception("Build environment is not correct.")
-
-if __name__ == "__main__":
-    main()
+setup(
+    name="molecular_blender",
+    version=get_version(),
+    description="Blender addon for molecular visualization",
+    long_description=open("README.md").read() if os.path.exists("README.md") else "",
+    long_description_content_type="text/markdown",
+    author="Shane Parker",
+    url="https://github.com/smparker/molecular-blender",
+    packages=["molecular_blender"],
+    ext_modules=extensions,
+    python_requires=">=3.9",
+    install_requires=[
+        "numpy>=1.19.0",
+    ],
+    classifiers=[
+        "Development Status :: 4 - Beta",
+        "Intended Audience :: Science/Research",
+        "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+        "Programming Language :: Cython",
+        "Topic :: Scientific/Engineering :: Chemistry",
+        "Topic :: Scientific/Engineering :: Visualization",
+    ],
+    zip_safe=False,
+)
 

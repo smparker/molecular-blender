@@ -47,22 +47,22 @@ There are two basic ways to install Molecular Blender from source, depending on 
 want to use the optional cython enhanced isosurface routines (highly recommended,
 if you're drawing isosurfaces at all).
 
-#### Using setup.py (cython compatible)
-The most robust way to install from source is to use the included `setup.py`.
+#### Using blender_setup.py (cython compatible)
+The most robust way to install from source is to use the included `blender_setup.py`.
 
 **To create a Blender-ready zip file:**
 ```bash
 cd /path/to/molecular/blender/repo
-python3 setup.py build
-python3 setup.py export
+python3 blender_setup.py build
+python3 blender_setup.py export
 ```
 
 This creates a zip file that can be installed directly in Blender (Edit → Preferences → Add-ons → Install).
 
 **To install directly to Blender's addon directory:**
 ```bash
-python3 setup.py build
-python3 setup.py install  # or use --mode=link for a symlink
+python3 blender_setup.py build
+python3 blender_setup.py install  # or use --mode=link for a symlink
 ```
 
 This will build the Cython extensions and install/link to all Blender versions found in the standard directories (tested on macOS).
@@ -119,9 +119,9 @@ For example:
 The standard development workflow for working on the addon:
 
 ```bash
-python setup.py build      # Build Cython extensions
-python setup.py install    # Install to Blender (or --mode=link for symlink)
-python setup.py export     # Export Blender-ready addon zip
+python blender_setup.py build      # Build Cython extensions
+python blender_setup.py install    # Install to Blender (or --mode=link for symlink)
+python blender_setup.py export     # Export Blender-ready addon zip
 ```
 
 This creates a zip file that can be distributed to Blender users or uploaded to GitHub releases.

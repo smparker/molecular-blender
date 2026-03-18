@@ -2,7 +2,7 @@
 include README.md
 include AUTHORS
 include COPYING
-include setup_wheels.py
+include setup.py
 include pyproject.toml
 
 # Include Cython source files
