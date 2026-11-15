@@ -273,3 +273,19 @@ python blender_setup.py export     # Export Blender-ready addon zip
 ```
 
 This creates a zip file that can be distributed to Blender users or uploaded to GitHub releases.
+
+### Selecting cube datasets
+
+Cube imports retain every dataset and its file label. **Cube dataset index** in
+the import dialog chooses a zero-based dataset; Python callers can pass
+`cube_dataset=1` to select the second. The default remains the first dataset.
+`VolumeData.datasets` stores all fields, `labels` retains their identifiers,
+and `select_dataset(index)` changes the active three-dimensional `data` array.
+Comment lines are preserved without guessing physical field types or units.
+
+Cumulative fractions must lie within `[-1, 1]`; signs choose surface signs.
+Zero containment excludes all samples, full containment includes all nonzero
+samples, and an all-zero field has no defined containment threshold. Finite
+grids can only approximate intermediate fractions. The numerical helper's
+`square=True` integrates orbital squared amplitude; `square=False` integrates
+absolute density or signed-field magnitude.

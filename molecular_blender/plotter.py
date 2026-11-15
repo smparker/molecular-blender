@@ -752,6 +752,7 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None):
 
     if molecule.volume is not None:  # volumetric data was read
         vol = molecule.volume
+        vol.select_dataset(options.get("cube_dataset", 0))
         isovals = options["isovalues"]
         if options["cumulative"]:
             isovals = vol.isovalue_containing_proportion(isovals)
@@ -764,6 +765,7 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None):
             f0 = fmap(0)
             vertex_trajectory_map.setdefault(f0, []).extend([v["name"] for v in vsets])
             for i, vol_snap in enumerate(molecule.volume_trajectory, 1):
+                vol_snap.select_dataset(options.get("cube_dataset", 0))
                 name = "cube-{:5d}".format(i)
                 vsets = cube_isosurface(vol_snap.data, vol_snap.origin, vol_snap.axes, isovals, name=name)
                 tick()
@@ -949,6 +951,7 @@ def default_options(options):
                 "isovalues": "0.25,0.50",
                 "cumulative": True,
                 "volume": "orbital",
+                "cube_dataset": 0,
                 "orbital": "homo",
                 "remesh" : 6,
                 "resolution": 0.05,

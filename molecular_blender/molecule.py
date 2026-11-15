@@ -121,16 +121,28 @@ class Bond(object):
 class VolumeData(object):
     """Stores volumetric information from, for example, a cube file"""
 
-    def __init__(self, origin, axes, nres, data):
+    def __init__(self, origin, axes, nres, data, datasets=None, labels=None, dataset_index=0, comments=None):
         """Create Volumetric data storage"""
         self.origin = origin
         self.axes = axes
         self.nres = nres
-        self.data = data
+        self.comments = tuple(comments or ())
+        self.datasets = np.asarray(data)[..., None] if datasets is None else np.asarray(datasets)
+        self.labels = list(range(self.datasets.shape[-1])) if labels is None else list(labels)
+        if self.datasets.shape != tuple(nres) + (len(self.labels),):
+            raise ValueError('Cube dataset shape and labels must match the grid')
+        self.select_dataset(dataset_index)
 
         self.axis_norms = np.array(
             [np.linalg.norm(self.axes[:, i]) for i in range(3)], dtype=np.float32)
         self.dvol = np.prod(self.axis_norms)
+
+    def select_dataset(self, index):
+        """Select a zero-based dataset while preserving all other fields."""
+        if isinstance(index, bool) or not isinstance(index, (int, np.integer)) or not 0 <= index < len(self.labels):
+            raise ValueError('Cube dataset index is out of range')
+        self.dataset_index = int(index)
+        self.data = np.ascontiguousarray(self.datasets[..., index])
 
     def isovalue_containing_proportion(self, values=[0.90]):
         return isovalue_containing_proportion(values, self.data, self.dvol)
@@ -138,7 +150,8 @@ class VolumeData(object):
     @classmethod
     def from_dict(cls, inp):
         """Build VolumeData from dictionary"""
-        return cls(inp["origin"], inp["axes"], inp["nres"], inp["data"])
+        return cls(inp["origin"], inp["axes"], inp["nres"], inp["data"],
+                   inp.get('datasets'), inp.get('labels'), inp.get('dataset_index', 0), inp.get('comments'))
 
 
 class Molecule(object):

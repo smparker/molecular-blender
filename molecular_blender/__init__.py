@@ -165,6 +165,10 @@ if _HAS_BPY:
                    ('orbital', 'orbital', "Plot orbitals (positive and negative isovalues)")),
             default='orbital')
 
+        cube_dataset: IntProperty(
+            name="Cube dataset index", description="Zero-based dataset index within a cube file",
+            default=0, min=0)
+
         orbital: StringProperty(
             name="Orbital",
             description="Plot this orbital from molden file. Accepts comma separated list, homo-n, lumo+m. (ignored for other inputs)",
@@ -266,6 +270,7 @@ if _HAS_BPY:
             box.row().prop(self, "isovalues")
             box.row().prop(self, "cumulative")
             box.row().prop(self, "volume")
+            box.row().prop(self, "cube_dataset")
             box.row().prop(self, "orbital")
             box.row().prop(self, "resolution")
             box.row().prop(self, "remesh")
@@ -312,6 +317,7 @@ if _HAS_BPY:
                 isovalues=self.isovalues,
                 cumulative=self.cumulative,
                 volume=self.volume,
+                cube_dataset=self.cube_dataset,
                 orbital=self.orbital,
                 resolution=self.resolution,
                 remesh=self.remesh,

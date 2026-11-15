@@ -509,11 +509,16 @@ def molecule_from_cube(filename, options):
     expect_dset = False
 
     with Reader(filename) as f:
-        f.readline()  # first two lines are comments
-        f.readline()  # first two lines are comments
+        out["volume"]["comments"] = [f.readline().rstrip("\r\n"), f.readline().rstrip("\r\n")]
 
         # 3rd line is <natoms> <origin_x> <origin_y> <origin_z>
-        natoms, ox, oy, oz = f.readline().split()
+        header = f.readline().split()
+        if len(header) not in (4, 5):
+            raise ValueError('Cube atom/origin header requires four or five values')
+        natoms, ox, oy, oz = header[:4]
+        nvalues = int(header[4]) if len(header) == 5 else 1
+        if nvalues < 1:
+            raise ValueError('Cube dataset count must be positive')
         natoms = int(natoms)
         expect_dset = natoms < 0
         natoms = abs(natoms)
@@ -564,28 +569,35 @@ def molecule_from_cube(filename, options):
         if expect_dset:
             dsets = f.readline().split()
             ndsets = int(dsets.pop(0))
+            if ndsets < 1 or (nvalues != 1 and nvalues != ndsets):
+                raise ValueError('Invalid cube dataset count')
             for i in range(ndsets):
                 if not dsets:
                     dsets = f.readline().split()
                 volume_labels.append(int(dsets.pop(0)))
         else:
-            volume_labels = [ 0 ]
+            volume_labels = list(range(nvalues))
 
         # and finally the volumetric data comes, 6 elements per line in z, y, x order
         nvol = len(volume_labels)
         data_layout = nres + [ nvol ]
         ndata = np.prod(data_layout)
-        data = np.zeros(ndata, dtype=np.float32)
-        i = 0
-        while True:
-            line = f.readline().split()
-            data[i:i + len(line)] = line
-            i += len(line)
-            if i == ndata:
-                break
+        tokens = f.f.read().split()
+        if len(tokens) != ndata:
+            raise ValueError('Cube expected {} field values, found {}'.format(ndata, len(tokens)))
+        data = np.asarray(tokens, dtype=np.float32)
+        if not np.all(np.isfinite(data)):
+            raise ValueError('Cube field values must be finite')
 
-    # now should have shape [nx, ny, nz]
-    out["volume"]["data"] = data.reshape(data_layout)[:,:,:,0].copy()
+    datasets = data.reshape(data_layout)
+    selected = options.get('cube_dataset', 0)
+    if isinstance(selected, bool) or not isinstance(selected, int) or not 0 <= selected < nvol:
+        raise ValueError('cube_dataset must be a zero-based index in [0, {})'.format(nvol))
+    out['volume']['datasets'] = datasets
+    out['volume']['labels'] = volume_labels
+    out['volume']['dataset_index'] = selected
+    # Keep the existing three-dimensional data entry for callers.
+    out['volume']['data'] = np.ascontiguousarray(datasets[..., selected])
 
     return out
 
