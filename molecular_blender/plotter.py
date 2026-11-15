@@ -681,9 +681,12 @@ def create_mesh(name, verts, faces, material, context, remesh=8):
     me.update()      # update the mesh with the new data
 
     bm = bmesh.new()
-    bm.from_mesh(me)
-    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.01)
-    bm.to_mesh(me)
+    try:
+        bm.from_mesh(me)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.01)
+        bm.to_mesh(me)
+    finally:
+        bm.free()
 
     ob = bpy.data.objects.new(name, me)  # create a new object
     ob.data = me          # link the mesh data to the object
