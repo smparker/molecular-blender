@@ -227,6 +227,7 @@ class Molecule(object):
             orders, charges = perceive_bond_orders(
                 [a.element.symbol for a in atoms], edges,
                 charge=options.get("molecular_charge", 0), bond_lengths=lengths,
+                atom_ids=[a.index for a in atoms],
                 max_iterations=options.get("bond_order_max_iterations", 100000))
             for bond, order in zip(self.bonds, orders):
                 bond.order = order

@@ -82,6 +82,33 @@ class TestBondPerception(unittest.TestCase):
             with self.assertRaises(ValueError):
                 perceive_bond_orders(['n', 'n'], edges)
 
+    def test_failure_diagnostics(self):
+        cases = [
+            (['fe', 'o'], [(0, 1)], 0, 'unsupported_element'),
+            (['c'] + ['h']*5, [(0, i) for i in range(1, 6)], 0, 'bad_connectivity'),
+            (['c'], [], 0, 'insufficient_connectivity'),
+            (['n'] + ['h']*4, [(0, i) for i in range(1, 5)], 0, 'incompatible_charge'),
+        ]
+        for symbols, edges, charge, reason in cases:
+            with self.subTest(reason=reason), self.assertRaises(BondPerceptionError) as raised:
+                perceive_bond_orders(symbols, edges, charge=charge,
+                                     atom_ids=list(range(10, 10 + len(symbols))))
+            error = raised.exception
+            self.assertEqual(error.reason, reason)
+            self.assertEqual(error.diagnostics['requested_charge'], charge)
+            self.assertIn('atom 10', str(error))
+            self.assertIn('search nodes', str(error))
+            first = error.diagnostics['atoms'][0]
+            self.assertEqual(first['element'], symbols[0])
+            self.assertEqual(first['degree'], sum(0 in edge for edge in edges))
+            self.assertIn('candidate_states', first)
+        ring = [(i, (i+1) % 6) for i in range(6)] + [(i, i+6) for i in range(6)]
+        with self.assertRaises(BondPerceptionError) as raised:
+            perceive_bond_orders(['c']*6 + ['h']*6, ring, max_iterations=1)
+        self.assertEqual(raised.exception.reason, 'search_limit')
+        self.assertEqual(raised.exception.diagnostics['iterations'], 1)
+        self.assertEqual(raised.exception.diagnostics['max_iterations'], 1)
+
 
 try:
     from rdkit import Chem

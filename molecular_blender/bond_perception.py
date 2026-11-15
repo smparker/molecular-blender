@@ -34,9 +34,14 @@ VALENCE_STATES = {
 class BondPerceptionError(ValueError):
     """No supported, fully validated assignment could be obtained."""
 
+    def __init__(self, message, *, reason=None, diagnostics=None):
+        super().__init__(message)
+        self.reason = reason
+        self.diagnostics = {} if diagnostics is None else diagnostics
+
 
 def perceive_bond_orders(symbols, edges, charge=0, bond_lengths=None,
-                         max_iterations=100000):
+                         max_iterations=100000, atom_ids=None):
     """Return (orders in input edge order, formal charges in atom order).
 
     Every edge starts with order one and can rise to at most three. Propagation
@@ -49,6 +54,9 @@ def perceive_bond_orders(symbols, edges, charge=0, bond_lengths=None,
     Neither the inputs nor a molecule are mutated, including on failure. The
     node budget covers all charge budgets; exhaustion never returns a partial
     assignment. bond_lengths may be normalized by covalent radii by the caller.
+    atom_ids optionally supplies stable caller IDs for diagnostics; edges still
+    use positional indices. Errors distinguish supported-chemistry limitations,
+    impossible connectivity, incompatible charge, and exhausted search.
     """
     if not isinstance(charge, int) or isinstance(charge, bool):
         raise ValueError('Molecular charge must be an integer')
@@ -57,11 +65,27 @@ def perceive_bond_orders(symbols, edges, charge=0, bond_lengths=None,
         raise ValueError('max_iterations must be a positive integer')
     symbols = [s.lower() for s in symbols]
     n = len(symbols)
-    states = []
-    for i, symbol in enumerate(symbols):
-        if symbol not in VALENCE_STATES:
-            raise BondPerceptionError('Unsupported element {} at atom {} for bond-order perception'.format(symbol, i))
-        states.append(VALENCE_STATES[symbol])
+    identifiers = list(range(n)) if atom_ids is None else list(atom_ids)
+    if len(identifiers) != n or len(set(identifiers)) != n:
+        raise ValueError('Provide one unique atom ID per symbol')
+    iterations = 0
+
+    def failure(reason, message, indices=None):
+        indices = list(range(n)) if indices is None else list(indices)
+        atoms = [dict(index=i, id=identifiers[i], element=symbols[i],
+                      degree=len(incident[i]),
+                      candidate_states=VALENCE_STATES.get(symbols[i], ())) for i in indices]
+        details = '; '.join('atom {id} ({element}), degree {degree}, valence/charge states {candidate_states}'.format(**a)
+                            for a in atoms[:8])
+        if len(atoms) > 8:
+            details += '; and {} more atoms'.format(len(atoms) - 8)
+        diagnostics = dict(atoms=atoms, requested_charge=charge,
+                           iterations=iterations, max_iterations=max_iterations)
+        return BondPerceptionError(
+            '{} Requested charge {}; search nodes {}/{}. {}'.format(
+                message, charge, iterations, max_iterations, details),
+            reason=reason, diagnostics=diagnostics)
+
     incident = [[] for _ in symbols]
     edges = list(edges)
     seen = set()
@@ -78,6 +102,20 @@ def perceive_bond_orders(symbols, edges, charge=0, bond_lengths=None,
     lengths = list(bond_lengths) if bond_lengths is not None else [1.0] * len(edges)
     if len(lengths) != len(edges) or any(not math.isfinite(x) or x <= 0 for x in lengths):
         raise ValueError('Provide one finite positive length per bond')
+
+    states = []
+    for i, symbol in enumerate(symbols):
+        if symbol not in VALENCE_STATES:
+            raise failure('unsupported_element', 'Unsupported element for bond-order perception.', [i])
+        states.append(VALENCE_STATES[symbol])
+
+    for i, bonds in enumerate(incident):
+        degree = len(bonds)
+        if degree > max(v for v, _ in states[i]):
+            raise failure('bad_connectivity', 'No valid assignment: degree exceeds every supported valence; check connectivity.', [i])
+        if 3 * degree < min(v for v, _ in states[i]):
+            raise failure('insufficient_connectivity',
+                          'No valid assignment: too few neighbors for a supported valence; check missing hydrogens and connectivity.', [i])
 
     def propagate(domains):
         """Prune by endpoint valence capacity until no further order changes."""
@@ -119,13 +157,11 @@ def perceive_bond_orders(symbols, edges, charge=0, bond_lengths=None,
             totals = next_totals
         return totals.get(charge)
 
-    iterations = 0
-
     def search(domains, budget, failed):
         nonlocal iterations
+        if iterations >= max_iterations:
+            raise failure('search_limit', 'Bond-order search limit reached; no assignment applied.')
         iterations += 1
-        if iterations > max_iterations:
-            raise BondPerceptionError('Bond-order search limit reached; no assignment applied')
         possible = propagate(domains)
         if possible is None:
             return None
@@ -152,6 +188,10 @@ def perceive_bond_orders(symbols, edges, charge=0, bond_lengths=None,
         return None
 
     initial = [(1, 2, 3)] * len(edges)
+    possible = propagate(initial.copy())
+    if possible is not None and charges_for(possible) is None:
+        raise failure('incompatible_charge',
+                      'No valid bond-order assignment: requested charge is incompatible with the candidate valence states. Check charge and include all hydrogens.')
     try:
         # All supported formal charges are -1, 0 or +1; cost and net charge have
         # the same parity. No bigger budget than n can yield a new assignment.
@@ -160,8 +200,8 @@ def perceive_bond_orders(symbols, edges, charge=0, bond_lengths=None,
             if result is not None:
                 return result
     except RecursionError as exc:
-        raise BondPerceptionError('Bond-order search is too deep; no assignment applied') from exc
-    raise BondPerceptionError(
+        raise failure('search_depth', 'Bond-order search is too deep; no assignment applied.') from exc
+    raise failure('unsatisfied_valence',
         'No valid bond-order assignment for molecular charge {}. Check connectivity, '
         'include all hydrogens, and check charge; radicals and coordination bonds '
         'are not supported.'.format(charge))
