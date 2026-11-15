@@ -450,7 +450,7 @@ def marching_cube_box(data, isovalues):
                     z_plane_b[i + 1, j],
                 ]
 
-                x, y, z = float(i), float(j), float(k)
+                x, y, z = float(i), float(j), float(k - 1)
                 x2, y2, z2 = x + 1.0, y + 1.0, z + 1.0
 
                 for iiso, isoval in enumerate(isovalues):

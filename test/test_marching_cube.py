@@ -14,6 +14,19 @@ except ImportError:
 DTYPE = np.float32
 
 
+class TestSurfaceCoordinates(unittest.TestCase):
+    def test_linear_field_crossings_in_grid_coordinates(self):
+        for backend in ([mc_py, mc_cy] if HAS_CYTHON_MC else [mc_py]):
+            for axis in range(3):
+                with self.subTest(backend=backend.__name__, axis=axis):
+                    data = np.indices((3, 3, 3), dtype=DTYPE)[axis].copy()
+                    vertices = np.asarray(backend.marching_cube_box(data, [0.25])[0])
+                    self.assertGreater(vertices.size, 0)
+                    np.testing.assert_allclose(vertices[:, :, axis], 0.25, atol=1e-6)
+                    self.assertGreaterEqual(vertices.min(), 0)
+                    self.assertLessEqual(vertices.max(), 2)
+
+
 # -- vertexinterp (python only, cython may not expose it) --
 
 class TestVertexInterp(unittest.TestCase):
