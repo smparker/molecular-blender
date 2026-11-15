@@ -331,6 +331,17 @@ class TestBondOrders(unittest.TestCase):
             if not atom.hidden:
                 self.assertEqual(tuple(bpy.data.objects[atom.name].scale), (1, 1, 1))
 
+    def test_symbolic_orbital_requests_cannot_wrap(self):
+        from molecular_blender.plotter import compute_surface_vertex_sets
+        root = Path(__file__).resolve().parents[1]
+        data = molecule_from_file(str(root / 'examples/water-sto-3g.molden'), {})
+        molecule = Molecule.from_dict('orbital_validation', data)
+        for expression in (f'homo-{molecule.orbitals.nocc}', 'lumo+999', 'homo-1oops'):
+            options = default_options({'orbital': expression, 'isosurfaces': True,
+                                       'isovalues': [.05], 'cumulative': False})
+            with self.subTest(expression=expression), self.assertRaises(ValueError):
+                compute_surface_vertex_sets(molecule, options)
+
     def test_importer_bond_order_toggle(self):
         from types import SimpleNamespace
         from molecular_blender import MolecularBlender

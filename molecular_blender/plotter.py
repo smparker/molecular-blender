@@ -788,13 +788,18 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None):
             elif o == "lumo":
                 neworb = lumo
 
-            mh = re.search(r"homo\s*-\s*([0-9]+)", o)
+            mh = re.fullmatch(r"homo\s*-\s*([0-9]+)", o)
             if mh:
                 neworb = homo - int(mh.group(1))
-            ml = re.search(r"lumo\s*\+\s*([0-9]+)", o)
+            ml = re.fullmatch(r"lumo\s*\+\s*([0-9]+)", o)
             if ml:
                 neworb = lumo + int(ml.group(1))
 
+            # Symbolic expressions resolve to absolute indices. Do not let a
+            # result of zero/negative re-enter the HOMO-relative API and wrap.
+            if neworb is not None and not 1 <= neworb <= orbitals.coeff.shape[0]:
+                raise ValueError('Orbital expression {!r} is out of range (1..{})'.format(
+                    o, orbitals.coeff.shape[0]))
             if orbitals.is_density(o):
                 neworb = o
 
@@ -802,7 +807,7 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None):
                 try:
                     neworb = int(o)
                 except ValueError:
-                    raise Exception(f"Could not understand orbital {o}! Looking for {orbitals.densities.keys()}?")
+                    raise ValueError(f"Could not understand orbital {o!r}; use an integer, HOMO/LUMO expression, or a known density name")
 
             orblist.append(neworb)
 
