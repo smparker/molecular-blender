@@ -335,3 +335,20 @@ class TestDensityCalculater(unittest.TestCase):
         xy = np.linspace(-5, 5, 8, dtype=np.float32)
         plane = self.density.plane_values(xy, xy, 0.0)
         assert plane.shape == (8, 8)
+
+
+class TestFractionalDensity(unittest.TestCase):
+    @unittest.skipUnless(HAS_CYTHON_AO, 'requires compiled AO backend')
+    def test_fractional_electron_count_and_density_match_python(self):
+        coefficients = np.array([1.0], dtype=np.float32)
+        density = np.array([[0.5]], dtype=np.float32)
+        results = []
+        xyz = np.linspace(-4, 4, 21, dtype=np.float32)
+        for backend in (ao_py, ao_cy):
+            shell = backend.Shell(np.zeros(3, dtype=np.float32), 0,
+                                  coefficients, coefficients, 0)
+            calculator = backend.DensityCalculater([shell], density, 0.5)
+            self.assertEqual(calculator.nelec, 0.5)
+            results.append(calculator.box_values(xyz, xyz, xyz))
+        np.testing.assert_allclose(results[0], results[1], atol=1e-6)
+        self.assertAlmostEqual(float(np.sum(results[1]) * (xyz[1]-xyz[0])**3), 0.5, places=4)

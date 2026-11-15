@@ -957,7 +957,7 @@ cdef class DensityCalculater:
     cdef:
         list shells
         np.ndarray density
-        int nelec
+        public double nelec
         np.ndarray shellmxdens
         np.ndarray logmxdens
         np.ndarray shellmxorb
@@ -965,7 +965,7 @@ cdef class DensityCalculater:
         vector[CShell] cshells
         int nshells
 
-    def __init__(self, list shells, np.ndarray[DTYPE_t, ndim=2] density, int nelec):
+    def __init__(self, list shells, np.ndarray[DTYPE_t, ndim=2] density, double nelec):
         self.shells = shells
         self.density = density
         self.nelec = nelec
