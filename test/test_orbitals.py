@@ -103,6 +103,14 @@ class TestMODataPolarizability(unittest.TestCase):
 class TestMODataSpinDensities(unittest.TestCase):
     def setUp(self):
         geo = molecule_from_file(os.path.join(EXAMPLES, "water-sto-3g.molden"), {})
+        import copy
+        spatial = geo['mo']
+        geo['mo'] = []
+        for spin in ('Alpha', 'Beta'):
+            for orbital in spatial:
+                entry = copy.deepcopy(orbital)
+                entry.update(spin=spin, occup=str(float(entry['occup']) / 2))
+                geo['mo'].append(entry)
         self.modata = MOData.from_dict(geo)
 
     def test_alpha_plus_beta_equals_total_on_grid(self):
@@ -220,3 +228,59 @@ class TestOrbitalRequests(unittest.TestCase):
         for name in ('typo', '', None, 1, []):
             with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'Unknown density'):
                 self.data.get_density(name)
+
+
+class TestPopulationValidation(unittest.TestCase):
+    def setUp(self):
+        self.geo = molecule_from_file(os.path.join(EXAMPLES, 'water-sto-3g.molden'), {})
+
+    def test_invalid_occupations_and_labels(self):
+        import copy
+        for value in (None, '-0.5', 'nan', 'inf', '2.1', 'invalid'):
+            geo = copy.deepcopy(self.geo)
+            geo['mo'][0]['occup'] = value
+            with self.subTest(occupation=value), self.assertRaisesRegex(ValueError, 'occupation'):
+                MOData.from_dict(geo)
+        for value in (None, 'Gamma'):
+            geo = copy.deepcopy(self.geo)
+            geo['mo'][0]['spin'] = value
+            with self.subTest(spin=value), self.assertRaisesRegex(ValueError, '[Ss]pin'):
+                MOData.from_dict(geo)
+        data = MOData.from_dict(self.geo)
+        for occupations, spins in (([1.], None), (data.occupations, ['Alpha']),
+                                   (data.occupations[:, None], data.spins)):
+            with self.assertRaises(ValueError):
+                MOData(data.shells, data.coeff, data.nocc, occupations, spins)
+
+    def test_missing_labels_allow_only_total_density(self):
+        for orbital in self.geo['mo']:
+            orbital.pop('spin', None)
+        data = MOData.from_dict(self.geo)
+        self.assertIsNone(data.spins)
+        self.assertIsNotNone(data.get_density())
+        for name in ('alpha', 'beta', 'spin'):
+            with self.assertRaisesRegex(ValueError, 'requires spin labels'):
+                data.get_density(name)
+
+    def test_restricted_input_is_not_silently_treated_as_all_alpha(self):
+        data = MOData.from_dict(self.geo)
+        self.assertIsNotNone(data.get_density())
+        for name in ('alpha', 'beta', 'spin'):
+            with self.assertRaisesRegex(ValueError, 'restricted spatial orbitals'):
+                data.get_density(name)
+
+    def test_fractional_spin_populations_and_normalization(self):
+        data = MOData.from_dict(self.geo)
+        coeff = data.coeff[:2].copy()
+        population = MOData(data.shells, coeff, 2, [.75, .25], [' alpha ', 'BETA'])
+        self.assertEqual(population.spins, ('Alpha', 'Beta'))
+        xyz = np.array([0., .1], dtype=np.float32)
+        alpha = population.get_density('alpha').box_values(xyz, xyz, xyz)
+        beta = population.get_density('beta').box_values(xyz, xyz, xyz)
+        total = population.get_density().box_values(xyz, xyz, xyz)
+        np.testing.assert_allclose(alpha + beta, total, atol=1e-6)
+        with self.assertRaisesRegex(ValueError, 'greater than 1'):
+            MOData(data.shells, coeff, 2, [1.5, .5], ['Alpha', 'Beta'])
+        population.occupations[0] = float('nan')
+        with self.assertRaisesRegex(ValueError, 'finite'):
+            population.get_density()

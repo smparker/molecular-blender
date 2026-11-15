@@ -289,3 +289,11 @@ samples, and an all-zero field has no defined containment threshold. Finite
 grids can only approximate intermediate fractions. The numerical helper's
 `square=True` integrates orbital squared amplitude; `square=False` integrates
 absolute density or signed-field magnitude.
+
+Orbital requests use positive one-based indices or HOMO-relative offsets
+(`0` means HOMO, `-1` means the preceding orbital); invalid indices raise an
+error. Occupations must be finite and within `[0, 2]`. Missing spin labels allow
+total density but do not imply an alpha/beta split. Explicit spin-resolved
+orbitals require complete Alpha/Beta labels and occupations at most 1. Spin
+density requests for restricted spatial orbitals with occupations above 1 are
+currently rejected; total density remains available.

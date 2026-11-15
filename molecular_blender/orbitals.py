@@ -37,8 +37,9 @@ class MOData:
         self.coeff = coeff
         self.nocc = nocc
         self.nvir = coeff.shape[0] - nocc
-        self.occupations = occupations
-        self.spins = spins
+        self.occupations, self.spins = self._validate_populations(occupations, spins, coeff.shape[0])
+        if isinstance(nocc, (bool, np.bool_)) or not isinstance(nocc, (int, np.integer)) or nocc != np.count_nonzero(self.occupations > 0):
+            raise ValueError('Occupied orbital count must match the positive occupations')
         # Metadata follows input orbital order; absent values remain explicit.
         nmo = coeff.shape[0]
         self.energies = tuple([None] * nmo if energies is None else energies)
@@ -47,6 +48,40 @@ class MOData:
             raise ValueError('Provide one energy and symmetry entry per orbital')
         # map of density names to AO densities for things like polarizabilities
         self.densities = {} if densities is None else densities
+
+    @staticmethod
+    def _validate_populations(occupations, spins, nmo):
+        try:
+            occupations = np.asarray(occupations, dtype=np.float64)
+        except (TypeError, ValueError) as exc:
+            raise ValueError('Orbital occupations must be numeric') from exc
+        if occupations.shape != (nmo,):
+            raise ValueError('Provide one occupation per orbital')
+        if not np.all(np.isfinite(occupations)) or np.any((occupations < 0) | (occupations > 2)):
+            raise ValueError('Orbital occupations must be finite and between 0 and 2')
+        if spins is None:
+            return occupations, None
+        try:
+            correct_length = len(spins) == nmo
+        except TypeError:
+            correct_length = False
+        if not correct_length:
+            raise ValueError('Provide one spin label per orbital, or omit all spin labels')
+        labels = []
+        for index, label in enumerate(spins):
+            if label is None or (isinstance(label, str) and not label.strip()):
+                labels.append(None)
+            elif isinstance(label, str) and label.strip().lower() in ('alpha', 'beta'):
+                labels.append(label.strip().capitalize())
+            else:
+                raise ValueError('Invalid spin label at orbital {}: {!r}'.format(index+1, label))
+        if all(label is None for label in labels):
+            return occupations, None
+        if any(label is None for label in labels):
+            raise ValueError('Spin labels are incomplete; provide Alpha/Beta for every orbital or omit all labels')
+        if 'Beta' in labels and np.any(occupations > 1):
+            raise ValueError('Spin-resolved Alpha/Beta orbitals cannot have occupations greater than 1')
+        return occupations, tuple(labels)
 
     def homo(self):
         return self.nocc
@@ -68,6 +103,13 @@ class MOData:
         if not isinstance(densityname, str) or not self.is_density(densityname):
             raise ValueError('Unknown density {!r}; choose from {}'.format(
                 densityname, ', '.join(['density', 'alpha', 'beta', 'spin'] + sorted(self.densities))))
+        self.occupations, self.spins = self._validate_populations(
+            self.occupations, self.spins, self.coeff.shape[0])
+        if densityname in ('alpha', 'beta', 'spin'):
+            if self.spins is None:
+                raise ValueError('Spin density requires spin labels; total density remains available')
+            if np.any(self.occupations > 1):
+                raise ValueError('Spin densities for restricted spatial orbitals are not yet supported; use total density')
         if densityname=="density":
             rho = np.einsum("pu,p,pv->uv", self.coeff, self.occupations, self.coeff).astype(np.float32)
             nelec = np.sum(self.occupations)
@@ -114,8 +156,9 @@ class MOData:
                 ico += newshell.size
                 shells.append(newshell)
 
-        occupations = np.array([ float(x["occup"]) for x in geo["mo"]])
-        spins = [ x["spin"] for x in geo["mo"] ]
+        occupations, spins = cls._validate_populations(
+            [x.get('occup') for x in geo['mo']],
+            [x.get('spin') for x in geo['mo']], len(geo['mo']))
         nocc = np.sum(occupations > 0.0)
         nmo = len(occupations)
         nao = sum([sh.size for sh in shells])
