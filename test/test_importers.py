@@ -7,7 +7,7 @@ import numpy as np
 
 from molecular_blender.importers import (
     Reader, molecule_from_file, molecule_from_xyz, molecule_from_cube,
-    molecule_from_molden, molecule_from_json, molecule_from_babel,
+    molecule_from_molden, molecule_from_json,
     make_atom_dict, make_snap_dict,
 )
 from molecular_blender.turbomole_reader import (
@@ -107,9 +107,13 @@ class TestMoleculeFromFileDispatch(unittest.TestCase):
         assert len(geo["atoms"]) == 22
         assert "polar" in geo
 
-    def test_babel_raises(self):
-        with self.assertRaisesRegex(Exception, "babel"):
-            molecule_from_file("something.pdb", {})
+    def test_unsupported_format(self):
+        for filename in ("something.pdb", "something.mol2", "extensionless"):
+            with self.subTest(filename=filename):
+                with self.assertRaises(ValueError) as error:
+                    molecule_from_file(filename, {})
+                self.assertIn(filename, str(error.exception))
+                self.assertIn("Supported formats: XYZ, SDF/MOL/SD", str(error.exception))
 
 
 # -- XYZ reading --

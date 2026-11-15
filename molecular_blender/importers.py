@@ -88,8 +88,11 @@ def molecule_from_file(filename, options):
     elif filename.lower().endswith(".json"):
         return molecule_from_json(filename, options)
 
-    # fall back to Babel import
-    return molecule_from_babel(filename, options)
+    raise ValueError(
+        f"Unsupported molecular file format: {filename!r}. "
+        "Supported formats: XYZ, SDF/MOL/SD, Molden (.molden or molden.input), "
+        "cube (.cube or .cub), and JSON."
+    )
 
 
 def make_atom_dict(symbol, position, index, charge, gradient, hidden):
@@ -646,8 +649,3 @@ def molecule_from_json(filename, options):
                 { x : mol["molecule"][x] for x in [ "atoms", "mo", "basis" ] })
 
     return merged
-
-
-def molecule_from_babel(_filename, _options):
-    """Build molecule from Babel importer (TODO)"""
-    raise Exception("Importing from babel currently disabled")
