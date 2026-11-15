@@ -19,6 +19,43 @@ permissions:
   contents: write
 
 jobs:
+  test_python_fallback:
+    name: Test pure Python fallback without compiled extensions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install numpy
+      - name: Test an isolated copy without binary extensions
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import shutil
+          import subprocess
+          import sys
+          import tempfile
+
+          with tempfile.TemporaryDirectory() as temporary:
+              for directory in ('molecular_blender', 'test', 'examples'):
+                  shutil.copytree(directory, Path(temporary) / directory,
+                                  ignore=shutil.ignore_patterns('*.so', '*.pyd', '__pycache__'))
+              environment = dict(os.environ, PYTHONPATH=os.pathsep.join(
+                  (temporary, str(Path(temporary) / 'test'))))
+              subprocess.run([sys.executable, '-c',
+                              'from molecular_blender import compute_ao, marching_cube; '
+                              'assert not compute_ao.CYTHON_ENABLED; '
+                              'assert not marching_cube.CYTHON_ENABLED'],
+                             cwd=temporary, env=environment, check=True)
+              subprocess.run([sys.executable, '-m', 'unittest',
+                              'test_compute_ao', 'test_marching_cube',
+                              'test_containing_isovalues', 'test_orbitals'],
+                             cwd=temporary, env=environment, check=True)
+          PY
+
   build_wheels:
     name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
