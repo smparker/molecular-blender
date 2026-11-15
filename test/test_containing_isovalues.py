@@ -97,3 +97,30 @@ class TestDispatch(unittest.TestCase):
         binary = isovalue_containing_proportion([0.5], data, dV, method='binary')
         sorted_ = isovalue_containing_proportion([0.5], data, dV, method='sorted')
         assert abs(binary[0] - sorted_[0]) < 0.05
+
+
+class TestContainmentEdgeCases(unittest.TestCase):
+    def test_invalid_inputs_and_zero_fields(self):
+        for method in ('binary', 'sorted'):
+            for fractions, field, volume in (([1.1], [1.], 1), ([float('nan')], [1.], 1),
+                                            ([.5], [float('inf')], 1), ([.5], [], 1),
+                                            ([.5], [0., 0.], 1), ([.5], [1.], 0)):
+                with self.subTest(method=method, field=field), self.assertRaises(ValueError):
+                    isovalue_containing_proportion(fractions, np.array(field), volume, method=method)
+        for kwargs in ({'max_iterations': 0}, {'tolerance': 0}, {'tolerance': float('nan')}):
+            with self.assertRaises(ValueError):
+                isovalue_containing_proportion_binary([.5], np.array([1.]), 1., **kwargs)
+
+    def test_tiny_grids_endpoints_signs_and_extreme_scales(self):
+        for method in ('binary', 'sorted'):
+            for scale in (1e-200, 1., 1e200):
+                field = np.array([0., 1., -2.]) * scale
+                for square in (True, False):
+                    result = isovalue_containing_proportion([0., 1., .5, -.5], field, 1.,
+                                                           method=method, square=square)
+                    self.assertGreater(result[0], np.max(np.abs(field)))
+                    self.assertEqual(result[1], scale)
+                    self.assertEqual(result[2], -result[3])
+                    self.assertTrue(np.isfinite(result).all())
+            single = isovalue_containing_proportion([.5, 1.], np.array([2.]), 1., method=method)
+            self.assertEqual(single, [2., 2.])
