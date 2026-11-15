@@ -40,9 +40,11 @@ jobs:
           import tempfile
 
           with tempfile.TemporaryDirectory() as temporary:
-              for directory in ('molecular_blender', 'test', 'examples'):
+              for directory in ('molecular_blender', 'test', 'examples', '_setuputils'):
                   shutil.copytree(directory, Path(temporary) / directory,
                                   ignore=shutil.ignore_patterns('*.so', '*.pyd', '__pycache__'))
+              for filename in ('run_test.sh', 'blender_setup.py'):
+                  shutil.copyfile(filename, Path(temporary) / filename)
               environment = dict(os.environ, PYTHONPATH=os.pathsep.join(
                   (temporary, str(Path(temporary) / 'test'))))
               subprocess.run([sys.executable, '-c',
@@ -50,10 +52,7 @@ jobs:
                               'assert not compute_ao.CYTHON_ENABLED; '
                               'assert not marching_cube.CYTHON_ENABLED'],
                              cwd=temporary, env=environment, check=True)
-              subprocess.run([sys.executable, '-m', 'unittest',
-                              'test_compute_ao', 'test_marching_cube',
-                              'test_containing_isovalues', 'test_orbitals',
-                              'test_isosurfaces'],
+              subprocess.run([sys.executable, '-m', 'unittest', 'discover', '-s', 'test'],
                              cwd=temporary, env=environment, check=True)
           PY
 
