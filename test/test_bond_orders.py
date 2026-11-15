@@ -174,6 +174,21 @@ class TestBondOrders(unittest.TestCase):
                             self.assertAlmostEqual(bpy.data.objects[name].data.bevel_depth,
                                                    expected)
 
+    def test_charge_defaults_for_python_import(self):
+        path = Path(__file__).resolve().parents[1] / 'examples/bond_orders.xyz'
+        molecule, _, options = BlendMoleculeSetup(
+            bpy.context, str(path), charges='scale', ignore_hydrogen=False)
+        self.assertEqual(options['charge_offset'], 0.0)
+        self.assertEqual(options['charge_factor'], 1.0)
+        self.assertEqual(molecule.chgoff, 0.0)
+        self.assertEqual(molecule.chgfac, 1.0)
+        for atom in molecule.atoms:
+            self.assertIn(atom.plus_charge, bpy.data.objects)
+            self.assertIn(atom.neg_charge, bpy.data.objects)
+        explicit = default_options({'charge_offset': 0.4, 'charge_factor': 2.0})
+        self.assertEqual(explicit['charge_offset'], 0.4)
+        self.assertEqual(explicit['charge_factor'], 2.0)
+
     def test_sdf_import_to_extruded_geometry(self):
         path = Path(__file__).resolve().parents[1] / 'examples' / 'bond_orders.sdf'
         for style in ('sticks', 'fixedbs'):
