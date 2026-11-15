@@ -204,6 +204,17 @@ python3 blender_setup.py install  # or use --mode=link for a symlink
 
 This will build the Cython extensions and install/link to all Blender versions found in the standard directories (tested on macOS).
 
+Use `--link-target` with either install mode to select discovered Blender versions,
+and `--dry-run` to preview destinations before replacing existing installations:
+
+```bash
+python3 blender_setup.py install --mode=link --link-target=4.3 --dry-run
+python3 blender_setup.py install --mode=copy --link-target=4.3,4.10
+```
+
+`blender_setup.py` builds, installs, and exports the Blender addon. `setup.py` and
+`pyproject.toml` define the Python wheel and source distributions used by packaging CI.
+
 **Requirements:**
 - Python version matching your Blender version (3.9 for Blender 3.0-3.1, 3.10 for 3.2-3.6, 3.11 for 4.0-4.1, 3.12 for 4.2+)
 - Cython installed: `pip install cython`
