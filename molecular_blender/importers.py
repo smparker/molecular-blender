@@ -292,10 +292,14 @@ def molden_read_atoms(f, ignore_h=False, animate=False):
         line = f.readline()
         m = NEWSECTION_RE.match(line)
         while not m:
+            if not line.strip():
+                line = f.readline()
+                m = NEWSECTION_RE.match(line)
+                continue
             element, index, _atom, x, y, z = line.split()
             element = element.lower()
             index = int(index)
-            pos = [factor * float(a) for a in [x, y, z]]
+            pos = [factor * molden_float(a) for a in [x, y, z]]
             charge = 0.0
             grad = [0.0, 0.0, 0.0]
             hidden = ignore_h and element == "h"
@@ -311,123 +315,114 @@ def molden_read_atoms(f, ignore_h=False, animate=False):
     return sorted(out, key=lambda atom: atom["index"])
 
 
-def molden_read_gto(f):
-    """reads through GTO section to collect basis information"""
-    line = f.restore_mark("gto")
+def molden_float(value):
+    """Read finite Molden numbers, including Fortran D/d exponents."""
+    result = float(value.replace("D", "E").replace("d", "e"))
+    if not np.isfinite(result):
+        raise ValueError("Non-finite Molden number: {}".format(value))
+    return result
 
-    out = []
 
-    try:  # allow it to quietly exit if there is no basis
-        line = f.readline()
-    except EOFError:
-        return out
-
+def molden_read_gto(f, atom_ids=None):
+    """Read GTO blocks by atom reference, expanding sp into s and p shells."""
+    f.restore_mark("gto")
+    blocks = {}
+    current = None
     while True:
-        if NEWSECTION_RE.search(line):
-            break
-        # specifying basis for atom iatom
-        atombasis = []
-
-        line = f.readline()
-        while True:
-            shell, nprim = line.split()[0:2]
-
-            if shell not in ["s", "sp", "p", "d", "f", "g"]:
-                raise Exception("unsupported shell specified: %s" % shell)
-
-            nprim = int(nprim)
-
-            new_shell = {}
-
-            new_shell["shell"] = shell
-            new_shell["exponents"] = []
-            new_shell["contractions"] = []
-
-            if shell == "sp":
-                raise Exception("sp shells not handled yet")
-
-            for _i in range(nprim):
-                if shell != "sp":
-                    exp, con = f.readline().split()
-                    new_shell["exponents"].append(float(exp))
-                    new_shell["contractions"].append(float(con))
-                else:
-                    exp, coeff1, coeff2 = f.readline().split()
-                    exp, coeff1, coeff2 = float(
-                        exp), float(coeff1), float(coeff2)
-
-            atombasis.append(new_shell)
-
-            # a blank line signals the end of this atom's basis
-            try:  # allow safe deaths
-                line = f.readline()
-                if line.strip() == "":
-                    while line.strip() == "":
-                        line = f.readline()
-                    break
-            except EOFError:
-                pass
-
-        out.append(atombasis)
-
-    return out
-
-
-def molden_read_mo(f, nao):
-    """reads through [MO] section to collect MO coefficient information"""
-    line = f.restore_mark("mo")
-
-    moinf = {"sym": re.compile(r"\s*sym\s*=\s*(\S+)", flags=re.IGNORECASE),
-             "ene": re.compile(r"\s*ene\s*=\s*(\S+)", flags=re.IGNORECASE),
-             "spin": re.compile(r"\s*spin\s*=\s*(\S+)", flags=re.IGNORECASE),
-             "occup": re.compile(r"\s*occup\s*=\s*(\S+)", flags=re.IGNORECASE)}
-
-    re_coef = re.compile(r"\s*(\d+)\s+(\S+)", flags=re.IGNORECASE)
-
-    out = []
-
-    try:  # allow it to quietly exit if there is no basis
-        line = f.readline()
-    except EOFError:
-        return out
-
-    while True:
-        if NEWSECTION_RE.search(line):
-            break
-
-        # new MO
-        modata = {}
-        coef = []
-
-        while True:
-            found = False
-            for k, srch in moinf.items():
-                m = srch.match(line)
-                if m:
-                    modata[k] = m.group(1)
-                    line = f.readline()
-                    found = True
-                    break
-            if not found:
-                break
-
-        for i in range(nao):
-            if i != 0:
-                line = f.readline()
-            m = re_coef.match(line)
-            if not m:
-                raise Exception(
-                    "Expected coefficient line, found something else")
-            coef.append(float(m.group(2)))
-
-        modata["coeff"] = coef
-        out.append(modata)
-
-        try:  # allow safe deaths
+        try:
             line = f.readline()
         except EOFError:
             break
+        if NEWSECTION_RE.match(line):
+            break
+        fields = line.split()
+        if not fields:
+            continue
+        if fields[0].isdigit():
+            reference = int(fields[0])
+            if reference < 1 or reference in blocks:
+                raise ValueError("Invalid or duplicate GTO atom reference: {}".format(reference))
+            if atom_ids is not None and reference not in atom_ids:
+                raise ValueError("Unknown GTO atom reference: {}".format(reference))
+            current = blocks[reference] = []
+            continue
+        shell = fields[0].lower()
+        if current is None or shell not in ("s", "sp", "p", "d", "f", "g"):
+            raise ValueError("Invalid GTO shell header: {}".format(line.strip()))
+        try:
+            nprim = int(fields[1])
+            if nprim < 1:
+                raise ValueError("Primitive count must be positive")
+        except (IndexError, ValueError) as exc:
+            raise ValueError("Invalid GTO primitive count: {}".format(line.strip())) from exc
+        exponents, coefficients, pcoefficients = [], [], []
+        for _ in range(nprim):
+            try:
+                row = f.readline().split()
+                if len(row) != (3 if shell == "sp" else 2):
+                    raise ValueError("Incorrect primitive column count")
+                numbers = [molden_float(x) for x in row]
+                if numbers[0] <= 0:
+                    raise ValueError("Primitive exponents must be positive")
+            except (EOFError, ValueError) as exc:
+                raise ValueError("Invalid or truncated GTO {} primitive block".format(shell)) from exc
+            exponents.append(numbers[0])
+            coefficients.append(numbers[1])
+            if shell == "sp":
+                pcoefficients.append(numbers[2])
+        current.append({"shell": "s" if shell == "sp" else shell,
+                        "exponents": exponents, "contractions": coefficients})
+        if shell == "sp":
+            current.append({"shell": "p", "exponents": exponents.copy(),
+                            "contractions": pcoefficients})
+    references = sorted(blocks) if atom_ids is None else atom_ids
+    return [blocks.get(reference, []) for reference in references]
 
+
+def molden_read_mo(f, nao):
+    """Read complete indexed MO coefficient blocks without crossing sections."""
+    if nao < 1:
+        raise ValueError('Molden MO section requires at least one basis function')
+    f.restore_mark("mo")
+    metadata = re.compile(r"\s*(Sym|Ene|Spin|Occup)\s*=\s*(\S+)", re.IGNORECASE)
+    out, modata, coefficients = [], {}, []
+
+    def finish():
+        if modata or coefficients:
+            if len(coefficients) != nao:
+                raise ValueError("Molden MO expected {} coefficients, found {}".format(
+                    nao, len(coefficients)))
+            out.append(dict(modata, coeff=coefficients.copy()))
+
+    while True:
+        try:
+            line = f.readline()
+        except EOFError:
+            break
+        if NEWSECTION_RE.match(line):
+            break
+        if not line.strip():
+            continue
+        match = metadata.fullmatch(line.rstrip())
+        if match:
+            key, value = match.group(1).lower(), match.group(2)
+            if coefficients or key in modata:
+                finish()
+                modata, coefficients = {}, []
+            if key in ('ene', 'occup'):
+                value = str(molden_float(value))
+            modata[key] = value
+        else:
+            fields = line.split()
+            try:
+                if len(fields) != 2 or int(fields[0]) != len(coefficients) + 1:
+                    raise ValueError("Unexpected coefficient index")
+                if len(coefficients) >= nao:
+                    raise ValueError("Too many coefficients")
+                coefficients.append(molden_float(fields[1]))
+            except ValueError as exc:
+                raise ValueError("Invalid Molden MO coefficient line: {}".format(line.strip())) from exc
+    finish()
     return out
 
 
@@ -447,6 +442,7 @@ def molecule_from_molden(filename, _options):
              "5d": re.compile(r"\[5D\]", flags=re.IGNORECASE),
              "5d10f": re.compile(r"\[5D10F\]", flags=re.IGNORECASE),
              "5d7f": re.compile(r"\[5D7F\]", flags=re.IGNORECASE),
+             "7f": re.compile(r"\[7F\]", flags=re.IGNORECASE),
              "9g": re.compile(r"\[9G\]", flags=re.IGNORECASE)}
 
     # Molden defaults to Cartesian basis functions
@@ -475,7 +471,7 @@ def molecule_from_molden(filename, _options):
         out["atoms"] = molden_read_atoms(f, ignore_h, animate=animate)
 
         if f.is_marked("gto"):  # read through GTO section to build basis
-            out["basis"] = molden_read_gto(f)
+            out["basis"] = molden_read_gto(f, [atom["index"] for atom in out["atoms"]])
 
         # read through MO section to build coefs
         if f.is_marked("mo") and "basis" in out:
@@ -495,7 +491,7 @@ def molecule_from_molden(filename, _options):
                        for atom in out["basis"]])
             molden_mo = molden_read_mo(f, nao)
 
-            if spherical:
+            if spherical and molden_mo:
                 molden_mo = transform_sph_to_cart(molden_mo, spherical, out["basis"])
 
             out["mo"] = molden_mo

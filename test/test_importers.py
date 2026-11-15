@@ -251,6 +251,47 @@ class TestMoldenRead(unittest.TestCase):
         )
         assert geo["denorm"] is False
 
+    def test_sp_shells_atom_references_and_fortran_numbers(self):
+        text = ('[Molden Format]\n[Atoms] Angs\n'
+                'H 2 1 1D+00 0 0\n\nH 1 1 0 0 0\n[GTO]\n'
+                '2 0\ns 1 1.0\n2d+00 1D+00\n'
+                '1 0\nsp 1 1.0\n2D-01 0.5D+00 0.75d+00\n'
+                '[MO]\nEne= -1D+00\nSpin= Alpha\nOccup= 1d+00\n'
+                '1 1D+00\n2 0\n3 0\n4 0\n5 0')
+        geo = molecule_from_molden(self._write('sp.molden', text), {})
+        self.assertEqual([a['index'] for a in geo['atoms']], [1, 2])
+        self.assertEqual([s['shell'] for s in geo['basis'][0]], ['s', 'p'])
+        self.assertEqual(geo['basis'][0][0]['contractions'], [0.5])
+        self.assertEqual(geo['basis'][0][1]['contractions'], [0.75])
+        self.assertEqual(geo['basis'][1][0]['exponents'], [2.0])
+        self.assertEqual(float(geo['mo'][0]['ene']), -1.0)
+        from molecular_blender.orbitals import MOData
+        orbital = MOData.from_dict(geo).get_orbital(1)
+        self.assertGreater(orbital.value(0., 0., 0.), 0.)
+
+    def test_standalone_7f_and_section_termination(self):
+        text = ('[Molden Format]\n[Atoms] AU\nH 1 1 0 0 0\n'
+                '[GTO]\n1 0\nf 1 1.0\n1 1\n[7F]\n[MO]\n'
+                'Ene= -1\nSpin= Alpha\nOccup= 1\n'
+                + ''.join(f'{i} {1 if i == 1 else 0}\n' for i in range(1, 8))
+                + '[FREQ]\n123.4\n')
+        geo = molecule_from_molden(self._write('7f.molden', text), {})
+        self.assertEqual(len(geo['mo']), 1)
+        self.assertEqual(len(geo['mo'][0]['coeff']), 10)
+
+    def test_malformed_basis_and_coefficients(self):
+        header = '[Molden Format]\n[Atoms] Angs\nH 1 1 0 0 0\n[GTO]\n'
+        for basis in ('2 0\ns 1\n1 1\n', '1 0\nsp 1\n1 1\n',
+                      '1 0\ns 0\n', '1 0\ns 2\n1 1\n',
+                      '1 0\ns 1\n-1 1\n', '1 0\ns 1\nnan 1\n'):
+            with self.subTest(basis=basis), self.assertRaises(ValueError):
+                molecule_from_molden(self._write('bad.molden', header + basis), {})
+        basis = '1 0\np 1\n1 1\n[MO]\nSpin= Alpha\nOccup= 1\n'
+        for coefficients in ('1 1\n2 0\n', '1 1\n1 0\n3 0\n',
+                             '1 1\n2 0\n3 0\n4 0\n', '1 nan\n2 0\n3 0\n'):
+            with self.subTest(coefficients=coefficients), self.assertRaises(ValueError):
+                molecule_from_molden(self._write('bad.molden', header + basis + coefficients), {})
+
 
 # -- JSON reading --
 
