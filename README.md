@@ -14,6 +14,44 @@ quantum chemistry
   scale them during an animation
 - draw molecular orbital and density isosurfaces with .cube files or .molden files
 
+## Explicit double and triple bonds
+
+Multiple bonds use the same extruded Bézier centerlines as single bonds, with a
+bevel object containing two or three circular profiles. Each strand has 70% of
+the single-bond radius, with a gap of 30% of that radius between strands. Stick
+model junction spheres widen at multiply bonded atoms to cover the strand ends.
+Single bonds retain their existing drawing behavior.
+Bond orders are currently explicit; importing a molecule still only perceives
+connectivity.
+
+From Blender Python, an existing bond curve can be changed with:
+
+```python
+from molecular_blender.plotter import set_bond_order
+
+set_bond_order(bond_object, 2, direction=(0, 1, 0))
+```
+
+The direction specifies the separation between strands in the curve's local
+coordinates, projected perpendicular to the bond. For generated bonds these are
+the molecule's coordinate axes. For a bond in the XY molecular plane, supply an
+in-plane direction perpendicular to it, rather than the plane normal. A direction
+parallel to the bond is rejected. Omit the direction for a deterministic default,
+or use order `1` to restore the round profile. Apply this to both halves of a
+split-color bond. Alternatively set `Bond.order` and `Bond.direction` before
+calling `PlotMolecule`.
+
+Endpoint hooks and split colors continue to work. The initial orientation is
+encoded as curve-point tilt; it does not track a changing molecular plane during
+animation. Wireframe rendering does not use these profiles.
+
+Run the manual example from the repository root (this clears the current scene):
+
+```bash
+blender --background --factory-startup --python examples/multiple_bonds.py -- \
+  --save /tmp/multiple_bonds.blend --render /tmp/multiple_bonds.png
+```
+
 ## Installation
 
 ### For Blender Users (Recommended)

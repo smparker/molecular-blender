@@ -78,12 +78,16 @@ class Atom(object):
 class Bond(object):
     """Join two atoms in a bond"""
 
-    def __init__(self, iatom, jatom, style="", name="", mapping_function="erf"):
+    def __init__(self, iatom, jatom, style="", name="", mapping_function="erf",
+                 order=1, direction=None):
         """Create Bond"""
         self.iatom = iatom
         self.jatom = jatom
         self.name = name
         self.bevelname = ""
+        # Explicit drawing metadata; bond-order perception is intentionally separate.
+        self.order = order
+        self.direction = direction
         if style == "":
             self.style = (jatom if iatom.element.vdw >
                           jatom.element.vdw else iatom).element.symbol

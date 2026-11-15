@@ -25,6 +25,7 @@
 
 from collections import namedtuple
 from itertools import chain
+import math
 import re
 
 import bpy
@@ -38,6 +39,90 @@ from .isosurfaces import cube_isosurface, molden_isosurface
 
 from .util import stopwatch, Timer, unique_name
 from .importers import molecule_from_file
+
+
+def _multiple_bond_profile(radius, order):
+    """Strand radius, center spacing and total profile radius."""
+    strand_radius = 0.7 * radius
+    spacing = 1.7 * radius
+    return strand_radius, spacing, spacing * (order - 1) / 2 + strand_radius
+
+
+def set_bond_order(obj, order, direction=None):
+    """Extrude parallel strands along an existing straight two-point bond curve.
+
+    ``direction`` is the desired strand separation in the curve's local space
+    (the molecule coordinate axes for bonds made by PlotMolecule). Its component
+    along the bond is ignored. Omitting it uses Blender's untwisted profile axis.
+    The centerline, hooks, materials and bevel factors remain on the bond curve.
+    """
+    if order not in (1, 2, 3):
+        raise ValueError("Bond order must be 1, 2 or 3")
+    curve = obj.data
+    if len(curve.splines) != 1 or len(curve.splines[0].bezier_points) != 2:
+        raise ValueError("Expected a straight two-point Bezier bond")
+    points = curve.splines[0].bezier_points
+    tangent = points[1].co - points[0].co
+    if tangent.length < 1e-8:
+        raise ValueError("Cannot orient a zero-length bond")
+    tangent.normalize()
+    # Blender's Z_UP frame: profile X lies along tangent cross global Z.
+    # At the vertical singularity Blender uses +X for +Z, -X for -Z.
+    xaxis = tangent.cross(mathutils.Vector((0, 0, 1)))
+    if xaxis.length < 1e-8:
+        xaxis = mathutils.Vector((1 if tangent.z > 0 else -1, 0, 0))
+    xaxis.normalize()
+    yaxis = xaxis.cross(tangent)
+    tilt = 0.0
+    if direction is not None and order != 1:
+        separation = mathutils.Vector(direction)
+        separation -= tangent * separation.dot(tangent)
+        if separation.length < 1e-8:
+            raise ValueError("Bond direction must have a component perpendicular to the bond")
+        # Positive Blender tilt rotates profile X towards negative profile Y.
+        tilt = math.atan2(-separation.dot(yaxis), separation.dot(xaxis))
+
+    old_profile = curve.bevel_object
+    if order == 1:
+        curve.bevel_mode = 'ROUND'
+        curve.bevel_object = None
+    else:
+        radius = curve.bevel_depth
+        profile = bpy.data.curves.new(obj.name + "_profile", type='CURVE')
+        profile.dimensions = '2D'
+        profile.resolution_u = 12
+        # Disconnected circles in one bevel object make disconnected tubes, while
+        # retaining a single centerline and its endpoint hooks. Each strand is
+        # slightly smaller than a single bond, with a visible gap between them.
+        strand_radius, spacing, _ = _multiple_bond_profile(radius, order)
+        for strand in range(order):
+            offset = (strand - (order - 1) / 2) * spacing
+            circle = profile.splines.new('BEZIER')
+            circle.bezier_points.add(3)
+            circle.use_cyclic_u = True
+            for p, (x, y) in zip(circle.bezier_points,
+                                 ((1, 0), (0, 1), (-1, 0), (0, -1))):
+                p.co = (offset + strand_radius * x, strand_radius * y, 0)
+                p.handle_left_type = p.handle_right_type = 'AUTO'
+        profile_obj = bpy.data.objects.new(obj.name + "_profile", profile)
+        # Referenced by the bond, but deliberately not linked into the scene:
+        # the bevel source itself should never appear as visible geometry.
+        # Blender does not count bevel references as object users on save.
+        profile_obj.use_fake_user = True
+        profile_obj["molecular_blender_bond_profile"] = True
+        curve.bevel_mode = 'OBJECT'
+        curve.bevel_object = profile_obj
+        curve.twist_mode = 'Z_UP'
+    for p in points:
+        p.tilt = tilt
+    if (old_profile is not None
+            and old_profile.users == int(old_profile.use_fake_user)
+            and old_profile.get("molecular_blender_bond_profile")):
+        old_data = old_profile.data
+        bpy.data.objects.remove(old_profile)
+        if old_data.users == 0:
+            bpy.data.curves.remove(old_data)
+
 
 def plot_prep(molecule, options):
     """Preprocess options"""
@@ -225,6 +310,17 @@ def PlotMolecule(context, molecule, options):
     draw_bonds = bond_thickness != 0.0
     draw_charges = options["charges"] != "none"
 
+    # Stick models use tiny spheres as junctions. Widen just those junctions
+    # touched by multiple bonds so the outer strands still meet their atoms.
+    junction_scales = {}
+    if draw_bonds and plot_style.atom_size == "bond":
+        for bond in molecule.bonds:
+            if bond.order > 1 and not (bond.iatom.hidden or bond.jatom.hidden):
+                _, _, extent = _multiple_bond_profile(bond_thickness, bond.order)
+                for atom in (bond.iatom, bond.jatom):
+                    junction_scales[atom.index] = max(
+                        junction_scales.get(atom.index, 1.0), extent / bond_thickness)
+
     # local list of keys to keep making unique names
     obj_keys = bpy.data.objects.keys().copy()
 
@@ -300,6 +396,9 @@ def PlotMolecule(context, molecule, options):
 
             # make parent active
             to_parent.append((atom_obj, molecule_obj))
+
+        if plot_style.atom_size == "bond":
+            atom_obj.scale = (junction_scales.get(atom.index, 1.0),) * 3
 
         if draw_charges:  # set a sphere on top of atom that will show charge
             charges_collection = bpy.data.collections.new("{}-charges".format(molecule.name))
@@ -379,6 +478,8 @@ def PlotMolecule(context, molecule, options):
                     c_obj.data.bevel_depth = rad
                     c_obj.data.use_fill_caps = True
                     c_obj.data.bevel_factor_start, c_obj.data.bevel_factor_end = bounds
+                    if bond.order != 1:
+                        set_bond_order(c_obj, bond.order, bond.direction)
                     c_obj.parent = bpy.data.objects[molecule.name]
 
                     link_to.append((c_obj, bond_collection))
@@ -406,6 +507,8 @@ def PlotMolecule(context, molecule, options):
                 curveOB = bpy.data.objects.new(bondname, curve)
                 curveOB.data.bevel_depth = rad
                 curveOB.data.use_fill_caps = True
+                if bond.order != 1:
+                    set_bond_order(curveOB, bond.order, bond.direction)
                 curveOB.parent = bpy.data.objects[molecule.name]
 
                 link_to.append((curveOB, bond_collection))
