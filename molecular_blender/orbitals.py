@@ -52,12 +52,22 @@ class MOData:
         return self.nocc
 
     def get_orbital(self, iorb):
-        """Returns OrbitalCalculater for orbital"""
+        """Select a one-based orbital, or HOMO-relative offset (0 = HOMO)."""
+        if isinstance(iorb, (bool, np.bool_)) or not isinstance(iorb, (int, np.integer)):
+            raise ValueError('Orbital index must be an integer: positive indices are one-based, 0 means HOMO')
+        if iorb <= 0 and self.nocc == 0:
+            raise ValueError('HOMO-relative orbital selection requires an occupied orbital')
         i = (iorb if iorb > 0 else self.nocc + iorb) - 1
+        if not 0 <= i < self.coeff.shape[0]:
+            raise ValueError('Orbital index {} is out of range; available absolute indices are 1..{}'.format(
+                iorb, self.coeff.shape[0]))
         return OrbitalCalculater(self.shells, self.coeff[i, :])
 
     def get_density(self, densityname="density"):
-        """Returns DensityCalculater for the electronic density"""
+        """Returns DensityCalculater for a known density name."""
+        if not isinstance(densityname, str) or not self.is_density(densityname):
+            raise ValueError('Unknown density {!r}; choose from {}'.format(
+                densityname, ', '.join(['density', 'alpha', 'beta', 'spin'] + sorted(self.densities))))
         if densityname=="density":
             rho = np.einsum("pu,p,pv->uv", self.coeff, self.occupations, self.coeff).astype(np.float32)
             nelec = np.sum(self.occupations)

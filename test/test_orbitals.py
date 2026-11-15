@@ -199,3 +199,24 @@ class TestOrbitalMetadata(unittest.TestCase):
         self.assertEqual(data.symmetries[:3], ('A1', 'B2', None))
         self.assertEqual(len(data.energies), data.coeff.shape[0])
         np.testing.assert_array_equal(data.coeff[0], np.asarray(geo['mo'][0]['coeff'], dtype=np.float32))
+
+
+class TestOrbitalRequests(unittest.TestCase):
+    def setUp(self):
+        self.data = MOData.from_dict(molecule_from_file(os.path.join(EXAMPLES, 'water-sto-3g.molden'), {}))
+
+    def test_boundaries_and_relative_indices(self):
+        for index in (1, self.data.coeff.shape[0], 0, 1-self.data.nocc, np.int64(1)):
+            self.assertIsNotNone(self.data.get_orbital(index))
+        for index in (self.data.coeff.shape[0]+1, -self.data.nocc, -999, 1.5, True, np.bool_(True), '1'):
+            with self.subTest(index=index), self.assertRaisesRegex(ValueError, 'Orbital index'):
+                self.data.get_orbital(index)
+        self.data.nocc = 0
+        with self.assertRaisesRegex(ValueError, 'occupied orbital'):
+            self.data.get_orbital(0)
+        self.assertIsNotNone(self.data.get_orbital(1))
+
+    def test_unknown_density_names_fail(self):
+        for name in ('typo', '', None, 1, []):
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'Unknown density'):
+                self.data.get_density(name)
