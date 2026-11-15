@@ -451,7 +451,7 @@ def PlotMolecule(context, molecule, options):
 
             rad = bond_thickness
             if not options['universal_bonds'] and plot_style.bond_size == "vdw":
-                rad = elements[i].vdw * plot_style.bond_scaling
+                rad = elements[bond.style].vdw * plot_style.bond_scaling
 
             to_split = plot_style.split_bond and iatom.element != jatom.element
             bond.name = [ unique_name(b, obj_keys) for b in bond.make_names(

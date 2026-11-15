@@ -153,6 +153,27 @@ class TestBondOrders(unittest.TestCase):
         after = self.strand_centers(halves[1])
         self.assertGreater(sum(c.x for c in after) - sum(c.x for c in before), 1)
 
+    def test_mixed_element_bond_radii(self):
+        for style in ('bs', 'fixedbs', 'sticks'):
+            for universal in (False, True):
+                for symbols in (('c', 'o'), ('o', 'c'), ('c', 'h')):
+                    with self.subTest(style=style, universal=universal, symbols=symbols):
+                        atoms = [Atom(s, (1.3*i, 0, 0), i) for i, s in enumerate(symbols)]
+                        mol = Molecule('bond_radius_test', atoms)
+                        bond = Bond(*atoms, style='universal' if universal else '')
+                        mol.bonds = [bond]
+                        options = default_options({'plot_style': style,
+                                                   'universal_bonds': universal,
+                                                   'bond_thickness': 0.17})
+                        make_materials(mol, get_styler(options), options)
+                        plot_prep(mol, options)
+                        PlotMolecule(bpy.context, mol, options)
+                        expected = (min(a.element.vdw for a in atoms) * 0.1
+                                    if style == 'bs' and not universal else 0.17)
+                        for name in bond.name:
+                            self.assertAlmostEqual(bpy.data.objects[name].data.bevel_depth,
+                                                   expected)
+
     def test_sdf_import_to_extruded_geometry(self):
         path = Path(__file__).resolve().parents[1] / 'examples' / 'bond_orders.sdf'
         for style in ('sticks', 'fixedbs'):
