@@ -739,7 +739,8 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None):
         if molecule.volume is not None:
             total = 1 + (len(molecule.volume_trajectory) if molecule.volume_trajectory else 0)
         elif molecule.orbitals is not None:
-            total = len([x.strip() for x in options["orbital"].split(',')])
+            total = (1 if options["volume"] == "density" else
+                     len([x.strip() for x in options["orbital"].split(',')]))
         else:
             total = 1
         progress_state["total"] = max(total, 1)
@@ -774,7 +775,8 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None):
         orbitals = molecule.orbitals
         homo = orbitals.homo()
         lumo = homo + 1
-        orbnames = [x.strip() for x in options["orbital"].split(',')]
+        orbnames = (['density'] if options["volume"] == "density" else
+                    [x.strip() for x in options["orbital"].split(',')])
         orblist = []
         for o in orbnames:
             neworb = None

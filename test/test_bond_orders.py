@@ -189,6 +189,19 @@ class TestBondOrders(unittest.TestCase):
         self.assertEqual(explicit['charge_offset'], 0.4)
         self.assertEqual(explicit['charge_factor'], 2.0)
 
+    def test_density_volume_selector_ignores_orbital_text(self):
+        from molecular_blender.plotter import compute_surface_vertex_sets
+        path = Path(__file__).resolve().parents[1] / 'examples/water-sto-3g.molden'
+        molecule, _, options = BlendMoleculeSetup(
+            bpy.context, str(path), volume='density', orbital='not-an-orbital,also-invalid',
+            isovalues='0.05', cumulative=False, resolution=0.25)
+        progress = {}
+        surfaces, _ = compute_surface_vertex_sets(molecule, options, progress)
+        self.assertEqual([s['name'] for s in surfaces], ['density'])
+        self.assertGreater(len(surfaces[0]['triangles']), 0)
+        self.assertEqual(progress['total'], 1)
+        self.assertEqual(progress['completed'], 1)
+
     def test_sdf_import_to_extruded_geometry(self):
         path = Path(__file__).resolve().parents[1] / 'examples' / 'bond_orders.sdf'
         for style in ('sticks', 'fixedbs'):
