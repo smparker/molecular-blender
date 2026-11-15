@@ -31,13 +31,18 @@ from . import isosurfaces
 
 try:
     import bpy
+except ModuleNotFoundError as exc:
+    if exc.name != 'bpy':
+        raise
+    _HAS_BPY = False
+else:
+    _HAS_BPY = True
+
+if _HAS_BPY:
     from bpy.props import StringProperty, BoolProperty, EnumProperty, IntProperty, FloatProperty
     import bpy_extras
     from .plotter import BlendMolecule, BlendMoleculeSetup, compute_surface_vertex_sets, create_surface_meshes
     import threading
-    _HAS_BPY = True
-except ImportError:
-    _HAS_BPY = False
 
 bl_info = {  # pylint: disable=invalid-name
     "name": "Molecular Blender",

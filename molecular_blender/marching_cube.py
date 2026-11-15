@@ -26,7 +26,9 @@ CYTHON_ENABLED = False
 try:
     from .marching_cube_cy import *
     CYTHON_ENABLED = True
-except:
+except ModuleNotFoundError as exc:
+    if exc.name != __package__ + '.marching_cube_cy':
+        raise
     print("Warning: using pure python isosurface implementation.")
     print("Building the cython version could give up to factor of 50 speedup.")
     from .marching_cube_py import *
