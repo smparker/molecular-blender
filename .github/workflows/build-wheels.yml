@@ -222,13 +222,13 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install numpy
           # Find and install the appropriate wheel for this platform/python
-          python -m pip install --find-links=wheelhouse --no-index molecular_blender || echo "No wheel found for this platform/python combination"
+          python -m pip install --find-links=wheelhouse --no-index molecular_blender
 
       - name: Run wheel tests
         run: |
           # Run comprehensive test suite that tests Cython extensions
           # without requiring bpy (which is only available in Blender)
-          python test_wheel.py || echo "[SKIP] Tests skipped - no wheel for this combination"
+          python test/test_wheel.py
 
 
   create_release_assets:

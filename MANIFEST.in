@@ -4,6 +4,8 @@ include AUTHORS
 include COPYING
 include setup.py
 include pyproject.toml
+# cibuildwheel runs this standalone test from both checkouts and sdists.
+include test/test_wheel.py
 
 # Include Cython source files
 recursive-include molecular_blender *.pyx
