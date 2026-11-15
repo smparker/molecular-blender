@@ -35,27 +35,27 @@ def getPlatformSummary():
 
 def find_user_blender_dirs():
     if onLinux:
-        pathbases = [ os.path.join(os.environ['HOME'], '.config', 'blender'),
-                os.path.join(os.environ['XDG_CONFIG_HOME'], 'blender') ]
+        pathbases = [os.path.expanduser('~/.config/blender')]
+        xdg = os.environ.get('XDG_CONFIG_HOME')
+        if xdg:
+            pathbases.append(os.path.join(xdg, 'blender'))
     elif onMacOS:
-        pathbases = [ os.path.join('/Users', os.environ['USER'], 'Library', 'Application Support', 'Blender') ]
+        pathbases = [os.path.expanduser('~/Library/Application Support/Blender')]
     elif onWindows:
-        pathbases = [ os.path.join(os.environ['USERPROFILE'], 'AppData', 'Roaming', 'Blender Foundation', 'Blender') ]
+        roaming = os.environ.get('APPDATA', os.path.expanduser('~/AppData/Roaming'))
+        pathbases = [os.path.join(roaming, 'Blender Foundation', 'Blender')]
 
-    for p in pathbases:
-        versions = []
-        for d in os.listdir(p):
-            try:
-                dfloat = float(d)
-                versions.append(d)
-            except:
-                pass
+    paths = set()
+    for base in pathbases:
+        if not os.path.isdir(base):
+            continue
+        for version in os.listdir(base):
+            path = os.path.join(base, version)
+            if re.fullmatch(r"\d+\.\d+", version) and os.path.isdir(path):
+                paths.add(os.path.normpath(path))
+    return sorted(paths, key=lambda path: (
+        tuple(int(part) for part in os.path.basename(path).split('.')), path))
 
-        paths = [ os.path.join(p, v) for v in sorted(versions, key= lambda x:float(x)) ]
-        if paths:
-            return paths
-
-    return []
 
 def printHeader(text):
     print()

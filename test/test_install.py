@@ -56,3 +56,23 @@ class TestInstallTargets(unittest.TestCase):
             blender_setup.install(install_mode='link', link_target='4.3')
         self.assertTrue(target.is_symlink())
         self.assertEqual((target / 'version').read_text(), 'new')
+
+
+class TestBlenderDiscovery(unittest.TestCase):
+    def test_linux_missing_roots_and_numeric_version_order(self):
+        from _setuputils import generic
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            home = root / 'home'
+            xdg = root / 'xdg'
+            for version in ('4.9', '4.10', 'not-a-version'):
+                (xdg / 'blender' / version).mkdir(parents=True)
+            (xdg / 'blender/4.8').write_text('a file, not a configuration directory')
+            with patch.multiple(generic, onLinux=True, onMacOS=False, onWindows=False), \
+                    patch.dict(os.environ, HOME=str(home), XDG_CONFIG_HOME=str(xdg)):
+                paths = generic.find_user_blender_dirs()
+                self.assertEqual([Path(path).name for path in paths], ['4.9', '4.10'])
+            with patch.multiple(generic, onLinux=True, onMacOS=False, onWindows=False), \
+                    patch.dict(os.environ, HOME=str(home)):
+                os.environ.pop('XDG_CONFIG_HOME', None)
+                self.assertEqual(generic.find_user_blender_dirs(), [])
