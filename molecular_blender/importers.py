@@ -582,10 +582,17 @@ def molecule_from_cube(filename, options):
         nvol = len(volume_labels)
         data_layout = nres + [ nvol ]
         ndata = np.prod(data_layout)
-        tokens = f.f.read().split()
-        if len(tokens) != ndata:
-            raise ValueError('Cube expected {} field values, found {}'.format(ndata, len(tokens)))
-        data = np.asarray(tokens, dtype=np.float32)
+        data = np.empty(ndata, dtype=np.float32)
+        count = 0
+        for line in f.f:
+            tokens = line.split()
+            end = count + len(tokens)
+            if end > ndata:
+                raise ValueError('Cube expected {} field values, found at least {}'.format(ndata, end))
+            data[count:end] = tokens
+            count = end
+        if count != ndata:
+            raise ValueError('Cube expected {} field values, found {}'.format(ndata, count))
         if not np.all(np.isfinite(data)):
             raise ValueError('Cube field values must be finite')
 
