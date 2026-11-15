@@ -5,9 +5,9 @@ set -e
 usage() { echo "Usage: $0 [-t | -p] [-b /path/to/blender]" 1>&2; exit 1; }
 
 run_blender() {
-  py=$1
+  local py=$1
   shift
-  ${BLENDER} --background --python-exit-code 1 --python $py -- $args
+  "$BLENDER" --background --factory-startup --python-exit-code 1 --python "$py" -- "$@"
 }
 
 test_default="yes"
@@ -16,6 +16,7 @@ prof_default="no"
 do_test="default"
 do_prof="default"
 blender="auto"
+BLENDER=""
 
 while getopts "tpb:" o; do
     case "${o}" in
@@ -37,8 +38,8 @@ shift $((OPTIND-1))
 
 # Check raw location
 if [ "$blender" == "auto" ]; then
-  if [ -x "$(which blender)" ]; then
-    BLENDER=blender
+  if command -v blender >/dev/null 2>&1; then
+    BLENDER=$(command -v blender)
   elif [ -x "/Applications/Blender.app/Contents/MacOS/blender" ]; then
     BLENDER=/Applications/Blender.app/Contents/MacOS/blender
   fi
@@ -52,7 +53,7 @@ else
 fi
 
 # check that $BLENDER was set
-if [ -z $BLENDER ]; then
+if [ -z "$BLENDER" ]; then
   echo "Failed to find a suitable Blender! Add it to your PATH or provide it with the -b option!"
   exit 1
 fi
@@ -68,15 +69,16 @@ fi
 [ "$do_prof" == "default" ] && do_prof="$prof_default"
 
 # jump to location of this script
-cd $(dirname $0)
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+cd "$script_dir"
 
 # pass on arguments to unittest
-args="$@"
+args=("$@")
 
 if [ "$do_test" == "yes" ]; then
-  run_blender test/run_tests.py $args
+  run_blender "$script_dir/test/run_tests.py" "${args[@]}"
 fi
 
 if [ "$do_prof" == "yes" ]; then
-  run_blender marching_profile.py $args
+  run_blender "$script_dir/marching_profile.py" "${args[@]}"
 fi

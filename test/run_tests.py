@@ -10,7 +10,7 @@ import unittest
 
 def blender_extra_args(argv):
     """Return args after '--' when called through Blender, else args after script name."""
-    if len(argv) > 0 and "blender" in argv[0] and "--python" in argv:
+    if "--python" in argv:
         return argv[argv.index("--") + 1:] if "--" in argv else []
     return argv[1:]
 
@@ -99,6 +99,9 @@ if __name__ == "__main__":
     os.chdir(repo_root)
 
     test_dir = os.path.join(repo_root, "test")
+    # Blender does not add the script directory to sys.path. Prefer this
+    # checkout over installed addons, and support named tests as well as discovery.
+    sys.path[:0] = [repo_root, test_dir]
     extra = blender_extra_args(sys.argv)
 
     loader = unittest.TestLoader()
