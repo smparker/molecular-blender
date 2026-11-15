@@ -26,6 +26,7 @@
 import numpy as np
 import mathutils
 from .orbitals import MOData
+from .bond_perception import perceive_bond_orders, BondPerceptionError
 from .util import stopwatch
 from .aromatics import find_planar_cycles
 from .periodictable import elements
@@ -197,33 +198,14 @@ class Molecule(object):
             for entry in self.explicit_bonds:
                 i, j = entry["atoms"]
                 self.bonds.append(Bond(atoms[i], atoms[j], bondstyle, order=entry["order"]))
-            # Orientation comes from the explicit graph, without perceiving any
-            # additional bonds or bond orders. Use the strongest off-axis neighbor.
-            neighbors = {atom.index: [] for atom in atoms}
-            for bond in self.bonds:
-                neighbors[bond.iatom.index].append(bond.jatom)
-                neighbors[bond.jatom.index].append(bond.iatom)
-            for bond in self.bonds:
-                if bond.order == 1:
-                    continue
-                axis = bond.jatom.position - bond.iatom.position
-                if axis.length < 1e-8:
-                    raise ValueError("Explicit multiple bond has coincident endpoints")
-                axis.normalize()
-                candidates = []
-                for atom, other in ((bond.iatom, bond.jatom), (bond.jatom, bond.iatom)):
-                    for neighbor in neighbors[atom.index]:
-                        if neighbor is other:
-                            continue
-                        delta = neighbor.position - atom.position
-                        candidates.append(delta - axis * delta.dot(axis))
-                if candidates:
-                    direction = max(candidates, key=lambda v: v.length_squared)
-                    if direction.length > 1e-8:
-                        bond.direction = direction
+            self._orient_multiple_bonds()
             if options["find_aromatic"]:
                 self.rings = find_planar_cycles(self)
             return
+        perceive = options.get("perceive_bond_orders", False)
+        if (perceive and options["plot_type"] == "animate"
+                and options["animate_bonds"] != "staticfirst"):
+            raise BondPerceptionError("Perception requires a static graph; use staticfirst for animations")
         static = options["plot_type"] == "frame" or options["animate_bonds"] == "staticfirst"
 
         for i in range(natoms):
@@ -236,8 +218,51 @@ class Molecule(object):
                 if bond.is_bonded(distance):
                     self.bonds.append(bond)
 
+        if perceive:
+            indices = {id(atom): i for i, atom in enumerate(atoms)}
+            edges = [(indices[id(b.iatom)], indices[id(b.jatom)]) for b in self.bonds]
+            lengths = [(b.iatom.position - b.jatom.position).length /
+                       (b.iatom.element.covalent + b.jatom.element.covalent)
+                       for b in self.bonds]
+            orders, charges = perceive_bond_orders(
+                [a.element.symbol for a in atoms], edges,
+                charge=options.get("molecular_charge", 0), bond_lengths=lengths,
+                max_iterations=options.get("bond_order_max_iterations", 100000))
+            for bond, order in zip(self.bonds, orders):
+                bond.order = order
+            for atom, charge in zip(atoms, charges):
+                atom.formal_charge = charge
+            self._orient_multiple_bonds()
+
         if options["find_aromatic"]:
             self.rings = find_planar_cycles(self)
+
+    def _orient_multiple_bonds(self):
+        """Orient strands using neighbors from the supplied or perceived graph."""
+        atoms = self.atoms
+        # Use the strongest off-axis neighbor without changing connectivity.
+        neighbors = {atom.index: [] for atom in atoms}
+        for bond in self.bonds:
+            neighbors[bond.iatom.index].append(bond.jatom)
+            neighbors[bond.jatom.index].append(bond.iatom)
+        for bond in self.bonds:
+            if bond.order == 1:
+                continue
+            axis = bond.jatom.position - bond.iatom.position
+            if axis.length < 1e-8:
+                raise ValueError("Multiple bond has coincident endpoints")
+            axis.normalize()
+            candidates = []
+            for atom, other in ((bond.iatom, bond.jatom), (bond.jatom, bond.iatom)):
+                for neighbor in neighbors[atom.index]:
+                    if neighbor is other:
+                        continue
+                    delta = neighbor.position - atom.position
+                    candidates.append(delta - axis * delta.dot(axis))
+            if candidates:
+                direction = max(candidates, key=lambda v: v.length_squared)
+                if direction.length > 1e-8:
+                    bond.direction = direction
 
     def bond_mask(self, options):
         """Construct mask determining whether a bond should be drawn at each frame"""

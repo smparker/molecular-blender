@@ -2,6 +2,7 @@
 
 Run from any directory with Blender --python /path/to/examples/sdf_bonds.py.
 Optional arguments after --: --save PATH and --render PATH. Clears the scene.
+Add --perceive to read the coordinates-only XYZ instead and infer its bond orders.
 """
 import argparse
 from pathlib import Path
@@ -16,16 +17,19 @@ from molecular_blender.plotter import BlendMoleculeSetup
 parser = argparse.ArgumentParser()
 parser.add_argument('--save')
 parser.add_argument('--render')
+parser.add_argument('--perceive', action='store_true')
 args = parser.parse_args(sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else [])
 
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete(use_global=False)
-source = Path(__file__).with_name('bond_orders.sdf')
-for style, y, label in [('sticks', 2, 'SDF import: sticks'),
-                         ('fixedbs', -2.2, 'SDF import: ball and stick')]:
+source = Path(__file__).with_name('bond_orders.xyz' if args.perceive else 'bond_orders.sdf')
+origin = 'XYZ perception' if args.perceive else 'SDF import'
+for style, y, label in [('sticks', 2, origin + ': sticks'),
+                         ('fixedbs', -2.2, origin + ': ball and stick')]:
     molecule, _, _ = BlendMoleculeSetup(
         bpy.context, str(source), plot_style=style, bond_thickness=0.14,
-        ignore_hydrogen=False, hook_atoms='on')
+        ignore_hydrogen=False, hook_atoms='on', draw_bond_orders=True,
+        perceive_bond_orders=args.perceive)
     bpy.data.objects[molecule.name].location += Vector((0.7, y - 0.6, 0))
     font = bpy.data.curves.new(label, 'FONT')
     font.body = label

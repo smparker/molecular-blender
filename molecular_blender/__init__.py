@@ -96,6 +96,16 @@ if _HAS_BPY:
             description="Find closed rings and if planar, fill in with object",
             default=False)
 
+        draw_bond_orders: BoolProperty(
+            name="Draw bond orders",
+            description="Draw supplied bond orders, or perceive them from coordinates (requires all hydrogens)",
+            default=False)
+
+        molecular_charge: IntProperty(
+            name="Molecular charge",
+            description="Total integer charge for bond-order perception (not partial atomic charges)",
+            default=0)
+
         ignore_hydrogen: BoolProperty(
             name="Ignore Hydrogens",
             description="Ignores Hydrogen atoms for cleaner images",
@@ -266,6 +276,9 @@ if _HAS_BPY:
             box.label(text="Import Details")
             box.row().prop(self, "hook_atoms")
             box.row().prop(self, "universal_bonds")
+            box.row().prop(self, "draw_bond_orders")
+            if self.draw_bond_orders:
+                box.row().prop(self, "molecular_charge")
             box.row().prop(self, "recycle_materials")
             row = box.row()
             row.prop(self, "use_cython")
@@ -275,6 +288,9 @@ if _HAS_BPY:
             return dict(
                 bonds=(self.bond_thickness != 0.0),
                 bond_thickness=self.bond_thickness,
+                draw_bond_orders=self.draw_bond_orders,
+                perceive_bond_orders=self.draw_bond_orders,
+                molecular_charge=self.molecular_charge,
                 hook_atoms=self.hook_atoms,
                 plot_style=self.plot_style,
                 object_type=self.object_type,

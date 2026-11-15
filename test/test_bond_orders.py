@@ -137,7 +137,7 @@ class TestBondOrders(unittest.TestCase):
         mol = Molecule('multiple_bond_test', atoms)
         bond = Bond(*atoms, order=2, direction=(0, 1, 0))
         mol.bonds = [bond]
-        options = default_options({'plot_style': 'sticks', 'hook_atoms': 'on'})
+        options = default_options({'plot_style': 'sticks', 'hook_atoms': 'on', 'draw_bond_orders': True})
         make_materials(mol, get_styler(options), options)
         plot_prep(mol, options)
         PlotMolecule(bpy.context, mol, options)
@@ -159,7 +159,7 @@ class TestBondOrders(unittest.TestCase):
             with self.subTest(style=style):
                 molecule, _, options = BlendMoleculeSetup(
                     bpy.context, str(path), plot_style=style, ignore_hydrogen=False,
-                    hook_atoms='on', bond_thickness=0.14)
+                    hook_atoms='on', bond_thickness=0.14, draw_bond_orders=True)
                 self.assertEqual(options['plot_type'], 'frame')
                 self.assertEqual([b.order for b in molecule.bonds], [2, 1, 2, 1, 3, 1, 1, 1])
                 for bond in molecule.bonds:
@@ -195,3 +195,113 @@ class TestBondOrders(unittest.TestCase):
         options['bonds'] = True
         molecule.determine_bonding(options)
         self.assertEqual(molecule.bonds, [])  # explicit empty table is authoritative
+
+    def test_xyz_perception_to_extruded_geometry(self):
+        root = Path(__file__).resolve().parents[1]
+        data = molecule_from_file(str(root / 'examples/bond_orders.sdf'), {})
+        expected = {tuple(sorted(b['atoms'])): b['order'] for b in data['bonds']}
+        for style in ('sticks', 'fixedbs'):
+            with self.subTest(style=style):
+                molecule, _, _ = BlendMoleculeSetup(
+                    bpy.context, str(root / 'examples/bond_orders.xyz'),
+                    plot_style=style, perceive_bond_orders=True, draw_bond_orders=True,
+                    bond_thickness=0.14, ignore_hydrogen=True)
+                actual = {tuple(sorted((b.iatom.index, b.jatom.index))): b.order
+                          for b in molecule.bonds}
+                self.assertEqual(actual, expected)
+                self.assertTrue(all(a.formal_charge == 0 for a in molecule.atoms))
+                for bond in molecule.bonds:
+                    if bond.iatom.hidden or bond.jatom.hidden:
+                        continue
+                    for name in bond.name:
+                        self.assertEqual(len(self.strand_centers(bpy.data.objects[name])), bond.order)
+
+    def test_perception_is_opt_in_and_keeps_explicit_orders(self):
+        root = Path(__file__).resolve().parents[1]
+        options = default_options({'plot_type': 'frame', 'perceive_bond_orders': False})
+        data = molecule_from_file(str(root / 'examples/bond_orders.xyz'), options)
+        molecule = Molecule.from_dict('no_perception', data)
+        molecule.determine_bonding(options)
+        self.assertTrue(all(b.order == 1 for b in molecule.bonds))
+        # A nonsensical requested charge must not override a supplied SDF table.
+        options.update(perceive_bond_orders=True, molecular_charge=99)
+        data = molecule_from_file(str(root / 'examples/bond_orders.sdf'), options)
+        molecule = Molecule.from_dict('explicit_orders', data)
+        molecule.determine_bonding(options)
+        self.assertEqual([b.order for b in molecule.bonds], [2, 1, 2, 1, 3, 1, 1, 1])
+        # Union/dynamic trajectory graphs are not suitable for a single valence assignment.
+        molecule = Molecule('trajectory', [Atom('c', (0, 0, 0), 0)])
+        options.update(plot_type='animate', animate_bonds='dynamic', molecular_charge=0)
+        with self.assertRaisesRegex(ValueError, 'static'):
+            molecule.determine_bonding(options)
+
+    def test_perceive_fused_aromatic_dimer(self):
+        root = Path(__file__).resolve().parents[1]
+        options = default_options({'plot_type': 'frame', 'perceive_bond_orders': True,
+                                   'find_aromatic': True})
+        data = molecule_from_file(str(root / 'examples/tetracene_dimer.xyz'), options)
+        molecule = Molecule.from_dict('aromatic_perception', data)
+        molecule.determine_bonding(options)
+        self.assertEqual(len(molecule.rings), 8)
+        self.assertTrue(any(b.order == 2 for b in molecule.bonds))
+        for atom in molecule.atoms:
+            valence = sum(b.order for b in molecule.bonds if atom in (b.iatom, b.jatom))
+            self.assertEqual(valence, 4 if atom.element.symbol == 'c' else 1)
+
+    def test_perception_total_charge_and_failure(self):
+        atoms = [Atom('n', (0, 0, 0), 0, charge=-0.6)]
+        for i, pos in enumerate(((.6, .6, .6), (.6, -.6, -.6),
+                                  (-.6, .6, -.6), (-.6, -.6, .6)), 1):
+            atoms.append(Atom('h', pos, i, charge=0.2))
+        molecule = Molecule('ammonium', atoms)
+        options = default_options({'plot_type': 'frame', 'perceive_bond_orders': True})
+        with self.assertRaisesRegex(ValueError, 'No valid'):
+            molecule.determine_bonding(options)
+        self.assertTrue(all(a.formal_charge == 0 for a in atoms))
+        self.assertTrue(all(b.order == 1 for b in molecule.bonds))
+        options['molecular_charge'] = 1
+        molecule.determine_bonding(options)
+        self.assertEqual([a.formal_charge for a in atoms], [1, 0, 0, 0, 0])
+        self.assertEqual(len(molecule.bonds), 4)
+        self.assertEqual(atoms[0].charge, -0.6)  # partial charges are independent
+
+    def test_bond_order_drawing_defaults_off(self):
+        path = Path(__file__).resolve().parents[1] / 'examples/bond_orders.sdf'
+        molecule, _, options = BlendMoleculeSetup(bpy.context, str(path), plot_style='sticks')
+        self.assertFalse(options['draw_bond_orders'])
+        self.assertTrue(any(b.order > 1 for b in molecule.bonds))
+        for bond in molecule.bonds:
+            if bond.iatom.hidden or bond.jatom.hidden:
+                continue
+            for name in bond.name:
+                obj = bpy.data.objects[name]
+                self.assertEqual(obj.data.bevel_mode, 'ROUND')
+                self.assertIsNone(obj.data.bevel_object)
+                self.assertEqual(len(self.strand_centers(obj)), 1)
+        for atom in molecule.atoms:
+            if not atom.hidden:
+                self.assertEqual(tuple(bpy.data.objects[atom.name].scale), (1, 1, 1))
+
+    def test_importer_bond_order_toggle(self):
+        from types import SimpleNamespace
+        from molecular_blender import MolecularBlender
+        registered = MolecularBlender.is_registered
+        if not registered:
+            bpy.utils.register_class(MolecularBlender)
+        try:
+            # Blender does not allow direct construction of Operator instances.
+            # Read the registered UI defaults and exercise its options builder.
+            rna = getattr(bpy.ops, 'import').molecular_blender.get_rna_type()
+            operator = SimpleNamespace(**{name: rna.properties[name].default
+                                          for name in MolecularBlender.__annotations__})
+            self.assertFalse(operator.draw_bond_orders)
+            options = MolecularBlender._build_options(operator)
+            self.assertFalse(options['draw_bond_orders'])
+            self.assertFalse(options['perceive_bond_orders'])
+            operator.draw_bond_orders = True
+            options = MolecularBlender._build_options(operator)
+            self.assertTrue(options['draw_bond_orders'])
+            self.assertTrue(options['perceive_bond_orders'])
+        finally:
+            if not registered:
+                bpy.utils.unregister_class(MolecularBlender)

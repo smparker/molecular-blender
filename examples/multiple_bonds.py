@@ -22,7 +22,7 @@ def draw(name, symbols, positions, bonds, xoffset, y, style):
     mol = Molecule(name, atoms)
     mol.bonds = [Bond(atoms[i], atoms[j], order=order, direction=(0, 1, 0))
                  for i, j, order in bonds]
-    options = default_options({'plot_style': style, 'bond_thickness': 0.14,
+    options = default_options({'plot_style': style, 'bond_thickness': 0.14, 'draw_bond_orders': True,
                                'hook_atoms': 'on'})
     make_materials(mol, get_styler(options), options)
     plot_prep(mol, options)

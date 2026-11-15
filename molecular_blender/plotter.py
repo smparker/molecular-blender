@@ -317,7 +317,7 @@ def PlotMolecule(context, molecule, options):
     # Stick models use tiny spheres as junctions. Widen just those junctions
     # touched by multiple bonds so the outer strands still meet their atoms.
     junction_scales = {}
-    if draw_bonds and plot_style.atom_size == "bond":
+    if draw_bonds and options["draw_bond_orders"] and plot_style.atom_size == "bond":
         for bond in molecule.bonds:
             if bond.order > 1 and not (bond.iatom.hidden or bond.jatom.hidden):
                 _, _, extent = _multiple_bond_profile(bond_thickness, bond.order)
@@ -482,7 +482,7 @@ def PlotMolecule(context, molecule, options):
                     c_obj.data.bevel_depth = rad
                     c_obj.data.use_fill_caps = True
                     c_obj.data.bevel_factor_start, c_obj.data.bevel_factor_end = bounds
-                    if bond.order != 1:
+                    if options["draw_bond_orders"] and bond.order != 1:
                         set_bond_order(c_obj, bond.order, bond.direction)
                     c_obj.parent = bpy.data.objects[molecule.name]
 
@@ -511,7 +511,7 @@ def PlotMolecule(context, molecule, options):
                 curveOB = bpy.data.objects.new(bondname, curve)
                 curveOB.data.bevel_depth = rad
                 curveOB.data.use_fill_caps = True
-                if bond.order != 1:
+                if options["draw_bond_orders"] and bond.order != 1:
                     set_bond_order(curveOB, bond.order, bond.direction)
                 curveOB.parent = bpy.data.objects[molecule.name]
 
@@ -923,6 +923,10 @@ def default_options(options):
     # force defaults in case called outside of the blender UI
     defaults = {"bonds": True,
                 "bond_thickness": 0.2,
+                "draw_bond_orders": False,
+                "perceive_bond_orders": False,
+                "molecular_charge": 0,
+                "bond_order_max_iterations": 100000,
                 "hook_atoms": "auto",
                 "plot_style": "sticks",
                 "plot_type": "auto",

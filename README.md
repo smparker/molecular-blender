@@ -21,8 +21,59 @@ bevel object containing two or three circular profiles. Each strand has 70% of
 the single-bond radius, with a gap of 30% of that radius between strands. Stick
 model junction spheres widen at multiply bonded atoms to cover the strand ends.
 Single bonds retain their existing drawing behavior.
-Bond orders are currently explicit. SDF/MOL imports retain their bond tables;
-formats such as XYZ still infer connectivity only.
+SDF/MOL imports retain their explicit bond tables. For coordinate-only formats
+such as XYZ, optional perception assigns bond orders from connectivity and valence.
+
+### Perceiving bond orders from coordinates
+
+Enable **Draw bond orders** under Import Details, or pass
+`draw_bond_orders=True, perceive_bond_orders=True` to `BlendMoleculeSetup`. Supply `molecular_charge`
+for ions (default: `0`). This is an integer total charge, not a sum of partial
+charges from the input. The checkbox is off by default: bonds draw as single
+strands, including SDF/MOL bonds. Enabling it draws explicit orders or perceives
+them when no bond table is supplied. Stored SDF/MOL orders are never replaced.
+The Python API exposes drawing and perception separately, both off by default;
+use only `draw_bond_orders=True` when orders are already supplied.
+
+The approach follows the connectivity/valence/unsaturation/charge separation in
+[RDKit DetermineBonds](https://github.com/rdkit/rdkit/blob/master/Code/GraphMol/DetermineBonds/DetermineBonds.cpp)
+and [xyz2mol](https://github.com/jensengroup/xyz2mol). The existing
+`1.2 * (covalent_radius_i + covalent_radius_j)` distance cutoff supplies the
+single-bond graph. A dependency-free constrained search then assigns orders 1–3
+so every atom reaches an allowed valence and formal charges add up to the supplied
+total. It prunes impossible assignments, tries shorter normalized distances first
+among equally constrained edges, and backtracks if a guess blocks completion.
+It minimizes total absolute formal charge before accepting charge-separated forms.
+
+Unlike RDKit's maximum-matching implementation, this search checks alternative
+edge orders directly. Allowed main-group states cover H, B, C, N, O, F, Si, P, S,
+Cl, Ge, Br and I, including common B/C electron-deficient states and P/S expanded
+valences. For example, it prefers neutral `S=O` for sulfoxides; RDKit's
+DetermineBonds currently selects the charge-separated `S+–O−` representation.
+An optional test compares both implementations across 24 molecular graphs.
+No RDKit installation is needed to run the importer.
+
+All atoms, including hydrogens, must be present in the file. Hiding hydrogens is
+fine; they still participate in the assignment. Missing hydrogens, incorrect
+connectivity, unsupported elements, or an inconsistent total charge can prevent
+an assignment. Failures raise an error without applying tentative orders or
+charges; the search also stops at `bond_order_max_iterations` nodes (default:
+100,000). This is a limited closed-shell valence model, not full RDKit sanitization:
+radicals, coordination chemistry, stereochemistry, and aromaticity classification
+are not inferred. Resonance rings receive one valid integer Kekule assignment;
+equivalent or ambiguous forms need not have a unique result. Bond lengths guide
+the search rather than proving chemical identity.
+
+For trajectories, only `animate_bonds="staticfirst"` is supported with perception.
+Orders and initial strand orientation then stay fixed; they are not recalculated
+for each frame. Dynamic and union connectivity are rejected for perception.
+
+To render the same example from XYZ coordinates, with no bond table:
+
+```bash
+blender --background --factory-startup --python examples/sdf_bonds.py -- \
+  --perceive --save /tmp/perceived_bonds.blend --render /tmp/perceived_bonds.png
+```
 
 ### Importing bond orders from SDF/MOL
 
@@ -42,6 +93,7 @@ from molecular_blender.plotter import BlendMoleculeSetup
 molecule, styler, options = BlendMoleculeSetup(
     bpy.context, "examples/bond_orders.sdf",
     plot_style="fixedbs", bond_thickness=0.14, ignore_hydrogen=False,
+    draw_bond_orders=True,
 )
 ```
 
