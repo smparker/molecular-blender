@@ -61,19 +61,31 @@ def cube_isosurface(data, origin, axes, isovalues, name="cube", wm=None):
 
 
 def molden_isosurface(orbital, isovalues, resolution, name="iso", wm=None, method="adaptive", rough_resolution=0.6):
-    """Return set of triangles from Molden file"""
+    """Return orbital triangles; resolution and rough_resolution are in angstrom."""
     p0, p1 = orbital.bounding_box(min([abs(x) for x in isovalues]) * 0.001)
     axes = np.eye(3, dtype=DTYPE) * bohr2ang
 
-    return isosurface(p0, p1, resolution, isovalues, orbital.box_values, axes, name, wm, rough_resolution=rough_resolution)
+    return isosurface(p0, p1, resolution, isovalues, orbital.box_values, axes, name, wm,
+                      method=method, rough_resolution=rough_resolution)
 
 
 def isosurface(p0, p1, resolution, isovalues, box_func, axes, name, wm=None, method="adaptive",
         rough_resolution=0.3, max_subdivide=8):
-    """Return set of triangles from function object"""
+    """Sample Bohr-coordinate bounds with an angstrom target grid spacing.
+
+    axes maps sampled coordinates to the output geometry. The low-level simple
+    and adaptive routines continue to use grid counts and Bohr spacing directly.
+    """
+    if method not in ('simple', 'adaptive'):
+        raise ValueError("Isosurface method must be 'simple' or 'adaptive'")
+    if not math.isfinite(resolution) or resolution <= 0:
+        raise ValueError('Isosurface resolution must be finite and positive')
+    if not math.isfinite(rough_resolution) or rough_resolution <= 0:
+        raise ValueError('Rough resolution must be finite and positive')
 
     if method == "adaptive":
-        return isosurface_adaptive(p0, p1, rough_resolution, resolution, max_subdivide, isovalues, box_func, axes, name, wm)
+        return isosurface_adaptive(p0, p1, rough_resolution*ang2bohr, resolution*ang2bohr,
+                                  max_subdivide, isovalues, box_func, axes, name, wm)
     else:
         npoints = [ int(math.ceil((b-a)/(resolution*ang2bohr))) for a, b in zip(p0, p1) ]
         return isosurface_simple(p0, p1, npoints, isovalues, box_func, axes, name, wm)

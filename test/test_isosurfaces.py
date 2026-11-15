@@ -182,3 +182,42 @@ class TestMoldenIsosurface(unittest.TestCase):
         result = molden_isosurface(orb, [0.05], resolution=0.3, name="test_orb")
         assert len(result) == 1
         assert len(result[0]["triangles"]) > 0
+
+
+class TestSurfaceResolution(unittest.TestCase):
+    def test_orbital_dispatch_spacing_and_analytic_radius(self):
+        from types import SimpleNamespace
+        for method in ('simple', 'adaptive'):
+            with self.subTest(method=method):
+                spacings = []
+
+                def gaussian(x, y, z):
+                    spacings.append([np.max(np.diff(axis)) * bohr2ang for axis in (x, y, z)])
+                    return np.exp(-(x[:, None, None]**2 + y[None, :, None]**2
+                                    + z[None, None, :]**2)).astype(DTYPE)
+
+                orbital = SimpleNamespace(
+                    bounding_box=lambda threshold: (np.full(3, -2.), np.full(3, 2.)),
+                    box_values=gaussian)
+                resolution = 0.05
+                surfaces = molden_isosurface(orbital, [0.5], resolution,
+                                             method=method, rough_resolution=0.25)
+                vertices = np.asarray(surfaces[0]['triangles']).reshape(-1, 3)
+                expected_radius = np.sqrt(np.log(2)) * bohr2ang
+                self.assertLess(np.max(np.abs(np.linalg.norm(vertices, axis=1)
+                                              - expected_radius)), resolution * 0.2)
+                self.assertTrue(all(step <= resolution * 1.001 for step in spacings[-1]))
+                if method == 'simple':
+                    self.assertEqual(len(spacings), 1)
+                else:
+                    self.assertGreater(len(spacings), 1)
+
+    def test_invalid_method_and_resolution(self):
+        for kwargs in ({'method': 'typo'}, {'resolution': 0},
+                       {'resolution': float('nan')}, {'rough_resolution': -1}):
+            arguments = dict(resolution=0.1, method='adaptive')
+            arguments.update(kwargs)
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                isosurface(np.full(3, -2.), np.full(3, 2.),
+                           isovalues=[0.5], box_func=None, axes=np.eye(3), name='bad',
+                           **arguments)
