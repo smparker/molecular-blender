@@ -19,6 +19,27 @@ EXAMPLES = os.path.join(os.path.dirname(__file__), "../examples")
 
 # -- gamma2n (python only) --
 
+class TestShellBounds(unittest.TestCase):
+    def test_s_shell_has_nonzero_bounds(self):
+        shell = ao_py.Shell(np.zeros(3), 0, [0.2], [1.0])
+        threshold = 1e-5
+        radius = shell.bounding_box_size(threshold)
+        self.assertGreater(radius, 0)
+        expected = np.sqrt(np.log(shell.mxnorm / threshold) / 0.2)
+        self.assertAlmostEqual(radius, expected)
+
+    @unittest.skipUnless(HAS_CYTHON_AO, 'requires compiled AO backend')
+    def test_bounds_match_cython_for_s_through_g(self):
+        for angular in range(5):
+            with self.subTest(angular=angular):
+                center = np.zeros(3, dtype=np.float32)
+                exponents = np.array([0.2], dtype=np.float32)
+                coefficients = np.array([1.0], dtype=np.float32)
+                python = ao_py.Shell(center, angular, exponents, coefficients)
+                cython = ao_cy.Shell(center, angular, exponents, coefficients, 0)
+                self.assertAlmostEqual(python.bounding_box_size(1e-5),
+                                       cython.bounding_box_size(1e-5), places=5)
+
 class TestGamma2n(unittest.TestCase):
     def test_gamma2n_1(self):
         assert abs(ao_py.gamma2n_impl(1) - np.sqrt(np.pi)) < 1e-10

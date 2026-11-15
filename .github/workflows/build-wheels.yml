@@ -52,7 +52,8 @@ jobs:
                              cwd=temporary, env=environment, check=True)
               subprocess.run([sys.executable, '-m', 'unittest',
                               'test_compute_ao', 'test_marching_cube',
-                              'test_containing_isovalues', 'test_orbitals'],
+                              'test_containing_isovalues', 'test_orbitals',
+                              'test_isosurfaces'],
                              cwd=temporary, env=environment, check=True)
           PY
 
