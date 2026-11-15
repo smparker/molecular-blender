@@ -19,7 +19,7 @@ for v in 3.9.23 3.10.18 3.11.13 3.12.11 3.13.8 3.14.0; do
     echo installing requirements
     python -m pip install --upgrade pip >> build_${v}.log
     python -m pip install -r requirements.txt >> build_${v}.log
-    python setup_blender.py build >> build_${v}.log 2>&1
+    python blender_setup.py build >> build_${v}.log 2>&1
 
     deactivate
 

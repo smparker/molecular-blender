@@ -1,0 +1,14 @@
+{
+  "molecules" : [
+  { "filename" : "tio2/nto_occ_step1.cub" },
+  { "filename" : "tio2/nto_occ_step2.cub" },
+  { "filename" : "tio2/nto_occ_step3.cub" },
+  { "filename" : "tio2/nto_occ_step4.cub" },
+  { "filename" : "tio2/nto_occ_step5.cub" },
+  { "filename" : "tio2/nto_occ_step6.cub" },
+  { "filename" : "tio2/nto_occ_step7.cub" },
+  { "filename" : "tio2/nto_occ_step8.cub" },
+  { "filename" : "tio2/nto_occ_step9.cub" },
+  { "filename" : "tio2/nto_occ_step10.cub" }
+  ]
+}

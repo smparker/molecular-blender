@@ -1,0 +1,1 @@
+- simplify usage on the commandline
