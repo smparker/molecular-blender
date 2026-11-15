@@ -185,3 +185,17 @@ class TestOrbitalIsovalue(unittest.TestCase):
         )
         assert len(isovals) == 2
         assert isovals[0] > isovals[1]
+
+
+class TestOrbitalMetadata(unittest.TestCase):
+    def test_metadata_preserves_input_order_and_missing_values(self):
+        geo = molecule_from_file(os.path.join(EXAMPLES, 'water-sto-3g.molden'), {})
+        geo['mo'][0].update(ene='-0.25', sym='A1')
+        geo['mo'][1].update(ene='-1.5', sym='B2')
+        geo['mo'][2].pop('ene', None)
+        geo['mo'][2].pop('sym', None)
+        data = MOData.from_dict(geo)
+        self.assertEqual(data.energies[:3], (-0.25, -1.5, None))
+        self.assertEqual(data.symmetries[:3], ('A1', 'B2', None))
+        self.assertEqual(len(data.energies), data.coeff.shape[0])
+        np.testing.assert_array_equal(data.coeff[0], np.asarray(geo['mo'][0]['coeff'], dtype=np.float32))

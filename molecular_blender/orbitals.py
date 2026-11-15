@@ -29,7 +29,8 @@ from .compute_ao import *
 class MOData:
     """Organizes data for computing orbitals in real space"""
 
-    def __init__(self, shells, coeff, nocc, occupations, spins=None, densities=None):
+    def __init__(self, shells, coeff, nocc, occupations, spins=None, densities=None,
+                 energies=None, symmetries=None):
         assert sum([sh.size for sh in shells]) == coeff.shape[1]
 
         self.shells = shells
@@ -38,6 +39,12 @@ class MOData:
         self.nvir = coeff.shape[0] - nocc
         self.occupations = occupations
         self.spins = spins
+        # Metadata follows input orbital order; absent values remain explicit.
+        nmo = coeff.shape[0]
+        self.energies = tuple([None] * nmo if energies is None else energies)
+        self.symmetries = tuple([None] * nmo if symmetries is None else symmetries)
+        if len(self.energies) != nmo or len(self.symmetries) != nmo:
+            raise ValueError('Provide one energy and symmetry entry per orbital')
         # map of density names to AO densities for things like polarizabilities
         self.densities = {} if densities is None else densities
 
@@ -122,4 +129,6 @@ class MOData:
                     dens = np.einsum("iu,ia,av->uv", coeff[:nocc, :], vec, coeff[nocc:, :])
                     densities[f"polar{i:2d}"] = 2.0*(dens + dens.T)
 
-        return cls(shells, coeff, nocc, occupations, spins, densities)
+        return cls(shells, coeff, nocc, occupations, spins, densities,
+                   energies=[float(orb['ene']) if 'ene' in orb else None for orb in geo['mo']],
+                   symmetries=[orb.get('sym') for orb in geo['mo']])
