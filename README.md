@@ -1,6 +1,11 @@
 # Molecular Blender [![Build](https://github.com/smparker/molecular-blender/actions/workflows/blender-plugin.yml/badge.svg?branch=master)](https://github.com/smparker/molecular-blender/actions/workflows/blender-plugin.yml)
-An import plugin specialized for .xyz files of molecules used in, for example,
-quantum chemistry
+An import plugin for molecular XYZ, SDF/MOL, Molden, cube, and JSON data used in
+quantum chemistry.
+
+The import dialog's **Import Details** panel reports the active orbital evaluator
+and surface mesher separately as **Cython** or **Python**. Python fallbacks work
+without a compiler. If an installed compiled module fails to load, the original
+error is reported so an incompatible binary or missing dependency can be diagnosed.
 
 ## Capabilities
 

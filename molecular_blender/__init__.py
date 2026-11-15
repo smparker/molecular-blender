@@ -24,6 +24,7 @@
 """Blender plug-in to read files commonly used in Quantum Chemistry"""
 
 from .marching_cube import CYTHON_ENABLED
+from .compute_ao import CYTHON_ENABLED as AO_CYTHON_ENABLED
 
 from . import importers
 from . import orbitals
@@ -50,7 +51,7 @@ bl_info = {  # pylint: disable=invalid-name
     "version": (0, 6, 3),
     "location": "File > Import",
     "blender" : (3, 6, 7),
-    "description": "Import XYZ files",
+    "description": "Import XYZ, SDF/MOL, Molden, cube, and JSON molecular data",
     "category": "Import-Export"
 }
 
@@ -285,9 +286,8 @@ if _HAS_BPY:
             if self.draw_bond_orders:
                 box.row().prop(self, "molecular_charge")
             box.row().prop(self, "recycle_materials")
-            row = box.row()
-            row.prop(self, "use_cython")
-            row.enabled = False
+            box.label(text="Orbital evaluator: " + ("Cython" if AO_CYTHON_ENABLED else "Python"))
+            box.label(text="Surface mesher: " + ("Cython" if CYTHON_ENABLED else "Python"))
 
         def _build_options(self):
             return dict(
@@ -405,7 +405,7 @@ if _HAS_BPY:
     def menu_func_import(self, _context):
         """Define layout of menu"""
         self.layout.operator(MolecularBlender.bl_idname,
-                             text="Molecular Blender (Import XYZ)")
+                             text="Molecular Blender (XYZ, SDF/MOL, Molden, Cube, JSON)")
 
 def register():
     if not _HAS_BPY:
