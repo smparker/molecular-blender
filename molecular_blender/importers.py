@@ -21,7 +21,7 @@
 #  If not, see <http://www.gnu.org/licenses/>.
 #
 
-"""Methods to import XYZ, Molden, and cube files."""
+"""Methods to import XYZ, SDF/MOL, Molden, and cube files."""
 
 import re
 import numpy as np
@@ -79,6 +79,8 @@ def molecule_from_file(filename, options):
     """Tries to guess filetype based on extension, then calls the appropriate reader"""
     if filename.lower().endswith(".xyz"):
         return molecule_from_xyz(filename, options)
+    elif filename.lower().endswith((".sdf", ".mol", ".sd")):
+        return molecule_from_sdf(filename, options)
     elif filename.lower().endswith(".molden") or filename.lower().endswith("molden.input"):
         return molecule_from_molden(filename, options)
     elif filename.lower().endswith(".cub") or filename.lower().endswith(".cube"):
@@ -101,6 +103,103 @@ def make_snap_dict(position, charge, gradient):
     """Build dictionary for snapshot"""
     return {"position": [float(x) for x in position], "charge": float(charge),
             "gradient": [float(x) for x in gradient]}
+
+
+@stopwatch("read sdf")
+def molecule_from_sdf(filename, options):
+    """Read a V2000 MOL or one SDF record, preserving explicit bond orders.
+
+    ``sdf_record`` selects a zero-based record (default: first). Coordinates are
+    in angstroms. Formal charges are kept separately from partial charges.
+    Aromatic/query bond codes and V3000 are rejected rather than approximated.
+    Stereo, isotope, radical, S-group and SD data annotations are not interpreted.
+    """
+    record = options.get("sdf_record", 0)
+    if not isinstance(record, int) or isinstance(record, bool) or record < 0:
+        raise ValueError("sdf_record must be a nonnegative integer")
+    lines = []
+    with open(filename) as source:
+        current = 0
+        for line in source:
+            if line.strip() == "$$$$":
+                if current == record:
+                    break
+                current += 1
+                lines = []
+            elif current == record:
+                lines.append(line.rstrip('\r\n'))
+    if not lines or not any(line.strip() for line in lines):
+        raise ValueError("SDF record {} not found".format(record))
+    if len(lines) < 4 or not lines[3].rstrip().endswith("V2000"):
+        raise ValueError("Only SDF/MOL V2000 is supported (expected V2000 counts line)")
+    try:
+        natoms, nbonds = int(lines[3][:3]), int(lines[3][3:6])
+    except ValueError as exc:
+        raise ValueError("Invalid V2000 atom/bond counts") from exc
+    if natoms <= 0 or nbonds < 0:
+        raise ValueError("V2000 requires positive atom count and nonnegative bond count")
+    end = 4 + natoms + nbonds
+    if len(lines) <= end:
+        raise ValueError("Truncated V2000 atom/bond blocks or missing M  END")
+    out = {"atoms": [], "bonds": [], "title": lines[0]}
+    ignore_h = options.get("ignore_hydrogen", False)
+    charge_codes = {0: 0, 1: 3, 2: 2, 3: 1, 4: 0, 5: -1, 6: -2, 7: -3}
+    for index, line in enumerate(lines[4:4 + natoms]):
+        try:
+            position = [float(line[i:i + 10]) for i in (0, 10, 20)]
+            symbol = line[31:34].strip().lower()
+            code = int(line[36:39].strip() or "0")
+            formal_charge = charge_codes[code]
+            if symbol not in symbols or not np.all(np.isfinite(position)):
+                raise ValueError("Invalid element or non-finite coordinates")
+        except (ValueError, KeyError) as exc:
+            raise ValueError("Invalid V2000 atom {}".format(index + 1)) from exc
+        atom = make_atom_dict(symbol, position, index, 0, [0, 0, 0], ignore_h and symbol == "h")
+        atom["formal_charge"] = formal_charge
+        out["atoms"].append(atom)
+    seen = set()
+    for number, line in enumerate(lines[4 + natoms:end], 1):
+        try:
+            i, j, order = (int(line[k:k + 3]) for k in (0, 3, 6))
+        except ValueError as exc:
+            raise ValueError("Invalid V2000 bond {}".format(number)) from exc
+        if not (1 <= i <= natoms and 1 <= j <= natoms) or i == j:
+            raise ValueError("Invalid atom reference in V2000 bond {}".format(number))
+        pair = tuple(sorted((i, j)))
+        if pair in seen:
+            raise ValueError("Duplicate V2000 bond {}".format(number))
+        if order not in (1, 2, 3):
+            raise ValueError("Unsupported V2000 bond type {}: use explicit single/double/triple bonds".format(order))
+        seen.add(pair)
+        out["bonds"].append({"atoms": [i - 1, j - 1], "order": order})
+    found_end = False
+    has_charges = False
+    for line in lines[end:]:
+        if line.strip() == "M  END":
+            found_end = True
+            break
+        if line.startswith("M  CHG"):
+            try:
+                fields = line.split()
+                count = int(fields[2])
+                if count < 1 or len(fields) != 3 + 2 * count:
+                    raise ValueError("Invalid charge count")
+                # M CHG supersedes *all* atom-block charge codes.
+                if not has_charges:
+                    for atom in out["atoms"]:
+                        atom["formal_charge"] = 0
+                    has_charges = True
+                for k in range(count):
+                    index, charge = int(fields[3 + 2*k]), int(fields[4 + 2*k])
+                    if not 1 <= index <= natoms:
+                        raise ValueError("Invalid charged atom reference")
+                    out["atoms"][index - 1]["formal_charge"] = charge
+            except (ValueError, IndexError) as exc:
+                raise ValueError("Invalid V2000 M  CHG line") from exc
+    if not found_end:
+        raise ValueError("Missing V2000 M  END")
+    options["plot_type"] = "frame"
+    return out
 
 
 @stopwatch("read xyz")

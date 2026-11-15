@@ -1,12 +1,15 @@
 """Verify multiple bonds using Blender's evaluated extrusion geometry."""
 import unittest
+from pathlib import Path
 
 try:
     import bpy
     import bmesh
     from mathutils import Vector
     from molecular_blender.plotter import (set_bond_order, PlotMolecule,
-                                          default_options, plot_prep, make_materials)
+                                          default_options, plot_prep, make_materials,
+                                          BlendMoleculeSetup)
+    from molecular_blender.importers import molecule_from_file
     from molecular_blender.molecule import Atom, Bond, Molecule
     from molecular_blender.stylers import get_styler
     HAS_BPY = True
@@ -110,6 +113,25 @@ class TestBondOrders(unittest.TestCase):
         self.assertEqual(len(self.strand_centers(obj)), 1)
         self.assertAlmostEqual(obj.data.bevel_depth, 0.2)
 
+    def test_split_profiles_have_no_collapsed_faces(self):
+        # Bevel-factor trimming at a sampled midpoint used to duplicate an end
+        # ring on the first half. Its zero-area quads caused dark color streaks.
+        for order in (2, 3):
+            for bounds in ((0, 0.5), (0.5, 1)):
+                with self.subTest(order=order, bounds=bounds):
+                    obj = self.bond_curve((1, 2, 0))
+                    obj.data.resolution_u = 2
+                    obj.data.bevel_factor_start, obj.data.bevel_factor_end = bounds
+                    set_bond_order(obj, order, (2, -1, 0))
+                    bpy.context.view_layer.update()
+                    evaluated = obj.evaluated_get(bpy.context.evaluated_depsgraph_get())
+                    mesh = evaluated.to_mesh()
+                    try:
+                        self.assertTrue(mesh.polygons)
+                        self.assertTrue(all(p.area > 1e-10 for p in mesh.polygons))
+                    finally:
+                        evaluated.to_mesh_clear()
+
     def test_split_colors_and_hooks(self):
         atoms = [Atom('c', (0, 0, 0), 0), Atom('o', (1.3, 0, 0), 1)]
         mol = Molecule('multiple_bond_test', atoms)
@@ -130,3 +152,46 @@ class TestBondOrders(unittest.TestCase):
         bpy.data.objects[atoms[1].name].location.x += 1
         after = self.strand_centers(halves[1])
         self.assertGreater(sum(c.x for c in after) - sum(c.x for c in before), 1)
+
+    def test_sdf_import_to_extruded_geometry(self):
+        path = Path(__file__).resolve().parents[1] / 'examples' / 'bond_orders.sdf'
+        for style in ('sticks', 'fixedbs'):
+            with self.subTest(style=style):
+                molecule, _, options = BlendMoleculeSetup(
+                    bpy.context, str(path), plot_style=style, ignore_hydrogen=False,
+                    hook_atoms='on', bond_thickness=0.14)
+                self.assertEqual(options['plot_type'], 'frame')
+                self.assertEqual([b.order for b in molecule.bonds], [2, 1, 2, 1, 3, 1, 1, 1])
+                for bond in molecule.bonds:
+                    for name in bond.name:
+                        obj = bpy.data.objects[name]
+                        self.assertEqual(obj.type, 'CURVE')
+                        self.assertEqual(len(obj.modifiers), 2)
+                        self.assertEqual(len(self.strand_centers(obj)), bond.order)
+                    if bond.order == 2:
+                        # Planar fixture: separation stays in XY, perpendicular
+                        # to the bond, rather than sticking out of its plane.
+                        self.assertIsNotNone(bond.direction)
+                        self.assertAlmostEqual(bond.direction.z, 0)
+
+    def test_explicit_graph_overrides_distances(self):
+        path = Path(__file__).resolve().parents[1] / 'examples' / 'bond_orders.sdf'
+        data = molecule_from_file(str(path), {})
+        for i, atom in enumerate(data['atoms']):
+            atom['position'] = [10*i, 0, 0]
+        molecule = Molecule.from_dict('explicit_graph', data)
+        options = default_options({'plot_type': 'frame'})
+        molecule.determine_bonding(options)
+        self.assertEqual(len(molecule.bonds), 8)  # even far beyond distance cutoffs
+        molecule.determine_bonding(options)
+        self.assertEqual(len(molecule.bonds), 8)  # no duplicates on a second call
+        options['bonds'] = False
+        molecule.determine_bonding(options)
+        self.assertEqual(molecule.bonds, [])
+        data['bonds'] = []
+        for atom in data['atoms']:
+            atom['position'] = [0, 0, 0]
+        molecule = Molecule.from_dict('empty_graph', data)
+        options['bonds'] = True
+        molecule.determine_bonding(options)
+        self.assertEqual(molecule.bonds, [])  # explicit empty table is authoritative

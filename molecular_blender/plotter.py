@@ -113,6 +113,10 @@ def set_bond_order(obj, order, direction=None):
         curve.bevel_mode = 'OBJECT'
         curve.bevel_object = profile_obj
         curve.twist_mode = 'Z_UP'
+        # These centerlines are straight. With extra longitudinal samples,
+        # Blender's bevel-factor trimming can duplicate a ring at the midpoint.
+        # The resulting collapsed faces corrupt smooth normals at color splits.
+        curve.resolution_u = 1
     for p in points:
         p.tilt = tilt
     if (old_profile is not None

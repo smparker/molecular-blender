@@ -51,7 +51,7 @@ class Atom(object):
     """Collect information on single atom"""
 
     def __init__(self, symbol, position, index, name="", charge=0.0, gradient=None,
-                 trajectory=None, hidden=False):
+                 trajectory=None, hidden=False, formal_charge=0):
         """Create Atom"""
         self.element = elements[symbol]
         self.position = mathutils.Vector(position)
@@ -61,6 +61,7 @@ class Atom(object):
         self.gradient = mathutils.Vector(gradient if gradient is not None else [0.0, 0.0, 0.0])
         self.trajectory = trajectory if trajectory is not None else []
         self.hidden = hidden
+        self.formal_charge = formal_charge
 
     def __repr__(self):
         """String representation"""
@@ -72,7 +73,7 @@ class Atom(object):
         return cls(inp["symbol"], inp["position"], inp["index"], charge=inp["charge"],
                    gradient=inp["gradient"], trajectory=[
                        Snapshot.from_dict(x) for x in inp["trajectory"]],
-                   hidden=inp["hidden"])
+                   hidden=inp["hidden"], formal_charge=inp.get("formal_charge", 0))
 
 
 class Bond(object):
@@ -143,11 +144,12 @@ class Molecule(object):
     """Atoms and bonds form a molecule"""
 
     def __init__(self, name, atoms, volume=None, orbitals=None,
-            volume_trajectory=None, orbitals_trajectory=None):
+            volume_trajectory=None, orbitals_trajectory=None, bonds=None):
         """Create Molecule"""
         self.name = name
         self.atoms = atoms
         self.bonds = []
+        self.explicit_bonds = bonds
         self.rings = []
         self.materials = {}
         self.bond_materials = {}
@@ -168,7 +170,8 @@ class Molecule(object):
         mo_traj = [ MOData.from_dict(mo) for mo
                 in inp["orbital_trajectory" ] ] if "orbital_trajectory" in inp else None
         return cls(name, [Atom.from_dict(x) for x in inp["atoms"]], volume=vol, orbitals=modata,
-            volume_trajectory=vol_traj, orbitals_trajectory=mo_traj)
+            volume_trajectory=vol_traj, orbitals_trajectory=mo_traj,
+            bonds=inp.get("bonds"))
 
     def center_of_mass(self):
         """Computes center of mass from atoms list"""
@@ -183,12 +186,44 @@ class Molecule(object):
     @stopwatch("determine_bonding")
     def determine_bonding(self, options):
         """builds list of bonded pairs"""
+        self.bonds = []
         if not options["bonds"]:
             return
 
         atoms = self.atoms
         natoms = len(atoms)
         bondstyle = "universal" if options["universal_bonds"] else ""
+        if self.explicit_bonds is not None:
+            for entry in self.explicit_bonds:
+                i, j = entry["atoms"]
+                self.bonds.append(Bond(atoms[i], atoms[j], bondstyle, order=entry["order"]))
+            # Orientation comes from the explicit graph, without perceiving any
+            # additional bonds or bond orders. Use the strongest off-axis neighbor.
+            neighbors = {atom.index: [] for atom in atoms}
+            for bond in self.bonds:
+                neighbors[bond.iatom.index].append(bond.jatom)
+                neighbors[bond.jatom.index].append(bond.iatom)
+            for bond in self.bonds:
+                if bond.order == 1:
+                    continue
+                axis = bond.jatom.position - bond.iatom.position
+                if axis.length < 1e-8:
+                    raise ValueError("Explicit multiple bond has coincident endpoints")
+                axis.normalize()
+                candidates = []
+                for atom, other in ((bond.iatom, bond.jatom), (bond.jatom, bond.iatom)):
+                    for neighbor in neighbors[atom.index]:
+                        if neighbor is other:
+                            continue
+                        delta = neighbor.position - atom.position
+                        candidates.append(delta - axis * delta.dot(axis))
+                if candidates:
+                    direction = max(candidates, key=lambda v: v.length_squared)
+                    if direction.length > 1e-8:
+                        bond.direction = direction
+            if options["find_aromatic"]:
+                self.rings = find_planar_cycles(self)
+            return
         static = options["plot_type"] == "frame" or options["animate_bonds"] == "staticfirst"
 
         for i in range(natoms):

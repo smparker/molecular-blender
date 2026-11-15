@@ -58,7 +58,7 @@ if _HAS_BPY:
 
         # in the template, we'll figure it out later
         filter_glob: StringProperty(
-            default="*.xyz;*.molden;*molden.input;*.cube;*.cub;*.json",
+            default="*.xyz;*.sdf;*.sd;*.mol;*.molden;*molden.input;*.cube;*.cub;*.json",
             options={'HIDDEN'})
 
         ## Style Options

@@ -21,8 +21,50 @@ bevel object containing two or three circular profiles. Each strand has 70% of
 the single-bond radius, with a gap of 30% of that radius between strands. Stick
 model junction spheres widen at multiply bonded atoms to cover the strand ends.
 Single bonds retain their existing drawing behavior.
-Bond orders are currently explicit; importing a molecule still only perceives
-connectivity.
+Bond orders are currently explicit. SDF/MOL imports retain their bond tables;
+formats such as XYZ still infer connectivity only.
+
+### Importing bond orders from SDF/MOL
+
+The native reader supports `.sdf`, `.sd`, and `.mol` files with V2000 connection
+tables ([CTfile specification](https://www.daylight.com/meetings/mug05/Kappler/ctfile.pdf)).
+It reads coordinates in angstroms and explicit single, double, and triple bonds.
+The supplied bond table is authoritative, including when it is empty; distance
+cutoffs do not add or remove bonds. Neighboring atoms in that graph set the
+initial strand separation direction in the local molecular plane. Collinear or
+isolated bonds use the deterministic default orientation.
+
+Import through File > Import > Molecular Blender, or from Blender Python:
+
+```python
+from molecular_blender.plotter import BlendMoleculeSetup
+
+molecule, styler, options = BlendMoleculeSetup(
+    bpy.context, "examples/bond_orders.sdf",
+    plot_style="fixedbs", bond_thickness=0.14, ignore_hydrogen=False,
+)
+```
+
+An SDF can contain multiple records. The importer loads the first by default;
+pass `sdf_record=1` to load the second (zero-based indexing). Each selected record
+is a static model, not an animation. Hydrogen hiding preserves indices and
+connectivity. Formal charges are retained as `Atom.formal_charge`, separately
+from partial charges used by charge visualization.
+
+This first reader rejects V3000 and aromatic/query bond codes; aromatic molecules
+can be supplied with explicit alternating single/double bonds. Stereo, isotope,
+radical, S-group and SD data annotations are not interpreted. Implicit hydrogens
+are not generated.
+
+The example contains `O=CH-CH=CH-C#N` with all three bond orders. Render the same
+file as sticks and ball-and-stick models with:
+
+```bash
+blender --background --factory-startup --python examples/sdf_bonds.py -- \
+  --save /tmp/sdf_bonds.blend --render /tmp/sdf_bonds.png
+```
+
+### Setting bond orders in Python
 
 From Blender Python, an existing bond curve can be changed with:
 
