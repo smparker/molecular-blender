@@ -322,3 +322,9 @@ uses field metadata if available and otherwise defaults to scalar magnitude,
 so an untyped cube is not silently squared. Absolute-isovalue surfaces are
 unaffected by this setting. Python callers use `cube_field_type='orbital'`,
 `'density'`, `'signed'`, or `'auto'`.
+
+Surface calculations started from the import dialog run in a separate background
+Blender process. Escape stops that process, clears progress, and discards its
+results; the already imported atoms and bonds remain available. Deleting the
+molecule, opening another file, or disabling the addon also stops pending work.
+The synchronous `BlendMolecule` Python API continues to finish before returning.

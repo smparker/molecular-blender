@@ -43,7 +43,9 @@ if _HAS_BPY:
     from bpy.props import StringProperty, BoolProperty, EnumProperty, IntProperty, FloatProperty
     import bpy_extras
     from .plotter import BlendMolecule, BlendMoleculeSetup, compute_surface_vertex_sets, create_surface_meshes
-    import threading
+    from .surface_jobs import SurfaceJob, cancel_all_jobs
+    from bpy.app.handlers import persistent
+    cancel_all_jobs = persistent(cancel_all_jobs)
 
 bl_info = {  # pylint: disable=invalid-name
     "name": "Molecular Blender",
@@ -359,76 +361,78 @@ if _HAS_BPY:
             if not options.get("isosurfaces"):
                 return {'FINISHED'}
 
-            # Start background thread for isosurface computation
             self._molecule = molecule
             self._styler = styler
             self._options = options
-            self._result = {"vertex_sets": None, "vertex_trajectory_map": None, "error": None}
-            self._progress = {"completed": 0, "total": 1}
-
-            self._thread = threading.Thread(target=self._compute_isosurfaces, daemon=True)
-            self._thread.start()
-
-            wm = context.window_manager
-            self._timer = wm.event_timer_add(0.1, window=context.window)
-            wm.modal_handler_add(self)
-            wm.progress_begin(0, 100)
-            context.workspace.status_text_set("Molecular Blender: computing isosurfaces... (Esc to cancel)")
-
+            self._timer = None
+            self._job = None
+            self._cancelled = False
+            self._owner = bpy.data.objects.get(molecule.name)
+            self._collection = bpy.data.collections.get(molecule.name)
+            try:
+                self._job = SurfaceJob(bpy.app.binary_path, molecule.surface_input, options)
+                wm = context.window_manager
+                self._timer = wm.event_timer_add(0.1, window=context.window)
+                wm.modal_handler_add(self)
+                wm.progress_begin(0, 100)
+                context.workspace.status_text_set("Molecular Blender: computing isosurfaces... (Esc to cancel)")
+            except Exception as exc:
+                self.cancel(context)
+                self.report({'ERROR'}, str(exc))
+                return {'CANCELLED'}
             return {'RUNNING_MODAL'}
 
-        def _compute_isosurfaces(self):
-            """Run isosurface computation in background thread (no Blender API calls)."""
+        def _owner_exists(self):
             try:
-                vertex_sets, vertex_trajectory_map = compute_surface_vertex_sets(
-                    self._molecule, self._options, self._progress
-                )
-                self._result["vertex_sets"] = vertex_sets
-                self._result["vertex_trajectory_map"] = vertex_trajectory_map
-            except Exception as e:
-                self._result["error"] = str(e)
+                return (self._owner is not None and self._collection is not None
+                        and bpy.data.objects.get(self._owner.name) == self._owner
+                        and bpy.data.collections.get(self._collection.name) == self._collection)
+            except ReferenceError:
+                return False
 
-        def modal(self, context, event):
-            """Called by Blender's event loop while isosurface thread is running."""
-            if event.type != 'TIMER':
-                return {'PASS_THROUGH'}
-
-            wm = context.window_manager
-            total = self._progress.get("total", 1)
-            completed = self._progress.get("completed", 0)
-            wm.progress_update(int(completed / total * 100))
-
-            if self._thread.is_alive():
-                return {'RUNNING_MODAL'}
-
-            # Thread finished - clean up timer, progress bar, and status text
-            wm.event_timer_remove(self._timer)
-            self._timer = None
-            wm.progress_end()
-            context.workspace.status_text_set(None)
-
-            if self._result.get("error"):
-                self.report({'ERROR'}, self._result["error"])
-                return {'CANCELLED'}
-
-            try:
-                create_surface_meshes(
-                    self._molecule, self._styler, context, self._options,
-                    self._result["vertex_sets"], self._result["vertex_trajectory_map"]
-                )
-            except Exception as e:
-                self.report({'ERROR'}, str(e))
-                return {'CANCELLED'}
-
-            return {'FINISHED'}
-
-        def cancel(self, context):
-            """Called if operator is cancelled while modal (e.g. Escape key)."""
+        def _cleanup(self, context):
+            if self._job is not None:
+                self._job.close()
+                self._job = None
             if self._timer is not None:
                 context.window_manager.event_timer_remove(self._timer)
                 self._timer = None
             context.window_manager.progress_end()
-            context.workspace.status_text_set(None)
+            if context.workspace is not None:
+                context.workspace.status_text_set(None)
+
+        def modal(self, context, event):
+            if event.type == 'ESC' or self._cancelled or not self._owner_exists():
+                self.cancel(context)
+                return {'CANCELLED'}
+            if event.type != 'TIMER':
+                return {'PASS_THROUGH'}
+            try:
+                progress = self._job.progress()
+                context.window_manager.progress_update(
+                    int(100 * progress.get('completed', 0) / max(progress.get('total', 1), 1)))
+                if self._job.running:
+                    return {'RUNNING_MODAL'}
+                vertex_sets, trajectory_map = self._job.result()
+                # A renamed owner remains valid; scene generation uses these handles.
+                self._molecule.scene_owner = self._owner
+                self._molecule.scene_collection = self._collection
+                create_surface_meshes(self._molecule, self._styler, context,
+                                      self._options, vertex_sets, trajectory_map)
+            except Exception as exc:
+                self._cleanup(context)
+                self.report({'ERROR'}, str(exc))
+                return {'CANCELLED'}
+            finally:
+                if self._job is not None and not self._job.running:
+                    self._cleanup(context)
+            return {'FINISHED'}
+
+        def cancel(self, context):
+            self._cancelled = True
+            if self._job is not None:
+                self._job.cancel()
+            self._cleanup(context)
 
 
     def menu_func_import(self, _context):
@@ -442,11 +446,15 @@ def register():
     from bpy.utils import register_class
     register_class(MolecularBlender)
     bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
+    bpy.app.handlers.load_pre.append(cancel_all_jobs)
 
 def unregister():
     if not _HAS_BPY:
         raise ImportError("unregister() requires bpy (must be run inside Blender)")
     from bpy.utils import unregister_class
+    cancel_all_jobs()
+    if cancel_all_jobs in bpy.app.handlers.load_pre:
+        bpy.app.handlers.load_pre.remove(cancel_all_jobs)
     unregister_class(MolecularBlender)
     bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
 

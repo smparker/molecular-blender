@@ -723,7 +723,7 @@ def create_geometry(verts):
 
 
 def compute_surface_vertex_sets(molecule, options, progress_state=None):
-    """Compute isosurface triangle data. No Blender API calls - safe to run in a background thread.
+    """Compute isosurface triangle data, synchronously or in an isolated worker process.
 
     progress_state is an optional dict with keys 'completed' and 'total' that this function
     updates as isosurfaces are computed, for use by a modal progress bar.
@@ -823,9 +823,9 @@ def create_surface_meshes(molecule, styler, context, options, vertex_sets, verte
     if not vertex_sets:
         return
 
-    molecule_collection = bpy.data.collections[molecule.name]
+    molecule_collection = getattr(molecule, "scene_collection", None) or bpy.data.collections[molecule.name]
     materials = make_iso_materials(molecule, styler, vertex_sets, options)
-    mol_obj = bpy.data.objects[molecule.name]
+    mol_obj = getattr(molecule, "scene_owner", None) or bpy.data.objects[molecule.name]
 
     meshes = []
     function_names = set([v["name"] for v in vertex_sets])
@@ -987,7 +987,9 @@ def BlendMoleculeSetup(context, filename, **options):
     """
     options = default_options(options)
     name = filename.rsplit('.', 1)[0].rsplit('/')[-1]
-    molecule = Molecule.from_dict(name, molecule_from_file(filename, options))
+    input_data = molecule_from_file(filename, options)
+    molecule = Molecule.from_dict(name, input_data)
+    molecule.surface_input = input_data
     molecule.determine_bonding(options)
     styler = get_styler(options)
 
