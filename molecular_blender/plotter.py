@@ -777,41 +777,12 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None):
 
     elif molecule.orbitals is not None:  # orbital data was read
         orbitals = molecule.orbitals
-        homo = orbitals.homo()
-        lumo = homo + 1
-        orbnames = ([options["volume"]] if options["volume"] in ("density", "alpha", "beta", "spin") else
-                    [x.strip() for x in options["orbital"].split(',')])
-        orblist = []
-        for o in orbnames:
-            neworb = None
-
-            if o == "homo":
-                neworb = homo
-            elif o == "lumo":
-                neworb = lumo
-
-            mh = re.fullmatch(r"homo\s*-\s*([0-9]+)", o)
-            if mh:
-                neworb = homo - int(mh.group(1))
-            ml = re.fullmatch(r"lumo\s*\+\s*([0-9]+)", o)
-            if ml:
-                neworb = lumo + int(ml.group(1))
-
-            # Symbolic expressions resolve to absolute indices. Do not let a
-            # result of zero/negative re-enter the HOMO-relative API and wrap.
-            if neworb is not None and not 1 <= neworb <= orbitals.coeff.shape[0]:
-                raise ValueError('Orbital expression {!r} is out of range (1..{})'.format(
-                    o, orbitals.coeff.shape[0]))
-            if orbitals.is_density(o):
-                neworb = o
-
-            if neworb is None:
-                try:
-                    neworb = int(o)
-                except ValueError:
-                    raise ValueError(f"Could not understand orbital {o!r}; use an integer, HOMO/LUMO expression, or a known density name")
-
-            orblist.append(neworb)
+        channel = options.get('orbital_spin', 'all')
+        channel = None if channel == 'all' else channel
+        orbnames = ([options["volume"]] if options["volume"] in ('density', 'alpha', 'beta', 'spin') else
+                    [x.strip().lower() for x in options['orbital'].split(',')])
+        orblist = [name if orbitals.is_density(name) else orbitals.resolve_orbital(name, channel)
+                   for name in orbnames]
 
         isovals = options["isovalues"]
         resolution = options["resolution"]
@@ -822,7 +793,7 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None):
                     return [], levels
                 field = model.get_density(name)
             else:
-                field = model.get_orbital(number)
+                field = model.get_orbital(model.resolve_orbital(name, channel))
             if levels is None:
                 levels = field.isovalue_containing_proportion(isovals) if options['cumulative'] else isovals
             return molden_isosurface(field, levels, resolution, label), levels
@@ -961,6 +932,7 @@ def default_options(options):
                 "cube_dataset": 0,
                 "cube_field_type": "auto",
                 "orbital": "homo",
+                "orbital_spin": "all",
                 "remesh" : 6,
                 "resolution": 0.05,
                 "colors": "default"

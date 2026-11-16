@@ -295,7 +295,30 @@ Orbital requests use positive one-based indices or HOMO-relative offsets
 error. Occupations must be finite and within `[0, 2]`. Missing spin labels allow
 a visualization alpha default. For a single spatial-orbital set (maximum
 occupation above 1), alpha fills first up to 1 and the remainder goes to beta;
-a Beta-only set reverses that majority convention. Thus doubly occupied
+A Beta-labelled spatial orbital reverses that majority convention. Thus doubly occupied
 orbitals contribute equally to both spins. Fractional occupations are retained
 in densities. These defaults are visualization heuristics, not a determination
 of the wavefunction type.
+
+### Density and frontier selection
+
+The **Volume** selector offers total, alpha, beta, and alpha-minus-beta spin
+density. Closed-shell zero spin produces no surface. Missing spin labels use
+the visualization defaults above; no additional input is required.
+
+For frontier names, the occupation scale is 1 when the maximum occupation is
+at most 1, otherwise 2. Occupations strictly above half that scale are occupied;
+exactly half and lower are empty. Actual density weights remain fractional.
+HOMO is the highest-energy occupied orbital and LUMO the lowest-energy empty
+orbital. If energy metadata is incomplete in a channel, selection uses input
+order for that channel. `homo-N` and `lumo+N` traverse occupied/empty candidates
+in that order. **Orbital spin** chooses alpha/beta, or use `alpha:homo` and
+`beta:lumo+1`. Positive numeric selections always use the original one-based
+file index regardless of spin selection.
+
+**Cube field type** controls cumulative integration: orbital amplitude uses
+squared values; density and signed scalar fields use absolute magnitude. Auto
+uses field metadata if available and otherwise defaults to scalar magnitude,
+so an untyped cube is not silently squared. Absolute-isovalue surfaces are
+unaffected by this setting. Python callers use `cube_field_type='orbital'`,
+`'density'`, `'signed'`, or `'auto'`.

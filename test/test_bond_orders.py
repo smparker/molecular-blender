@@ -359,6 +359,24 @@ class TestBondOrders(unittest.TestCase):
                 self.assertEqual(surfaces[0]['name'], mode)
             self.assertEqual(progress, {'total': 1, 'completed': 1})
 
+    def test_spin_frontier_control_selects_the_matching_input_orbital(self):
+        from unittest.mock import patch
+        from molecular_blender.orbitals import MOData
+        from molecular_blender.plotter import compute_surface_vertex_sets
+        root = Path(__file__).resolve().parents[1]
+        data = molecule_from_file(str(root / 'examples/water-sto-3g.molden'), {})
+        molecule = Molecule.from_dict('spin_frontier', data)
+        base = molecule.orbitals
+        molecule.orbitals = MOData(base.shells, base.coeff[:4], 2, [1.,0.,1.,0.],
+                                   ['Alpha','Alpha','Beta','Beta'], energies=[-1.,1.,-2.,2.])
+        options = default_options({'orbital': 'homo', 'orbital_spin': 'beta',
+                                   'isosurfaces': True, 'isovalues': [.1], 'cumulative': False})
+        with patch('molecular_blender.plotter.molden_isosurface', return_value=[]) as generate:
+            compute_surface_vertex_sets(molecule, options)
+        selected = generate.call_args[0][0]
+        expected = molecule.orbitals.get_orbital(3)
+        self.assertAlmostEqual(selected.value(0., .1, .2), expected.value(0., .1, .2))
+
     def test_importer_bond_order_toggle(self):
         from types import SimpleNamespace
         from molecular_blender import MolecularBlender

@@ -181,6 +181,11 @@ if _HAS_BPY:
             name="Cube dataset index", description="Zero-based dataset index within a cube file",
             default=0, min=0)
 
+        orbital_spin: EnumProperty(
+            name="Orbital spin", description="Channel for frontier-orbital names; explicit numbers always use file indices",
+            items=(('all', 'All', 'All orbitals'), ('alpha', 'Alpha', 'Alpha frontier orbitals'),
+                   ('beta', 'Beta', 'Beta frontier orbitals')), default='all')
+
         orbital: StringProperty(
             name="Orbital",
             description="Plot this orbital from molden file. Accepts comma separated list, homo-n, lumo+m. (ignored for other inputs)",
@@ -287,6 +292,7 @@ if _HAS_BPY:
             box.row().prop(self, "cube_dataset")
             box.row().prop(self, "cube_field_type")
             box.row().prop(self, "orbital")
+            box.row().prop(self, "orbital_spin")
             box.row().prop(self, "resolution")
             box.row().prop(self, "remesh")
             box.row().prop(self, "orca_fix")
@@ -335,6 +341,7 @@ if _HAS_BPY:
                 cube_dataset=self.cube_dataset,
                 cube_field_type=self.cube_field_type,
                 orbital=self.orbital,
+                orbital_spin=self.orbital_spin,
                 resolution=self.resolution,
                 remesh=self.remesh,
                 orca_fix=self.orca_fix,

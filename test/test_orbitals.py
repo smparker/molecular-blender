@@ -280,8 +280,10 @@ class TestPopulationValidation(unittest.TestCase):
         beta = population.get_density('beta').box_values(xyz, xyz, xyz)
         total = population.get_density().box_values(xyz, xyz, xyz)
         np.testing.assert_allclose(alpha + beta, total, atol=1e-6)
-        with self.assertRaisesRegex(ValueError, 'greater than 1'):
-            MOData(data.shells, coeff, 2, [1.5, .5], ['Alpha', 'Beta'])
+        spatial = MOData(data.shells, coeff, 2, [1.5, .5], ['Alpha', 'Beta'])
+        alpha_weights, beta_weights = spatial.spin_populations()
+        np.testing.assert_allclose(alpha_weights, [1., 0.])
+        np.testing.assert_allclose(beta_weights, [.5, .5])
         population.occupations[0] = float('nan')
         with self.assertRaisesRegex(ValueError, 'finite'):
             population.get_density()
@@ -298,3 +300,40 @@ class TestRestrictedPopulations(unittest.TestCase):
             np.testing.assert_allclose(alpha + beta, [2., 1.5, .5])
             np.testing.assert_allclose(data.density_matrix('alpha')[0] + data.density_matrix('beta')[0],
                                        data.density_matrix()[0], atol=1e-7)
+
+
+class TestFrontierSelection(unittest.TestCase):
+    def data(self, occupations, spins=None, energies=None):
+        base = MOData.from_dict(molecule_from_file(os.path.join(EXAMPLES, 'water-sto-3g.molden'), {}))
+        return MOData(base.shells, base.coeff[:len(occupations)], sum(o > 0 for o in occupations),
+                      occupations, spins, energies=energies)
+
+    def test_half_rule_unsorted_energies_and_manual_indices(self):
+        data = self.data([.4, .8, .5, 1.], energies=[1., -2., 0., -1.])
+        self.assertEqual(data.homo(), 4)
+        self.assertEqual(data.lumo(), 3)  # exactly half is empty
+        self.assertEqual(data.resolve_orbital('homo-1'), 2)
+        self.assertEqual(data.resolve_orbital('lumo+1'), 1)
+        self.assertEqual(data.resolve_orbital('1', 'beta'), 1)
+        data = self.data([.9, 2., 1.], energies=[1., -1., 0.])
+        self.assertEqual(data.occupation_scale, 2)
+        self.assertEqual(data.homo(), 2)
+        self.assertEqual(data.lumo(), 3)
+
+    def test_spin_channels_and_missing_energy_fallback(self):
+        data = self.data([1., 0., .6, .2], ['Alpha', 'Alpha', 'Beta', 'Beta'], [-1., 1., -2., 2.])
+        self.assertEqual(data.resolve_orbital('alpha:homo'), 1)
+        self.assertEqual(data.resolve_orbital('beta:lumo'), 4)
+        self.assertEqual(data.homo('beta'), 3)
+        data = self.data([0., 1., 0.], energies=[9., None, -1.])
+        self.assertEqual(data.homo(), 2)
+        self.assertEqual(data.lumo(), 1)  # whole-channel input-order fallback
+        with self.assertRaises(ValueError):
+            data.resolve_orbital('homo-99')
+
+    def test_closed_and_open_spatial_channels(self):
+        data = self.data([2., 1., 0.], ['Alpha']*3, [-2., -1., 0.])
+        self.assertEqual(data.homo('alpha'), 2)
+        self.assertEqual(data.homo('beta'), 1)
+        self.assertEqual(data.lumo('alpha'), 3)
+        self.assertEqual(data.lumo('beta'), 2)

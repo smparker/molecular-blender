@@ -20,6 +20,7 @@
 #  along with Molecular Blender; see COPYING.
 #  If not, see <http://www.gnu.org/licenses/>.
 #
+import re
 import numpy as np
 
 from .compute_ao import *
@@ -79,24 +80,77 @@ class MOData:
             return occupations, None
         if any(label is None for label in labels):
             raise ValueError('Spin labels are incomplete; provide Alpha/Beta for every orbital or omit all labels')
-        if len(set(labels)) > 1 and np.any(occupations > 1):
-            raise ValueError('Spin-resolved Alpha/Beta orbitals cannot have occupations greater than 1')
         return occupations, tuple(labels)
 
-    def homo(self):
-        return self.nocc
+    def _frontier_candidates(self, spin=None):
+        if spin not in (None, 'alpha', 'beta'):
+            raise ValueError('Orbital spin must be alpha, beta, or omitted')
+        weights = self.occupations
+        capacity = self.occupation_scale
+        indices = list(range(len(weights)))
+        if spin is not None:
+            weights = self.spin_populations()[0 if spin == 'alpha' else 1]
+            capacity = 1.
+            if self.occupation_scale == 1:
+                labels = self.spins or ('Alpha',) * len(weights)
+                indices = [i for i in indices if labels[i].lower() == spin]
+        # Fall back to input order as a whole when energy metadata is incomplete.
+        if all(self.energies[i] is not None and np.isfinite(self.energies[i]) for i in indices):
+            indices.sort(key=lambda i: (self.energies[i], i))
+        occupied = [i for i in indices if weights[i] > capacity / 2]
+        empty = [i for i in indices if weights[i] <= capacity / 2]
+        return occupied, empty
 
-    def get_orbital(self, iorb):
-        """Select a one-based orbital, or HOMO-relative offset (0 = HOMO)."""
+    def frontier(self, kind='homo', spin=None, offset=0):
+        """Return a one-based input index using the half-occupation heuristic."""
+        if kind not in ('homo', 'lumo') or isinstance(offset, bool) or not isinstance(offset, (int, np.integer)) or offset < 0:
+            raise ValueError('Invalid frontier kind or offset')
+        occupied, empty = self._frontier_candidates(spin)
+        candidates = occupied[::-1] if kind == 'homo' else empty
+        if offset >= len(candidates):
+            raise ValueError('Orbital expression {}{} is out of range: no matching {} orbital'.format(
+                (spin + ':') if spin else '', kind, 'occupied' if kind == 'homo' else 'empty'))
+        return candidates[offset] + 1
+
+    def homo(self, spin=None):
+        return self.frontier('homo', spin)
+
+    def lumo(self, spin=None):
+        return self.frontier('lumo', spin)
+
+    def resolve_orbital(self, expression, spin=None):
+        """Resolve e.g. beta:lumo+1; explicit positive numbers remain input indices."""
+        text = str(expression).strip().lower()
+        match = re.fullmatch(r'(?:(alpha|beta):)?(homo|lumo)(?:\s*([-+])\s*(\d+))?', text)
+        if match:
+            channel, kind, sign, offset = match.groups()
+            if sign is not None and sign != ('-' if kind == 'homo' else '+'):
+                raise ValueError('Use homo-N or lumo+N')
+            return self.frontier(kind, channel or spin, int(offset or 0))
+        try:
+            number = int(text)
+        except ValueError as exc:
+            raise ValueError('Could not understand orbital {!r}'.format(expression)) from exc
+        self._orbital_index(number, spin)
+        return number if number > 0 else self.frontier('homo', spin, -number)
+
+    def _orbital_index(self, iorb, spin=None):
         if isinstance(iorb, (bool, np.bool_)) or not isinstance(iorb, (int, np.integer)):
-            raise ValueError('Orbital index must be an integer: positive indices are one-based, 0 means HOMO')
-        if iorb <= 0 and self.nocc == 0:
-            raise ValueError('HOMO-relative orbital selection requires an occupied orbital')
-        i = (iorb if iorb > 0 else self.nocc + iorb) - 1
-        if not 0 <= i < self.coeff.shape[0]:
+            raise ValueError('Orbital index must be an integer')
+        if iorb <= 0:
+            if self.nocc == 0:
+                raise ValueError('HOMO-relative orbital selection requires an occupied orbital')
+            try:
+                iorb = self.frontier('homo', spin, -int(iorb))
+            except ValueError as exc:
+                raise ValueError('Orbital index {} is out of range for occupied orbitals'.format(iorb)) from exc
+        if not 1 <= iorb <= self.coeff.shape[0]:
             raise ValueError('Orbital index {} is out of range; available absolute indices are 1..{}'.format(
                 iorb, self.coeff.shape[0]))
-        return OrbitalCalculater(self.shells, self.coeff[i, :])
+        return int(iorb)-1
+
+    def get_orbital(self, iorb, spin=None):
+        return OrbitalCalculater(self.shells, self.coeff[self._orbital_index(iorb, spin), :])
 
     @property
     def occupation_scale(self):
@@ -106,8 +160,8 @@ class MOData:
     def spin_populations(self):
         """Conserve actual populations, filling the majority spin first for spatial MOs.
 
-        Single-set spatial orbitals default to alpha majority (beta when every
-        supplied label is Beta). Missing spin labels default to alpha. These
+        Spatial orbitals default to alpha majority; a Beta label reverses the
+        majority for that orbital. Missing spin labels default to alpha. These
         are visualization defaults, not inferred wavefunction provenance.
         """
         occupations, spins = self._validate_populations(
@@ -115,7 +169,8 @@ class MOData:
         if self.occupation_scale == 2:
             majority = np.minimum(occupations, 1.)
             minority = np.maximum(occupations - 1., 0.)
-            return (minority, majority) if spins and set(spins) == {'Beta'} else (majority, minority)
+            beta_majority = np.array(spins or ('Alpha',) * len(occupations)) == 'Beta'
+            return np.where(beta_majority, minority, majority), np.where(beta_majority, majority, minority)
         labels = np.array(spins if spins is not None else ['Alpha'] * len(occupations))
         return np.where(labels == 'Alpha', occupations, 0.), np.where(labels == 'Beta', occupations, 0.)
 
