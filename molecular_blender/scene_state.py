@@ -133,6 +133,12 @@ def persist_molecule(molecule, source, settings):
                 obj['mb_endpoints'] = entry['atoms']
                 obj['mb_order'] = entry['order'] if settings['draw_bond_orders'] else 1
                 obj['mb_radius'] = obj.data.bevel_depth
+                obj['mb_nominal_radius'] = settings['bond_thickness']
+                if settings['plot_style'] == 'sticks' and obj.active_material is not None:
+                    for symbol, material_name in molecule.materials.items():
+                        if obj.active_material.name == material_name:
+                            obj['mb_element'] = symbol
+                            break
     return owner
 
 

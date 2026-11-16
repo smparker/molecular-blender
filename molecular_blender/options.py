@@ -36,7 +36,7 @@ DEFAULTS = {"bonds": True,
 
 
 # Additional reader controls also belong to saved settings.
-DEFAULTS.update(orca_fix=False, sdf_record=0)
+DEFAULTS.update(orca_fix=False, sdf_record=0, atom_scale=1.0, surface_opacity=1.0)
 ENUMS = {
     'hook_atoms': ('auto', 'on', 'off'),
     'plot_style': ('vdw', 'bs', 'fixedbs', 'sticks'),
@@ -83,6 +83,10 @@ def validated_options(values):
     for name in ('bond_thickness', 'cube_dataset', 'sdf_record', 'remesh'):
         if out[name] < 0:
             raise ValueError(name + ' must not be negative')
+    if out['atom_scale'] <= 0:
+        raise ValueError('Atom size multiplier must be positive')
+    if not 0 <= out['surface_opacity'] <= 1:
+        raise ValueError('Surface opacity must be between zero and one')
     if out['isovalues'].strip():
         try:
             levels = [float(v) for v in out['isovalues'].split(',')]

@@ -73,6 +73,8 @@ class MB_PT_molecule(bpy.types.Panel):
         if not orbitals and fields is None:
             box.label(text='No orbital or grid data')
         box.label(text='Displayed surfaces: {}'.format(summary['surfaces']))
+        if summary['object_type'] != 'wireframe':
+            layout.operator('molecular_blender.restyle', text='Restyle molecule…')
 
 
 def register():

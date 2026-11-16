@@ -447,8 +447,9 @@ def register():
     register_class(MolecularBlender)
     bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
     bpy.app.handlers.load_pre.append(cancel_all_jobs)
-    from . import scene_state, scene_panel
+    from . import scene_state, scene_panel, scene_edit
     scene_state.register()
+    scene_edit.register()
     scene_panel.register()
 
 def unregister():
@@ -456,8 +457,9 @@ def unregister():
         raise ImportError("unregister() requires bpy (must be run inside Blender)")
     from bpy.utils import unregister_class
     cancel_all_jobs()
-    from . import scene_state, scene_panel
+    from . import scene_state, scene_panel, scene_edit
     scene_panel.unregister()
+    scene_edit.unregister()
     scene_state.unregister()
     if cancel_all_jobs in bpy.app.handlers.load_pre:
         bpy.app.handlers.load_pre.remove(cancel_all_jobs)

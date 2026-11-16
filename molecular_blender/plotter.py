@@ -122,7 +122,8 @@ def set_bond_order(obj, order, direction=None):
         p.tilt = tilt
     if (old_profile is not None
             and old_profile.users == int(old_profile.use_fake_user)
-            and old_profile.get("molecular_blender_bond_profile")):
+            and old_profile.get("molecular_blender_bond_profile")
+            and not any(c.bevel_object == old_profile for c in bpy.data.curves)):
         old_data = old_profile.data
         bpy.data.objects.remove(old_profile)
         if old_data.users == 0:
@@ -864,6 +865,15 @@ def create_surface_meshes(molecule, styler, context, options, vertex_sets, verte
         from .scene_state import persist_surface
         for definition in vertex_sets:
             persist_surface(molecule, definition['mesh'], definition)
+        if options.get('surface_opacity', 1.0) != 1.0:
+            from .scene_edit import _set_opacity
+            for definition in vertex_sets:
+                obj = definition['mesh']
+                material = obj.active_material.copy()
+                material['mb_style_material'] = True
+                obj.material_slots[0].link = 'OBJECT'
+                obj.material_slots[0].material = material
+                _set_opacity(material, options['surface_opacity'])
 
     if vertex_trajectory_map:
         for frame in vertex_trajectory_map:
@@ -992,6 +1002,12 @@ def BlendMoleculeSetup(context, filename, **options):
 
     from .scene_state import persist_molecule
     persist_molecule(molecule, filename, molecule.settings)
+    if molecule.settings.get('atom_scale', 1.0) != 1.0:
+        from .scene_edit import restyle_molecule
+        restyle_molecule(molecule.scene_owner, atom_scale=molecule.settings['atom_scale'],
+                         bond_thickness=molecule.settings['bond_thickness'],
+                         colors=molecule.settings['colors'],
+                         surface_opacity=molecule.settings.get('surface_opacity', 1.0))
     return molecule, styler, options
 
 

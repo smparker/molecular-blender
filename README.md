@@ -344,3 +344,11 @@ coordinate units, charge setting, representation, and available scientific data.
 Inspection uses the saved record and does not recalculate surfaces or reread the
 source. The charge setting is the requested molecular charge for perception;
 it is distinct from each atom's partial charge.
+
+Choose **Restyle molecule…** in that sidebar to change atom size, bond thickness,
+palette, and surface opacity. Apply acts on the whole owning molecule and supports
+Blender Undo/Redo. Linked duplicates and recycled materials are isolated on edit;
+multiple-bond profiles and stick junctions follow the new thickness. Surface
+opacity wraps the existing shader without recomputing the field or mesh.
+Individual atom/bond restyling is available for mesh, NURBS, and metaball imports;
+wireframe imports remain inspectable. Use positive bond thickness when restyling.
