@@ -168,6 +168,15 @@ if _HAS_BPY:
                    ('orbital', 'orbital', "Plot orbitals (positive and negative isovalues)")),
             default='orbital')
 
+        cube_field_type: EnumProperty(
+            name="Cube field type",
+            description="How cumulative cube surfaces integrate values",
+            items=(('auto', 'Auto / scalar magnitude', 'Use file metadata; untyped fields integrate absolute magnitude'),
+                   ('orbital', 'Orbital amplitude', 'Integrate squared amplitude'),
+                   ('density', 'Density', 'Integrate absolute density'),
+                   ('signed', 'Signed scalar', 'Integrate absolute field magnitude')),
+            default='auto')
+
         cube_dataset: IntProperty(
             name="Cube dataset index", description="Zero-based dataset index within a cube file",
             default=0, min=0)
@@ -276,6 +285,7 @@ if _HAS_BPY:
             if self.volume in {"alpha", "beta", "spin"}:
                 box.label(text="Spin populations use labels and occupation-based defaults")
             box.row().prop(self, "cube_dataset")
+            box.row().prop(self, "cube_field_type")
             box.row().prop(self, "orbital")
             box.row().prop(self, "resolution")
             box.row().prop(self, "remesh")
@@ -323,6 +333,7 @@ if _HAS_BPY:
                 cumulative=self.cumulative,
                 volume=self.volume,
                 cube_dataset=self.cube_dataset,
+                cube_field_type=self.cube_field_type,
                 orbital=self.orbital,
                 resolution=self.resolution,
                 remesh=self.remesh,

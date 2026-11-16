@@ -121,12 +121,13 @@ class Bond(object):
 class VolumeData(object):
     """Stores volumetric information from, for example, a cube file"""
 
-    def __init__(self, origin, axes, nres, data, datasets=None, labels=None, dataset_index=0, comments=None):
+    def __init__(self, origin, axes, nres, data, datasets=None, labels=None, dataset_index=0, comments=None, field_type="unknown"):
         """Create Volumetric data storage"""
         self.origin = origin
         self.axes = axes
         self.nres = nres
         self.comments = tuple(comments or ())
+        self.field_type = field_type
         self.datasets = np.asarray(data)[..., None] if datasets is None else np.asarray(datasets)
         self.labels = list(range(self.datasets.shape[-1])) if labels is None else list(labels)
         if self.datasets.shape != tuple(nres) + (len(self.labels),):
@@ -135,7 +136,7 @@ class VolumeData(object):
 
         self.axis_norms = np.array(
             [np.linalg.norm(self.axes[:, i]) for i in range(3)], dtype=np.float32)
-        self.dvol = np.prod(self.axis_norms)
+        self.dvol = abs(float(np.linalg.det(np.asarray(self.axes, dtype=float))))
 
     def select_dataset(self, index):
         """Select a zero-based dataset while preserving all other fields."""
@@ -144,14 +145,18 @@ class VolumeData(object):
         self.dataset_index = int(index)
         self.data = np.ascontiguousarray(self.datasets[..., index])
 
-    def isovalue_containing_proportion(self, values=[0.90]):
-        return isovalue_containing_proportion(values, self.data, self.dvol)
+    def isovalue_containing_proportion(self, values=[0.90], field_type='auto'):
+        """Untyped scalar fields integrate magnitude; orbital amplitude integrates its square."""
+        kind = self.field_type if field_type == 'auto' else field_type
+        if kind not in ('orbital', 'density', 'signed', 'unknown'):
+            raise ValueError('Cube field type must be auto, orbital, density, or signed')
+        return isovalue_containing_proportion(values, self.data, self.dvol, square=(kind == 'orbital'))
 
     @classmethod
     def from_dict(cls, inp):
         """Build VolumeData from dictionary"""
         return cls(inp["origin"], inp["axes"], inp["nres"], inp["data"],
-                   inp.get('datasets'), inp.get('labels'), inp.get('dataset_index', 0), inp.get('comments'))
+                   inp.get('datasets'), inp.get('labels'), inp.get('dataset_index', 0), inp.get('comments'), inp.get('field_type', 'unknown'))
 
 
 class Molecule(object):

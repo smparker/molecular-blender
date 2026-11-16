@@ -757,7 +757,7 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None):
         vol.select_dataset(options.get("cube_dataset", 0))
         isovals = options["isovalues"]
         if options["cumulative"]:
-            isovals = vol.isovalue_containing_proportion(isovals)
+            isovals = vol.isovalue_containing_proportion(isovals, options.get("cube_field_type", "auto"))
 
         vsets = cube_isosurface(vol.data, vol.origin, vol.axes, isovals, name="cube")
         tick()
@@ -959,6 +959,7 @@ def default_options(options):
                 "cumulative": True,
                 "volume": "orbital",
                 "cube_dataset": 0,
+                "cube_field_type": "auto",
                 "orbital": "homo",
                 "remesh" : 6,
                 "resolution": 0.05,

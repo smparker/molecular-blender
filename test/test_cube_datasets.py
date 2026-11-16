@@ -61,3 +61,26 @@ class TestCubeDatasets(unittest.TestCase):
         self.assertGreater(len(surfaces[0]['triangles']), 0)
         self.assertEqual(molecule.volume.dataset_index, 1)
         np.testing.assert_array_equal(molecule.volume.datasets[..., 0], 0)
+
+
+    def test_explicit_containment_semantics_and_voxel_volume(self):
+        try:
+            import bpy
+        except ImportError:
+            self.skipTest('requires Blender')
+        from molecular_blender.molecule import VolumeData
+        from molecular_blender.containing_isovalues import isovalue_containing_proportion
+        data = np.arange(1, 9, dtype=np.float32).reshape(2, 2, 2)
+        axes = np.array([[1., 1., 0.], [-2., 2., 0.], [0., 0., 3.]])
+        volume = VolumeData(np.zeros(3), axes, [2,2,2], data)
+        self.assertAlmostEqual(volume.dvol, 12.)
+        for kind, square in (('auto', False), ('orbital', True), ('density', False), ('signed', False)):
+            expected = isovalue_containing_proportion([.5], data, 12., square=square)
+            self.assertEqual(volume.isovalue_containing_proportion([.5], kind), expected)
+        self.assertNotEqual(volume.isovalue_containing_proportion([.5], 'orbital'),
+                            volume.isovalue_containing_proportion([.5], 'density'))
+        volume.field_type = 'orbital'
+        self.assertEqual(volume.isovalue_containing_proportion([.5]),
+                         volume.isovalue_containing_proportion([.5], 'orbital'))
+        with self.assertRaises(ValueError):
+            volume.isovalue_containing_proportion([.5], 'typo')
