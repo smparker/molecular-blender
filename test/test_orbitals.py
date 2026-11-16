@@ -252,22 +252,23 @@ class TestPopulationValidation(unittest.TestCase):
             with self.assertRaises(ValueError):
                 MOData(data.shells, data.coeff, data.nocc, occupations, spins)
 
-    def test_missing_labels_allow_only_total_density(self):
+    def test_missing_labels_use_visualization_defaults(self):
         for orbital in self.geo['mo']:
             orbital.pop('spin', None)
         data = MOData.from_dict(self.geo)
         self.assertIsNone(data.spins)
         self.assertIsNotNone(data.get_density())
-        for name in ('alpha', 'beta', 'spin'):
-            with self.assertRaisesRegex(ValueError, 'requires spin labels'):
-                data.get_density(name)
+        alpha, beta = data.spin_populations()
+        np.testing.assert_array_equal(alpha + beta, data.occupations)
+        np.testing.assert_array_equal(alpha, beta)
 
     def test_restricted_input_is_not_silently_treated_as_all_alpha(self):
         data = MOData.from_dict(self.geo)
         self.assertIsNotNone(data.get_density())
-        for name in ('alpha', 'beta', 'spin'):
-            with self.assertRaisesRegex(ValueError, 'restricted spatial orbitals'):
-                data.get_density(name)
+        alpha, beta = data.spin_populations()
+        np.testing.assert_array_equal(alpha, beta)
+        np.testing.assert_array_equal(data.density_matrix('spin')[0], 0)
+        np.testing.assert_allclose(data.density_matrix('alpha')[0] * 2, data.density_matrix()[0])
 
     def test_fractional_spin_populations_and_normalization(self):
         data = MOData.from_dict(self.geo)
@@ -284,3 +285,16 @@ class TestPopulationValidation(unittest.TestCase):
         population.occupations[0] = float('nan')
         with self.assertRaisesRegex(ValueError, 'finite'):
             population.get_density()
+
+
+class TestRestrictedPopulations(unittest.TestCase):
+    def test_open_shell_fractional_and_beta_majority(self):
+        base = MOData.from_dict(molecule_from_file(os.path.join(EXAMPLES, 'water-sto-3g.molden'), {}))
+        for labels, expected in ((['Alpha']*3, [1., 1., .5]), (None, [1., 1., .5]),
+                                 (['Beta']*3, [1., .5, 0.])):
+            data = MOData(base.shells, base.coeff[:3], 3, [2., 1.5, .5], labels)
+            alpha, beta = data.spin_populations()
+            np.testing.assert_allclose(alpha, expected)
+            np.testing.assert_allclose(alpha + beta, [2., 1.5, .5])
+            np.testing.assert_allclose(data.density_matrix('alpha')[0] + data.density_matrix('beta')[0],
+                                       data.density_matrix()[0], atol=1e-7)

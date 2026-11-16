@@ -79,7 +79,7 @@ class MOData:
             return occupations, None
         if any(label is None for label in labels):
             raise ValueError('Spin labels are incomplete; provide Alpha/Beta for every orbital or omit all labels')
-        if 'Beta' in labels and np.any(occupations > 1):
+        if len(set(labels)) > 1 and np.any(occupations > 1):
             raise ValueError('Spin-resolved Alpha/Beta orbitals cannot have occupations greater than 1')
         return occupations, tuple(labels)
 
@@ -98,44 +98,46 @@ class MOData:
                 iorb, self.coeff.shape[0]))
         return OrbitalCalculater(self.shells, self.coeff[i, :])
 
-    def get_density(self, densityname="density"):
-        """Returns DensityCalculater for a known density name."""
+    @property
+    def occupation_scale(self):
+        """Visualization heuristic: infer spin (1) or spatial (2) occupations."""
+        return 2.0 if np.any(self.occupations > 1) else 1.0
+
+    def spin_populations(self):
+        """Conserve actual populations, filling the majority spin first for spatial MOs.
+
+        Single-set spatial orbitals default to alpha majority (beta when every
+        supplied label is Beta). Missing spin labels default to alpha. These
+        are visualization defaults, not inferred wavefunction provenance.
+        """
+        occupations, spins = self._validate_populations(
+            self.occupations, self.spins, self.coeff.shape[0])
+        if self.occupation_scale == 2:
+            majority = np.minimum(occupations, 1.)
+            minority = np.maximum(occupations - 1., 0.)
+            return (minority, majority) if spins and set(spins) == {'Beta'} else (majority, minority)
+        labels = np.array(spins if spins is not None else ['Alpha'] * len(occupations))
+        return np.where(labels == 'Alpha', occupations, 0.), np.where(labels == 'Beta', occupations, 0.)
+
+    def density_matrix(self, densityname='density'):
+        """Return the AO matrix and population for a known field."""
         if not isinstance(densityname, str) or not self.is_density(densityname):
             raise ValueError('Unknown density {!r}; choose from {}'.format(
                 densityname, ', '.join(['density', 'alpha', 'beta', 'spin'] + sorted(self.densities))))
-        self.occupations, self.spins = self._validate_populations(
-            self.occupations, self.spins, self.coeff.shape[0])
+        occupations, _ = self._validate_populations(self.occupations, self.spins, self.coeff.shape[0])
+        if densityname in self.densities and densityname not in ('density', 'alpha', 'beta', 'spin'):
+            return self.densities[densityname], float(np.sum(occupations))
+        weights = occupations
         if densityname in ('alpha', 'beta', 'spin'):
-            if self.spins is None:
-                raise ValueError('Spin density requires spin labels; total density remains available')
-            if np.any(self.occupations > 1):
-                raise ValueError('Spin densities for restricted spatial orbitals are not yet supported; use total density')
-        if densityname=="density":
-            rho = np.einsum("pu,p,pv->uv", self.coeff, self.occupations, self.coeff).astype(np.float32)
-            nelec = np.sum(self.occupations)
-            return DensityCalculater(self.shells, rho, nelec)
-        elif densityname == "spin":
-            spins = np.array(self.spins)
-            occs = self.occupations.ravel()
-            alphaoccs = np.where(spins == 'Alpha', occs, 0.0)
-            betaoccs = np.where(spins == 'Beta', occs, 0.0)
-            alpha = np.einsum("pu,p,pv->uv", self.coeff, alphaoccs, self.coeff)
-            beta = np.einsum("pu,p,pv->uv", self.coeff, betaoccs, self.coeff)
-            return DensityCalculater(self.shells, (alpha - beta).astype(np.float32), np.sum(alphaoccs) + np.sum(betaoccs))
-        elif densityname == "alpha":
-            spins = np.array(self.spins)
-            alphaoccs = np.where(spins == 'Alpha', self.occupations.ravel(), 0.0)
-            alpha = np.einsum("pu,p,pv->uv", self.coeff, alphaoccs, self.coeff)
-            return DensityCalculater(self.shells, alpha.astype(np.float32), np.sum(alphaoccs))
-        elif densityname == "beta":
-            spins = np.array(self.spins)
-            betaoccs = np.where(spins == 'Beta', self.occupations.ravel(), 0.0)
-            beta = np.einsum("pu,p,pv->uv", self.coeff, betaoccs, self.coeff)
-            return DensityCalculater(self.shells, beta.astype(np.float32), np.sum(betaoccs))
-        elif densityname in self.densities:
-            rho = self.densities[densityname]
-            nelec = np.sum(self.occupations)
-            return DensityCalculater(self.shells, rho, nelec)
+            alpha, beta = self.spin_populations()
+            weights = {'alpha': alpha, 'beta': beta, 'spin': alpha-beta}[densityname]
+        matrix = np.einsum('pu,p,pv->uv', self.coeff, weights, self.coeff).astype(np.float32)
+        population = np.sum(occupations) if densityname == 'spin' else np.sum(weights)
+        return matrix, float(population)
+
+    def get_density(self, densityname='density'):
+        matrix, population = self.density_matrix(densityname)
+        return DensityCalculater(self.shells, matrix, population)
 
     def is_density(self, densityname):
         return densityname in ["density", "spin", "alpha", "beta"] or densityname in self.densities.keys()

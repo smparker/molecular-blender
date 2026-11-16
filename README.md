@@ -293,7 +293,9 @@ absolute density or signed-field magnitude.
 Orbital requests use positive one-based indices or HOMO-relative offsets
 (`0` means HOMO, `-1` means the preceding orbital); invalid indices raise an
 error. Occupations must be finite and within `[0, 2]`. Missing spin labels allow
-total density but do not imply an alpha/beta split. Explicit spin-resolved
-orbitals require complete Alpha/Beta labels and occupations at most 1. Spin
-density requests for restricted spatial orbitals with occupations above 1 are
-currently rejected; total density remains available.
+a visualization alpha default. For a single spatial-orbital set (maximum
+occupation above 1), alpha fills first up to 1 and the remainder goes to beta;
+a Beta-only set reverses that majority convention. Thus doubly occupied
+orbitals contribute equally to both spins. Fractional occupations are retained
+in densities. These defaults are visualization heuristics, not a determination
+of the wavefunction type.
