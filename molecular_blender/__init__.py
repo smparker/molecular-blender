@@ -161,7 +161,10 @@ if _HAS_BPY:
         volume: EnumProperty(
             name="Volume",
             description="Type of volume to plot",
-            items=(('density', 'density', "Density"),
+            items=(('density', 'Total density', "Total electron density"),
+                   ('alpha', 'Alpha density', "Alpha electron density"),
+                   ('beta', 'Beta density', "Beta electron density"),
+                   ('spin', 'Spin density', "Alpha minus beta density"),
                    ('orbital', 'orbital', "Plot orbitals (positive and negative isovalues)")),
             default='orbital')
 
@@ -270,6 +273,8 @@ if _HAS_BPY:
             box.row().prop(self, "isovalues")
             box.row().prop(self, "cumulative")
             box.row().prop(self, "volume")
+            if self.volume in {"alpha", "beta", "spin"}:
+                box.label(text="Spin populations use labels and occupation-based defaults")
             box.row().prop(self, "cube_dataset")
             box.row().prop(self, "orbital")
             box.row().prop(self, "resolution")

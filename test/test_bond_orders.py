@@ -342,6 +342,23 @@ class TestBondOrders(unittest.TestCase):
             with self.subTest(expression=expression), self.assertRaises(ValueError):
                 compute_surface_vertex_sets(molecule, options)
 
+    def test_explicit_density_modes_and_zero_spin(self):
+        from molecular_blender.plotter import compute_surface_vertex_sets
+        path = Path(__file__).resolve().parents[1] / 'examples/water-sto-3g.molden'
+        for mode in ('density', 'alpha', 'beta', 'spin'):
+            molecule, _, options = BlendMoleculeSetup(
+                bpy.context, str(path), volume=mode, orbital='ignored',
+                isovalues='0.05', cumulative=True, resolution=0.3)
+            progress = {}
+            surfaces, _ = compute_surface_vertex_sets(molecule, options, progress)
+            if mode == 'spin':
+                self.assertEqual(surfaces, [])  # closed-shell zero spin is valid
+                self.assertEqual(set(options['isovalues']), {-.05, .05})
+            else:
+                self.assertTrue(surfaces)
+                self.assertEqual(surfaces[0]['name'], mode)
+            self.assertEqual(progress, {'total': 1, 'completed': 1})
+
     def test_importer_bond_order_toggle(self):
         from types import SimpleNamespace
         from molecular_blender import MolecularBlender

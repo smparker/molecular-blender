@@ -31,6 +31,7 @@ import re
 import bpy
 import mathutils
 import bmesh
+import numpy as np
 
 from .molecule import Molecule
 from .periodictable import elements
@@ -739,8 +740,9 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None):
         if molecule.volume is not None:
             total = 1 + (len(molecule.volume_trajectory) if molecule.volume_trajectory else 0)
         elif molecule.orbitals is not None:
-            total = (1 if options["volume"] == "density" else
+            total = (1 if options["volume"] in ("density", "alpha", "beta", "spin") else
                      len([x.strip() for x in options["orbital"].split(',')]))
+            total *= 1 + len(molecule.orbitals_trajectory or [])
         else:
             total = 1
         progress_state["total"] = max(total, 1)
@@ -777,7 +779,7 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None):
         orbitals = molecule.orbitals
         homo = orbitals.homo()
         lumo = homo + 1
-        orbnames = (['density'] if options["volume"] == "density" else
+        orbnames = ([options["volume"]] if options["volume"] in ("density", "alpha", "beta", "spin") else
                     [x.strip() for x in options["orbital"].split(',')])
         orblist = []
         for o in orbnames:
@@ -814,16 +816,19 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None):
         isovals = options["isovalues"]
         resolution = options["resolution"]
 
+        def field_surface(model, name, number, label, levels=None):
+            if model.is_density(name):
+                if not np.any(model.density_matrix(name)[0]):
+                    return [], levels
+                field = model.get_density(name)
+            else:
+                field = model.get_orbital(number)
+            if levels is None:
+                levels = field.isovalue_containing_proportion(isovals) if options['cumulative'] else isovals
+            return molden_isosurface(field, levels, resolution, label), levels
+
         for orbname, orbnumber in zip(orbnames, orblist):
-            if orbitals.is_density(orbname):
-                orb = orbitals.get_density(orbname)
-            else:
-                orb = orbitals.get_orbital(orbnumber)
-            if options["cumulative"]:
-                orbital_isovals = orb.isovalue_containing_proportion(isovals)
-            else:
-                orbital_isovals = isovals
-            vset = molden_isosurface(orb, orbital_isovals, resolution, orbname)
+            vset, orbital_isovals = field_surface(orbitals, orbname, orbnumber, orbname)
             tick()
             if vset:
                 vertex_sets.extend(vset)
@@ -833,11 +838,8 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None):
                 vertex_trajectory_map.setdefault(f0, []).extend([v["name"] for v in vset])
                 for i, orbital_snap in enumerate(molecule.orbitals_trajectory, 1):
                     snap_name = f"{orbname:s}-{i:4d}"
-                    if orbitals.is_density(orbname):
-                        orb_snap = orbital_snap.get_density(orbname)
-                    else:
-                        orb_snap = orbital_snap.get_orbital(orbnumber)
-                    vsets_snap = molden_isosurface(orb_snap, orbital_isovals, resolution, snap_name)
+                    vsets_snap, _ = field_surface(orbital_snap, orbname, orbnumber, snap_name, orbital_isovals)
+                    tick()
                     fi = fmap(i)
                     vertex_trajectory_map.setdefault(fi, []).extend([v["name"] for v in vsets_snap])
                     vertex_sets.extend(vsets_snap)
@@ -984,7 +986,7 @@ def process_options(options):
         if not isovals:
             raise Exception("Isovalues must be specified")
 
-        if options["volume"] == "orbital":
+        if options["volume"] in ("orbital", "spin"):
             # automatically include positive and negative
             iso_set = set()
             for iso in isovals:
