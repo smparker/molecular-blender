@@ -367,8 +367,8 @@ if _HAS_BPY:
             self._timer = None
             self._job = None
             self._cancelled = False
-            self._owner = bpy.data.objects.get(molecule.name)
-            self._collection = bpy.data.collections.get(molecule.name)
+            self._owner = molecule.scene_owner
+            self._collection = molecule.scene_collection
             try:
                 self._job = SurfaceJob(bpy.app.binary_path, molecule.surface_input, options)
                 wm = context.window_manager
@@ -447,12 +447,16 @@ def register():
     register_class(MolecularBlender)
     bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
     bpy.app.handlers.load_pre.append(cancel_all_jobs)
+    from . import scene_state
+    scene_state.register()
 
 def unregister():
     if not _HAS_BPY:
         raise ImportError("unregister() requires bpy (must be run inside Blender)")
     from bpy.utils import unregister_class
     cancel_all_jobs()
+    from . import scene_state
+    scene_state.unregister()
     if cancel_all_jobs in bpy.app.handlers.load_pre:
         bpy.app.handlers.load_pre.remove(cancel_all_jobs)
     unregister_class(MolecularBlender)

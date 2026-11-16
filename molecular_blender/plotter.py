@@ -297,6 +297,8 @@ def PlotMolecule(context, molecule, options):
 
     # set name for new parent
     molecule_obj.name = molecule.name
+    molecule.scene_owner = molecule_obj
+    molecule.scene_collection = molecule_collection
 
     Style = namedtuple(
         'Style', ['atom_size', 'bond_size', 'atom_scaling', 'bond_scaling', 'split_bond'])
@@ -616,6 +618,13 @@ def PlotWireFrame(context, molecule, _options):
     context.object.data.bevel_depth = 0.1
     context.object.data.bevel_resolution = 4
     bpy.ops.object.shade_smooth()
+    molecule.name = context.object.name
+    molecule.scene_owner = context.object
+    collection = bpy.data.collections.new(molecule.name)
+    context.collection.children.link(collection)
+    collection.objects.link(context.object)
+    context.collection.objects.unlink(context.object)
+    molecule.scene_collection = collection
 
 def AnimateMolecule(context, molecule, options):
     """Keyframes position of atoms and opacity of bonds"""
@@ -851,6 +860,11 @@ def create_surface_meshes(molecule, styler, context, options, vertex_sets, verte
     context.view_layer.objects.active = mol_obj
     bpy.ops.object.parent_set(type='OBJECT', keep_transform=False)
 
+    if hasattr(molecule, 'scene_owner'):
+        from .scene_state import persist_surface
+        for definition in vertex_sets:
+            persist_surface(molecule, definition['mesh'], definition)
+
     if vertex_trajectory_map:
         for frame in vertex_trajectory_map:
             for v in vertex_sets:
@@ -905,43 +919,9 @@ def plot_rings(context, molecule, options):
 
 def default_options(options):
     """add defaults to options in case called outside of blender"""
-    # force defaults in case called outside of the blender UI
-    defaults = {"bonds": True,
-                "bond_thickness": 0.2,
-                "draw_bond_orders": False,
-                "perceive_bond_orders": False,
-                "molecular_charge": 0,
-                "bond_order_max_iterations": 100000,
-                "hook_atoms": "auto",
-                "plot_style": "sticks",
-                "plot_type": "auto",
-                "object_type": "mesh",
-                "keystride": 1,
-                "animate_bonds": "staticfirst",
-                "universal_bonds": True,
-                "ignore_hydrogen": True,
-                "gradient": False,
-                "charges": "none",
-                "charge_offset": 0.0,
-                "charge_factor": 1.0,
-                "find_aromatic": False,
-                "recycle_materials": False,
-                "isovalues": "0.25,0.50",
-                "cumulative": True,
-                "volume": "orbital",
-                "cube_dataset": 0,
-                "cube_field_type": "auto",
-                "orbital": "homo",
-                "orbital_spin": "all",
-                "remesh" : 6,
-                "resolution": 0.05,
-                "colors": "default"
-               }
-
-    for d in defaults:
-        if d not in options:
-            options[d] = defaults[d]
-
+    from .options import DEFAULTS
+    for name, value in DEFAULTS.items():
+        options.setdefault(name, value)
     return options
 
 
@@ -985,13 +965,15 @@ def BlendMoleculeSetup(context, filename, **options):
 
     Does not draw isosurfaces - call draw_surfaces separately if needed.
     """
-    options = default_options(options)
+    from .options import validated_options
+    options = validated_options(options)
     name = filename.rsplit('.', 1)[0].rsplit('/')[-1]
     input_data = molecule_from_file(filename, options)
     molecule = Molecule.from_dict(name, input_data)
     molecule.surface_input = input_data
     molecule.determine_bonding(options)
     styler = get_styler(options)
+    molecule.settings = dict(options)
 
     make_materials(molecule, styler, options)
     plot_prep(molecule, options)
@@ -1008,6 +990,8 @@ def BlendMoleculeSetup(context, filename, **options):
     if options["find_aromatic"]:
         plot_rings(context, molecule, options)
 
+    from .scene_state import persist_molecule
+    persist_molecule(molecule, filename, molecule.settings)
     return molecule, styler, options
 
 

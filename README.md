@@ -328,3 +328,12 @@ Blender process. Escape stops that process, clears progress, and discards its
 results; the already imported atoms and bonds remain available. Deleting the
 molecule, opening another file, or disabling the addon also stops pending work.
 The synchronous `BlendMolecule` Python API continues to finish before returning.
+
+New imports store a versioned molecule record in the `.blend`: source path,
+Angstrom coordinate units, import settings, atom identities and charges, bond
+endpoints and order provenance, orbital metadata, and generated surface levels.
+The source calculation is not embedded; the saved geometry and metadata remain
+available when the source file is missing. Rename objects freely. To duplicate a
+whole molecule, duplicate its root and children together; the copy receives a
+new molecule identity while preserving atom identities within that molecule.
+Older imports without this record must be reimported to use molecule editing.
