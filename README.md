@@ -337,3 +337,10 @@ available when the source file is missing. Rename objects freely. To duplicate a
 whole molecule, duplicate its root and children together; the copy receives a
 new molecule identity while preserving atom identities within that molecule.
 Older imports without this record must be reimported to use molecule editing.
+
+In the 3D Viewport, open the sidebar (`N`) and choose **Molecule**. Select an
+imported atom, bond, surface, or molecule root to inspect its source, counts,
+coordinate units, charge setting, representation, and available scientific data.
+Inspection uses the saved record and does not recalculate surfaces or reread the
+source. The charge setting is the requested molecular charge for perception;
+it is distinct from each atom's partial charge.
