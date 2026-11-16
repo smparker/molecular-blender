@@ -352,3 +352,18 @@ multiple-bond profiles and stick junctions follow the new thickness. Surface
 opacity wraps the existing shader without recomputing the field or mesh.
 Individual atom/bond restyling is available for mesh, NURBS, and metaball imports;
 wireframe imports remain inspectable. Use positive bond thickness when restyling.
+
+For manual topology edits, select exactly two atoms in one molecule and click
+**Single**, **Double**, or **Triple**. These buttons add a missing bond or update
+an existing one. You can also select one bond (either colored half, or both) to
+change its order or use **Delete bond**. Both halves and neighboring stick
+junctions update together. New manual bonds follow their atoms through hooks.
+All these actions support Undo/Redo and survive saving and reopening the file.
+
+Manual orders are saved as locked assignments. **Perceive unlocked bonds** works
+on the current graph, retaining manual additions/deletions and protecting both
+manual orders and explicit source orders. Conflicting constraints report an
+error without applying a partial assignment. This post-import perception action
+requires a static molecule with all atoms, including hydrogens, displayed.
+Manual atom moves change the displayed geometry; they do not recalculate orbital
+or density surfaces. Bond perception itself remains an explicit, opt-in action.

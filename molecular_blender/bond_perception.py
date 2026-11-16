@@ -41,7 +41,7 @@ class BondPerceptionError(ValueError):
 
 
 def perceive_bond_orders(symbols, edges, charge=0, bond_lengths=None,
-                         max_iterations=100000, atom_ids=None):
+                         max_iterations=100000, atom_ids=None, fixed_orders=None):
     """Return (orders in input edge order, formal charges in atom order).
 
     Every edge starts with order one and can rise to at most three. Propagation
@@ -55,7 +55,9 @@ def perceive_bond_orders(symbols, edges, charge=0, bond_lengths=None,
     node budget covers all charge budgets; exhaustion never returns a partial
     assignment. bond_lengths may be normalized by covalent radii by the caller.
     atom_ids optionally supplies stable caller IDs for diagnostics; edges still
-    use positional indices. Errors distinguish supported-chemistry limitations,
+    use positional indices. fixed_orders maps input edge indices to locked
+    integer orders (1..3); incompatible locks fail without a partial assignment.
+    Errors distinguish supported-chemistry limitations,
     impossible connectivity, incompatible charge, and exhausted search.
     """
     if not isinstance(charge, int) or isinstance(charge, bool):
@@ -188,6 +190,11 @@ def perceive_bond_orders(symbols, edges, charge=0, bond_lengths=None,
         return None
 
     initial = [(1, 2, 3)] * len(edges)
+    for index, order in (fixed_orders or {}).items():
+        if (isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(edges)
+                or isinstance(order, bool) or not isinstance(order, int) or order not in (1, 2, 3)):
+            raise ValueError('Fixed orders must map valid edge indices to orders 1, 2, or 3')
+        initial[index] = (order,)
     possible = propagate(initial.copy())
     if possible is not None and charges_for(possible) is None:
         raise failure('incompatible_charge',

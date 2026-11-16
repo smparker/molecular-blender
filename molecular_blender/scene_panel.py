@@ -75,6 +75,14 @@ class MB_PT_molecule(bpy.types.Panel):
         box.label(text='Displayed surfaces: {}'.format(summary['surfaces']))
         if summary['object_type'] != 'wireframe':
             layout.operator('molecular_blender.restyle', text='Restyle molecule…')
+            box = layout.box()
+            box.label(text='Select two atoms or a bond')
+            row = box.row(align=True)
+            for order, label in (('1', 'Single'), ('2', 'Double'), ('3', 'Triple')):
+                row.operator('molecular_blender.set_bond', text=label).order = order
+            box.operator('molecular_blender.delete_bond')
+            box.label(text='Manual orders are locked', icon='LOCKED')
+            box.operator('molecular_blender.reperceive')
 
 
 def register():

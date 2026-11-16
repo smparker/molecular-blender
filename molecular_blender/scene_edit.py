@@ -32,7 +32,10 @@ def update_junctions(owner, record):
         bond_extent = _multiple_bond_profile(radius, order)[2] if order > 1 else radius
         for endpoint in obj.get('mb_endpoints', []):
             extent[endpoint] = max(extent.get(endpoint, 0), bond_extent)
-    for obj in owned_objects(owner, 'atom'):
+    atoms = owned_objects(owner, 'atom')
+    bpy.context.view_layer.update()
+    old_matrices = {obj: obj.matrix_world.copy() for obj in atoms}
+    for obj in atoms:
         base_radius = obj.get('mb_atom_radius', _atom_radius(obj['mb_element'], settings))
         if base_radius <= 0:
             raise ValueError('Cannot resize zero-radius atom geometry; reimport with a positive atom radius')
@@ -46,6 +49,15 @@ def update_junctions(owner, record):
             raise ValueError('Cannot resize an atom with zero saved scale')
         obj.scale *= target / previous
         obj['mb_style_scale'] = target
+    bpy.context.view_layer.update()
+    # Hooks must follow atom movement, not changes to the display sphere's size.
+    # Preserve their current deformation while compensating for style scaling.
+    for bond in owned_objects(owner, 'bond'):
+        for hook in bond.modifiers:
+            if hook.type == 'HOOK' and hook.object in old_matrices:
+                atom = hook.object
+                hook.matrix_inverse = (atom.matrix_world.inverted() @ old_matrices[atom]
+                                       @ hook.matrix_inverse)
 
 
 def _set_color(material, color):
