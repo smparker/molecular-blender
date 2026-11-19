@@ -153,10 +153,10 @@ def persist_surface(molecule, obj, definition):
 
 
 def register():
+    # Blender restricts scene access during add-on registration.
     for handlers in (bpy.app.handlers.load_post, bpy.app.handlers.depsgraph_update_post):
         if normalize_duplicate_ids not in handlers:
             handlers.append(normalize_duplicate_ids)
-    normalize_duplicate_ids()
 
 
 def unregister():

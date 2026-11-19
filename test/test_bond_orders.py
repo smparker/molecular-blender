@@ -388,7 +388,8 @@ class TestBondOrders(unittest.TestCase):
             # Read the registered UI defaults and exercise its options builder.
             rna = getattr(bpy.ops, 'import').molecular_blender.get_rna_type()
             operator = SimpleNamespace(**{name: rna.properties[name].default
-                                          for name in MolecularBlender.__annotations__})
+                                          for name in MolecularBlender.__annotations__
+                                          if name != 'dataset_choice'})
             self.assertFalse(operator.draw_bond_orders)
             options = MolecularBlender._build_options(operator)
             self.assertFalse(options['draw_bond_orders'])

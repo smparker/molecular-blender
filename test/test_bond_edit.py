@@ -173,6 +173,45 @@ class TestBondEditing(unittest.TestCase):
         self.assertEqual([o.data.bevel_object for o in owned_objects(original, 'bond')], profiles)
         self.assertEqual(read_record(original)['bonds'][0]['order'], 2)
 
+    def test_tilt_on_one_half_survives_profile_rebuilds_and_isolates_duplicate(self):
+        from molecular_blender import bond_edit
+        from molecular_blender.plotter import BlendMoleculeSetup
+        from molecular_blender.scene_edit import restyle_molecule
+        from molecular_blender.scene_state import ID, owned_objects, read_record
+        molecule, _, _ = BlendMoleculeSetup(bpy.context, 'examples/bond_orders.sdf',
+                                            isovalues='', plot_style='sticks', draw_bond_orders=True)
+        original = molecule.scene_owner
+        bond = read_record(original)['bonds'][0]  # O=C, with a neighbor defining its initial plane.
+        self.assertIsNotNone(bond['direction'])
+        copy = original.copy()
+        molecule.scene_collection.objects.link(copy)
+        for obj in owned_objects(original):
+            child = obj.copy()
+            child.parent = copy
+            molecule.scene_collection.objects.link(child)
+        original_parts = [o for o in owned_objects(original, 'bond') if o[ID] == bond['id']]
+        parts = [o for o in owned_objects(copy, 'bond') if o[ID] == bond['id']]
+        self.assertEqual(len(parts), 2)
+        original_tilts = [o.data.splines[0].bezier_points[0].tilt for o in original_parts]
+        bpy.ops.object.select_all(action='DESELECT')
+        parts[1].select_set(True)
+        bpy.context.view_layer.objects.active = parts[1]
+        bond_edit.register()
+        try:
+            self.assertEqual(bpy.ops.molecular_blender.set_bond_tilt(tilt=0.75), {'FINISHED'})
+            saved_bond = read_record(copy)['bonds'][0]
+            self.assertEqual(saved_bond, dict(bond, tilt=0.75))
+            for order in (1, 3):
+                bond_edit.set_manual_bond(copy, order, bond_id=bond['id'])
+                self.assertEqual(bpy.ops.molecular_blender.set_bond_tilt.poll(), order > 1)
+            restyle_molecule(copy, bond_thickness=0.3)
+            for obj in parts:
+                self.assertEqual([p.tilt for p in obj.data.splines[0].bezier_points], [0.75, 0.75])
+            self.assertEqual([o.data.splines[0].bezier_points[0].tilt for o in original_parts], original_tilts)
+            self.assertEqual(read_record(original)['bonds'][0], bond)
+        finally:
+            bond_edit.unregister()
+
     def test_edit_undo_redo_and_save_reopen_in_fresh_blender(self):
         root = Path(__file__).resolve().parents[1]
         script = '''
@@ -191,11 +230,18 @@ bpy.context.preferences.edit.use_global_undo = True
 before = owner['mb_molecule']
 bpy.ops.ed.undo_push(message='Before bond edit')
 assert bpy.ops.molecular_blender.set_bond(order='3') == {'FINISHED'}
+untilted = owner['mb_molecule']
+bpy.ops.ed.undo_push(message='Before tilt')
+assert bpy.ops.molecular_blender.set_bond_tilt(tilt=-0.5) == {'FINISHED'}
 after = owner['mb_molecule']
-assert before != after
+assert before != untilted and untilted != after
 bpy.ops.ed.undo_push(message='After bond edit')
 bpy.ops.ed.undo()
+assert bpy.data.objects[name]['mb_molecule'] == untilted
+bpy.ops.ed.undo()
 assert bpy.data.objects[name]['mb_molecule'] == before
+bpy.ops.ed.redo()
+assert bpy.data.objects[name]['mb_molecule'] == untilted
 bpy.ops.ed.redo()
 assert bpy.data.objects[name]['mb_molecule'] == after
 bpy.ops.wm.save_as_mainfile(filepath=BLEND)
@@ -206,6 +252,7 @@ assert any(b['order'] == 3 and b['locked'] for b in read_record(owner)['bonds'])
 bpy.ops.object.select_all(action='DESELECT')
 parts = owned_objects(owner, 'bond')
 target = next(o for o in parts if o['mb_order'] == 3)
+assert all(p.tilt == -0.5 for p in target.data.splines[0].bezier_points)
 target.select_set(True)
 target_id = target['mb_id']
 bpy.context.view_layer.objects.active = target

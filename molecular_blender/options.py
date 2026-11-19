@@ -59,6 +59,8 @@ def validated_options(values):
     Historical Python API defaults are retained independently of UI presets.
     """
     out = dict(DEFAULTS, **values)
+    if 'cube_both_signs' in out and not isinstance(out['cube_both_signs'], bool):
+        raise ValueError('cube_both_signs must be a boolean')
     for name, choices in ENUMS.items():
         if out[name] not in choices:
             raise ValueError('{} must be one of {}'.format(name, ', '.join(choices)))

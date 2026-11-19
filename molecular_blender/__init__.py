@@ -42,6 +42,7 @@ else:
 if _HAS_BPY:
     from bpy.props import StringProperty, BoolProperty, EnumProperty, IntProperty, FloatProperty
     import bpy_extras
+    from . import import_dialog
     from .plotter import BlendMolecule, BlendMoleculeSetup, compute_surface_vertex_sets, create_surface_meshes
     from .surface_jobs import SurfaceJob, cancel_all_jobs
     from bpy.app.handlers import persistent
@@ -66,7 +67,7 @@ if _HAS_BPY:
 
         # in the template, we'll figure it out later
         filter_glob: StringProperty(
-            default="*.xyz;*.sdf;*.sd;*.mol;*.molden;*molden.input;*.cube;*.cub;*.json",
+            default=";".join("*" + suffix for suffixes in importers.FORMAT_SUFFIXES.values() for suffix in suffixes),
             options={'HIDDEN'})
 
         ## Style Options
@@ -147,7 +148,7 @@ if _HAS_BPY:
         ## Isosurfaces
         isovalues: StringProperty(
             name="Isovalues to plot",
-            description="List of isovalues to plot densities or orbitals",
+            description="Comma-separated surface levels. Leave empty to import just the structure",
             default="0.25,0.50")
 
         cumulative: BoolProperty(
@@ -161,13 +162,13 @@ if _HAS_BPY:
                 default=False)
 
         volume: EnumProperty(
-            name="Volume",
-            description="Type of volume to plot",
+            name="Field",
+            description="Field to calculate from the Molden wavefunction",
             items=(('density', 'Total density', "Total electron density"),
                    ('alpha', 'Alpha density', "Alpha electron density"),
                    ('beta', 'Beta density', "Beta electron density"),
                    ('spin', 'Spin density', "Alpha minus beta density"),
-                   ('orbital', 'orbital', "Plot orbitals (positive and negative isovalues)")),
+                   ('orbital', 'Molecular orbital', "Plot orbitals (positive and negative isovalues)")),
             default='orbital')
 
         cube_field_type: EnumProperty(
@@ -184,7 +185,7 @@ if _HAS_BPY:
             default=0, min=0)
 
         orbital_spin: EnumProperty(
-            name="Orbital spin", description="Channel for frontier-orbital names; explicit numbers always use file indices",
+            name="Orbital Spin", description="Channel for frontier-orbital names; explicit numbers always use file indices",
             items=(('all', 'All', 'All orbitals'), ('alpha', 'Alpha', 'Alpha frontier orbitals'),
                    ('beta', 'Beta', 'Beta frontier orbitals')), default='all')
 
@@ -192,6 +193,29 @@ if _HAS_BPY:
             name="Orbital",
             description="Plot this orbital from molden file. Accepts comma separated list, homo-n, lumo+m. (ignored for other inputs)",
             default="homo")
+
+        # These UI selectors edit the existing RNA properties used by scripts and presets.
+        orbital_choice: EnumProperty(
+            name="Orbital", items=(('homo', 'HOMO', '', 0), ('lumo', 'LUMO', '', 1),
+                                  ('custom', 'Custom…', 'Enter indices, frontier expressions, or a list', 2)),
+            get=import_dialog.get_orbital_choice, set=import_dialog.set_orbital_choice,
+            options={'SKIP_SAVE'})
+
+        level_mode: EnumProperty(
+            name="Level mode", items=(('fraction', 'Fraction enclosed', '', 1),
+                                     ('absolute', 'Absolute isovalue', '', 0)),
+            get=lambda op: int(op.cumulative), set=lambda op, value: setattr(op, 'cumulative', bool(value)),
+            options={'SKIP_SAVE'})
+
+        dataset_choice: EnumProperty(
+            name="Dataset", items=import_dialog.dataset_items, get=import_dialog.get_dataset_choice,
+            set=lambda op, value: setattr(op, 'cube_dataset', value), options={'SKIP_SAVE'})
+
+        cube_both_signs: BoolProperty(
+            name="Include both signs", default=True,
+            description="Generate both signs for each cube level. Turn off to use exactly the signs entered")
+
+        surface_advanced: BoolProperty(name="Advanced", default=False, options={'SKIP_SAVE'})
 
         resolution: FloatProperty(
             name="Resolution",
@@ -284,20 +308,7 @@ if _HAS_BPY:
             box.row().prop(self, "animate_bonds")
             box.row().prop(self, "keystride")
 
-            box = layout.box()
-            box.label(text="Isosurfacing")
-            box.row().prop(self, "isovalues")
-            box.row().prop(self, "cumulative")
-            box.row().prop(self, "volume")
-            if self.volume in {"alpha", "beta", "spin"}:
-                box.label(text="Spin populations use labels and occupation-based defaults")
-            box.row().prop(self, "cube_dataset")
-            box.row().prop(self, "cube_field_type")
-            box.row().prop(self, "orbital")
-            box.row().prop(self, "orbital_spin")
-            box.row().prop(self, "resolution")
-            box.row().prop(self, "remesh")
-            box.row().prop(self, "orca_fix")
+            import_dialog.draw_surfaces(layout, self, context)
 
             box = layout.box()
             box.label(text="Properties")
@@ -317,8 +328,8 @@ if _HAS_BPY:
             box.label(text="Orbital evaluator: " + ("Cython" if AO_CYTHON_ENABLED else "Python"))
             box.label(text="Surface mesher: " + ("Cython" if CYTHON_ENABLED else "Python"))
 
-        def _build_options(self):
-            return dict(
+        def _build_options(self, source=None, from_browser=False):
+            options = dict(
                 bonds=(self.bond_thickness != 0.0),
                 bond_thickness=self.bond_thickness,
                 draw_bond_orders=self.draw_bond_orders,
@@ -350,10 +361,23 @@ if _HAS_BPY:
                 colors=self.colors,
             )
 
+            if source is not None:
+                kind, labels = source
+                if kind in ('xyz', 'sdf'):
+                    options['isovalues'] = ''
+                elif kind == 'cube':
+                    if from_browser:
+                        options['cube_dataset'] = import_dialog.dataset_index(self.cube_dataset, labels)
+                    if from_browser or self.properties.is_property_set('cube_both_signs'):
+                        options['cube_both_signs'] = self.cube_both_signs
+            return options
+
         def execute(self, context):
             """Load molecule, plot atoms/bonds, then compute isosurfaces in background if needed."""
             try:
-                molecule, styler, options = BlendMoleculeSetup(context, self.filepath, **self._build_options())
+                source = import_dialog.surface_source(self.filepath)
+                settings = self._build_options(source, self.options.is_invoke)
+                molecule, styler, options = BlendMoleculeSetup(context, self.filepath, **settings)
             except Exception as e:
                 self.report({'ERROR'}, str(e))
                 return {'CANCELLED'}

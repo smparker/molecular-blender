@@ -27,6 +27,7 @@ import re
 import numpy as np
 import json
 import os
+import sys
 
 from .util import stopwatch
 from .periodictable import symbols
@@ -75,18 +76,24 @@ class Reader(object):
         self.f = None
 
 
+FORMAT_SUFFIXES = {
+    'xyz': ('.xyz',), 'sdf': ('.sdf', '.mol', '.sd'),
+    'molden': ('.molden', 'molden.input'), 'cube': ('.cub', '.cube'), 'json': ('.json',),
+}
+
+
+def file_format(filename):
+    name = os.fspath(filename).lower()
+    return next((kind for kind, suffixes in FORMAT_SUFFIXES.items() if name.endswith(suffixes)), None)
+
+
 def molecule_from_file(filename, options):
-    """Tries to guess filetype based on extension, then calls the appropriate reader"""
-    if filename.lower().endswith(".xyz"):
-        return molecule_from_xyz(filename, options)
-    elif filename.lower().endswith((".sdf", ".mol", ".sd")):
-        return molecule_from_sdf(filename, options)
-    elif filename.lower().endswith(".molden") or filename.lower().endswith("molden.input"):
-        return molecule_from_molden(filename, options)
-    elif filename.lower().endswith(".cub") or filename.lower().endswith(".cube"):
-        return molecule_from_cube(filename, options)
-    elif filename.lower().endswith(".json"):
-        return molecule_from_json(filename, options)
+    """Dispatch by filename, using the same rule as the import dialog."""
+    readers = dict(xyz=molecule_from_xyz, sdf=molecule_from_sdf, molden=molecule_from_molden,
+                   cube=molecule_from_cube, json=molecule_from_json)
+    reader = readers.get(file_format(filename))
+    if reader is not None:
+        return reader(filename, options)
 
     raise ValueError(
         f"Unsupported molecular file format: {filename!r}. "
@@ -499,6 +506,47 @@ def molecule_from_molden(filename, _options):
     return out
 
 
+def _cube_origin_header(f):
+    header = f.readline().split()
+    if len(header) not in (4, 5):
+        raise ValueError('Cube atom/origin header requires four or five values')
+    nvalues = int(header[4]) if len(header) == 5 else 1
+    if nvalues < 1:
+        raise ValueError('Cube dataset count must be positive')
+    if nvalues > sys.maxsize:
+        raise ValueError('Cube dataset count exceeds the supported range')
+    return int(header[0]), header[1:4], nvalues
+
+
+def _cube_labels(f, natoms, nvalues):
+    if natoms >= 0:
+        return range(nvalues)
+    tokens = f.readline().split()
+    if not tokens:
+        raise ValueError('Missing cube dataset IDs')
+    count = int(tokens[0])
+    if count < 1 or (nvalues != 1 and nvalues != count):
+        raise ValueError('Invalid cube dataset count')
+    labels = [int(value) for value in tokens[1:]]
+    while len(labels) < count:
+        labels.extend(int(value) for value in f.readline().split())
+    if len(labels) != count:
+        raise ValueError('Incorrect number of cube dataset IDs')
+    return labels
+
+
+def cube_dataset_labels(filename):
+    """Read dataset identifiers without loading or allocating the voxel grid."""
+    with Reader(filename) as f:
+        f.readline()
+        f.readline()
+        natoms, _, nvalues = _cube_origin_header(f)
+        if natoms < 0:
+            for _ in range(3 + abs(natoms)):
+                f.readline()
+        return _cube_labels(f, natoms, nvalues)
+
+
 @stopwatch("read cube")
 def molecule_from_cube(filename, options):
     """Read a cube file including its volumetric data"""
@@ -506,24 +554,13 @@ def molecule_from_cube(filename, options):
 
     ignore_h = options.get("ignore_hydrogen", False)
     animate = options.get("plot_type", "") in [ "animate", "auto" ]
-    expect_dset = False
 
     with Reader(filename) as f:
         out["volume"]["comments"] = [f.readline().rstrip("\r\n"), f.readline().rstrip("\r\n")]
 
         # 3rd line is <natoms> <origin_x> <origin_y> <origin_z>
-        header = f.readline().split()
-        if len(header) not in (4, 5):
-            raise ValueError('Cube atom/origin header requires four or five values')
-        natoms, ox, oy, oz = header[:4]
-        nvalues = int(header[4]) if len(header) == 5 else 1
-        if nvalues < 1:
-            raise ValueError('Cube dataset count must be positive')
-        natoms = int(natoms)
-        expect_dset = natoms < 0
-        natoms = abs(natoms)
-        origin = np.array([ox, oy, oz], dtype=np.float32) * bohr2ang
-        out["volume"]["origin"] = origin
+        natoms, origin, nvalues = _cube_origin_header(f)
+        out["volume"]["origin"] = np.array(origin, dtype=np.float32) * bohr2ang
 
         nres = [0, 0, 0]  # number of points in each direction
         # axes[i,:] defines the i-th axis
@@ -551,7 +588,7 @@ def molecule_from_cube(filename, options):
 
         # next natoms lines define the molecule
         # <atomic number> <charge> <x> <y> <z>
-        for i in range(natoms):
+        for i in range(abs(natoms)):
             ato, chg, x, y, z = f.readline().split()
             iatom = int(ato)
             position = [bohr2ang * float(xx) for xx in [x, y, z]]
@@ -565,18 +602,7 @@ def molecule_from_cube(filename, options):
             out["atoms"].append(new_atom)
 
         # optionally check for DSET_IDs, basically labels of different data sets
-        volume_labels = []
-        if expect_dset:
-            dsets = f.readline().split()
-            ndsets = int(dsets.pop(0))
-            if ndsets < 1 or (nvalues != 1 and nvalues != ndsets):
-                raise ValueError('Invalid cube dataset count')
-            for i in range(ndsets):
-                if not dsets:
-                    dsets = f.readline().split()
-                volume_labels.append(int(dsets.pop(0)))
-        else:
-            volume_labels = list(range(nvalues))
+        volume_labels = list(_cube_labels(f, natoms, nvalues))
 
         # and finally the volumetric data comes, 6 elements per line in z, y, x order
         nvol = len(volume_labels)

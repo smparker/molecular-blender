@@ -132,7 +132,9 @@ def set_bond_order(obj, order, direction=None):
 
 def plot_prep(molecule, options):
     """Preprocess options"""
-    process_options(options)
+    process_options(options, cube=molecule.volume is not None)
+    if molecule.volume is None and molecule.orbitals is None:
+        options["isosurfaces"] = False
     if options["charges"] != "none":
         molecule.chgfac = options["charge_factor"]
         molecule.chgoff = options["charge_offset"]
@@ -935,7 +937,7 @@ def default_options(options):
     return options
 
 
-def process_options(options):
+def process_options(options, *, cube=False):
     """postprocess choices that might interact with each other"""
 
     hooking = {"on": True, "off": False,
@@ -949,7 +951,10 @@ def process_options(options):
         if not isovals:
             raise Exception("Isovalues must be specified")
 
-        if options["volume"] in ("orbital", "spin"):
+        both_signs = options["volume"] in ("orbital", "spin")
+        if cube:
+            both_signs = options.get("cube_both_signs", both_signs)
+        if both_signs:
             # automatically include positive and negative
             iso_set = set()
             for iso in isovals:

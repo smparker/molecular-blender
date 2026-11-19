@@ -1,12 +1,14 @@
 """Undoable scene topology editing, using saved IDs and ordinary curve bonds."""
+import math
+
 import bpy
-from bpy.props import EnumProperty
+from bpy.props import EnumProperty, FloatProperty
 
 from .bond_perception import perceive_bond_orders
 from .periodictable import elements
 from .scene_state import (read_record, write_record, resolve_owner, owned_objects,
                           new_id, tag, ID, ROLE, normalize_duplicate_ids)
-from .scene_edit import _private_curve, update_junctions
+from .scene_edit import _private_curve, apply_bond_profile, update_junctions
 from .stylers import get_styler
 
 
@@ -66,7 +68,6 @@ def _remove_curve(obj):
 
 def _new_curves(owner, record, bond, atoms):
     """Build split/unsplit curves directly; bind hooks in the current parent frame."""
-    from .plotter import set_bond_order
     settings = record['settings']
     first, second = (atoms[i] for i in bond['atoms'])
     bpy.context.view_layer.update()
@@ -113,7 +114,7 @@ def _new_curves(owner, record, bond, atoms):
                 obj['mb_element'] = symbols[index]
             else:
                 curve.materials.append(material)
-            set_bond_order(obj, bond['order'], bond['direction'])
+            apply_bond_profile(obj, bond, bond['order'])
             tag(obj, owner, 'bond', bond['id'])
             obj['mb_endpoints'] = bond['atoms']
             obj['mb_order'] = bond['order']
@@ -144,14 +145,9 @@ def _validate_geometry(objects):
 
 
 def _apply_order(objects, bond):
-    from .plotter import set_bond_order
     for obj in objects:
         _private_curve(obj)
-        tilts = [p.tilt for p in obj.data.splines[0].bezier_points]
-        set_bond_order(obj, bond['order'], bond['direction'])
-        if bond['direction'] is None:
-            for point, tilt in zip(obj.data.splines[0].bezier_points, tilts):
-                point.tilt = tilt
+        apply_bond_profile(obj, bond, bond['order'])
         obj['mb_order'] = bond['order']
 
 
@@ -261,6 +257,58 @@ class MB_OT_set_bond(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def _selected_multiple_bond(context):
+    owner, atoms, bond_id = selected_bond(context)
+    record = read_record(owner)
+    bond = _find_bond(record, atoms, bond_id)
+    parts = [] if bond is None else [
+        obj for obj in owned_objects(owner, 'bond') if obj[ID] == bond['id']]
+    if not parts or any(obj.get('mb_order', 1) < 2 for obj in parts):
+        raise ValueError('Select a displayed double or triple bond, or its two atoms')
+    _validate_geometry(parts)
+    return owner, record, bond, parts
+
+
+class MB_OT_set_bond_tilt(bpy.types.Operator):
+    bl_idname = 'molecular_blender.set_bond_tilt'
+    bl_label = 'Set strand tilt'
+    bl_description = 'Rotate the strands of a double or triple bond around its centerline'
+    bl_options = {'REGISTER', 'UNDO'}
+    tilt: FloatProperty(name='Strand tilt', subtype='ANGLE', min=-math.pi, max=math.pi)
+
+    @classmethod
+    def poll(cls, context):
+        if context.mode != 'OBJECT':
+            return False
+        try:
+            _selected_multiple_bond(context)
+        except (ValueError, KeyError) as exc:
+            cls.poll_message_set(str(exc))
+            return False
+        return True
+
+    def invoke(self, context, event):
+        _, _, _, parts = _selected_multiple_bond(context)
+        self.tilt = math.remainder(parts[0].data.splines[0].bezier_points[0].tilt, math.tau)
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        try:
+            owner, record, bond, parts = _selected_multiple_bond(context)
+            if not math.isfinite(self.tilt):
+                raise ValueError('Strand tilt must be finite')
+            for obj in parts:
+                _private_curve(obj)
+                for point in obj.data.splines[0].bezier_points:
+                    point.tilt = self.tilt
+            bond['tilt'] = self.tilt
+            write_record(owner, record)
+        except (ValueError, KeyError) as exc:
+            self.report({'ERROR'}, str(exc))
+            return {'CANCELLED'}
+        return {'FINISHED'}
+
+
 class MB_OT_delete_bond(bpy.types.Operator):
     bl_idname = 'molecular_blender.delete_bond'
     bl_label = 'Delete bond'
@@ -293,7 +341,7 @@ class MB_OT_reperceive(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (MB_OT_set_bond, MB_OT_delete_bond, MB_OT_reperceive)
+CLASSES = (MB_OT_set_bond, MB_OT_set_bond_tilt, MB_OT_delete_bond, MB_OT_reperceive)
 
 
 def register():

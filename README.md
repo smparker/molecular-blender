@@ -276,9 +276,15 @@ This creates a zip file that can be distributed to Blender users or uploaded to 
 
 ### Selecting cube datasets
 
-Cube imports retain every dataset and its file label. **Cube dataset index** in
-the import dialog chooses a zero-based dataset; Python callers can pass
-`cube_dataset=1` to select the second. The default remains the first dataset.
+The import dialog adapts to the highlighted filename. XYZ and SDF/MOL show
+structure controls. Molden and cube files also show **Surfaces**. For JSON
+trajectories the first referenced frame determines the surface controls.
+The filename selects the reader, so give the file an extension matching its contents.
+
+Cube imports retain every dataset and its file label. **Dataset** appears for
+multi-dataset cubes and shows file IDs when available. Very large sets use a
+zero-based index field. Python callers can pass `cube_dataset=1` to select the
+second dataset. The default remains the first dataset.
 `VolumeData.datasets` stores all fields, `labels` retains their identifiers,
 and `select_dataset(index)` changes the active three-dimensional `data` array.
 Comment lines are preserved without guessing physical field types or units.
@@ -302,9 +308,11 @@ of the wavefunction type.
 
 ### Density and frontier selection
 
-The **Volume** selector offers total, alpha, beta, and alpha-minus-beta spin
-density. Closed-shell zero spin produces no surface. Missing spin labels use
-the visualization defaults above; no additional input is required.
+For Molden files, choose **Molecular orbital** under **Field** to select HOMO,
+LUMO, or a **Custom…** expression. The same field menu offers total, alpha,
+beta, and alpha-minus-beta spin density. Choosing a density hides the orbital
+controls. Closed-shell zero spin produces no surface. Missing spin labels use
+the visualization defaults above.
 
 For frontier names, the occupation scale is 1 when the maximum occupation is
 at most 1, otherwise 2. Occupations strictly above half that scale are occupied;
@@ -312,11 +320,16 @@ exactly half and lower are empty. Actual density weights remain fractional.
 HOMO is the highest-energy occupied orbital and LUMO the lowest-energy empty
 orbital. If energy metadata is incomplete in a channel, selection uses input
 order for that channel. `homo-N` and `lumo+N` traverse occupied/empty candidates
-in that order. **Orbital spin** chooses alpha/beta, or use `alpha:homo` and
+in that order. **Orbital Spin** appears for unqualified frontier expressions
+and HOMO-relative indices. It chooses alpha/beta, or use `alpha:homo` and
 `beta:lumo+1`. Positive numeric selections always use the original one-based
 file index regardless of spin selection.
 
-**Cube field type** controls cumulative integration: orbital amplitude uses
+**Level mode** selects **Fraction enclosed** or **Absolute isovalue**. Clear the
+levels to import just the structure. For cubes, **Advanced → Include both signs**
+defaults on. Turn it off to plot only the signs entered.
+
+**Cube field type** appears for enclosed fractions and controls integration: orbital amplitude uses
 squared values; density and signed scalar fields use absolute magnitude. Auto
 uses field metadata if available and otherwise defaults to scalar magnitude,
 so an untyped cube is not silently squared. Absolute-isovalue surfaces are
@@ -345,6 +358,15 @@ Inspection uses the saved record and does not recalculate surfaces or reread the
 source. The charge setting is the requested molecular charge for perception;
 it is distinct from each atom's partial charge.
 
+Select an atom to see its element, stored atom index, partial charge, and formal
+charge. The index follows the importer's numbering. Charge values come from the
+saved atom record, which defaults missing charges to zero. Cube imports label
+the charge from the atom line as **Cube atom charge**.
+
+Expand **Orbitals** to browse the saved index, energy, occupation, spin, and
+symmetry in input order. Use the **Page** arrows or enter a page number.
+A dash marks missing metadata. Energies are shown as supplied by the source.
+
 Choose **Restyle molecule…** in that sidebar to change atom size, bond thickness,
 palette, and surface opacity. Apply acts on the whole owning molecule and supports
 Blender Undo/Redo. Linked duplicates and recycled materials are isolated on edit;
@@ -359,6 +381,11 @@ an existing one. You can also select one bond (either colored half, or both) to
 change its order or use **Delete bond**. Both halves and neighboring stick
 junctions update together. New manual bonds follow their atoms through hooks.
 All these actions support Undo/Redo and survive saving and reopening the file.
+
+Select a displayed double or triple bond, or its two atoms, and choose
+**Set strand tilt…** to rotate the strands around the bond axis. The dialog
+starts at the current curve tilt. It sets the same angle on both colored halves
+and preserves that angle across restyling and subsequent bond-order changes.
 
 Manual orders are saved as locked assignments. **Perceive unlocked bonds** works
 on the current graph, retaining manual additions/deletions and protecting both

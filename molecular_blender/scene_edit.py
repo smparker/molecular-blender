@@ -21,6 +21,20 @@ def _private_curve(obj):
         obj.data = obj.data.copy()
 
 
+def apply_bond_profile(obj, bond, order):
+    """Rebuild a profile with its saved orientation, including older scene records."""
+    from .plotter import set_bond_order
+    if 'tilt' not in bond and bond['direction'] is not None:
+        set_bond_order(obj, order, bond['direction'])
+        return
+    # Older records with no saved orientation can have native Blender tilt edits.
+    points = obj.data.splines[0].bezier_points
+    tilts = [bond.get('tilt', point.tilt) for point in points]
+    set_bond_order(obj, order)
+    for point, tilt in zip(points, tilts):
+        point.tilt = tilt
+
+
 def update_junctions(owner, record):
     """Scale objects, preserving manual nonuniform scaling and linked atom meshes."""
     from .plotter import _multiple_bond_profile
@@ -155,7 +169,6 @@ def restyle_molecule(owner, *, atom_scale=None, bond_thickness=None,
             bpy.data.materials.remove(material)
         raise
 
-    from .plotter import set_bond_order
     bond_records = {b['id']: b for b in record['bonds']}
     for obj in bonds:
         _private_curve(obj)
@@ -165,12 +178,7 @@ def restyle_molecule(owner, *, atom_scale=None, bond_thickness=None,
         obj['mb_nominal_radius'] = nominal
         obj['mb_radius'] = initial
         obj.data.bevel_depth = bond_thickness * initial / nominal if nominal else bond_thickness
-        tilts = [p.tilt for p in obj.data.splines[0].bezier_points]
-        set_bond_order(obj, obj.get('mb_order', 1), bond_records[obj[ID]]['direction'])
-        # Preserve manual curve tilt when there was no recorded direction.
-        if bond_records[obj[ID]]['direction'] is None:
-            for point, tilt in zip(obj.data.splines[0].bezier_points, tilts):
-                point.tilt = tilt
+        apply_bond_profile(obj, bond_records[obj[ID]], obj.get('mb_order', 1))
     for atom in atoms:
         atom['mb_atom_radius'] = atom.get('mb_atom_radius', _atom_radius(atom['mb_element'], old_settings))
     record['settings'] = settings
