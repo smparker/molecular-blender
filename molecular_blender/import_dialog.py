@@ -25,37 +25,38 @@ def browser_path(operator, context):
     return path if name and not os.path.isdir(path) else ''
 
 
-def _manifest_source(path):
+def _manifest_source(path, first_frame):
     with open(path) as stream:
-        first = json.load(stream)['molecules'][0]['filename']
-    return os.path.join(os.path.dirname(path), first)
+        entries = json.load(stream)['molecules']
+    first = entries[0 if len(entries) == 1 else first_frame]
+    child = os.path.join(os.path.dirname(path), first['filename'])
+    return file_format(child), child
 
 
 @lru_cache(maxsize=16)
-def _read_preview(reader, path, mtime, size):
+def _read_preview(reader, path, mtime, size, args):
     # Cache failures too. The importer reports the full error on confirmation.
     try:
-        return reader(path)
+        return reader(path, *args)
     except (OSError, ValueError, EOFError, IndexError, KeyError, TypeError, OverflowError):
         return None
 
 
-def _preview(reader, path):
+def _preview(reader, path, *args):
     try:
         info = os.stat(path)
     except (OSError, ValueError):
         return None
     if stat.S_ISREG(info.st_mode):
-        return _read_preview(reader, path, info.st_mtime_ns, info.st_size)
+        return _read_preview(reader, path, info.st_mtime_ns, info.st_size, args)
     return None
 
 
-def surface_source(path):
+def surface_source(path, first_frame=0):
     """The first frame supplies a JSON trajectory's field, just as in the reader."""
     kind = file_format(path)
     if kind == 'json':
-        path = _preview(_manifest_source, path)
-        kind = file_format(path) if path else None
+        kind, path = _preview(_manifest_source, path, first_frame) or (None, None)
     labels = _preview(cube_dataset_labels, path) if kind == 'cube' else None
     return kind, labels
 
@@ -92,7 +93,7 @@ def _dataset_item(index, label):
 
 
 def dataset_items(op, context):
-    _, labels = surface_source(browser_path(op, context))
+    _, labels = surface_source(browser_path(op, context), op.frame_start)
     if labels is None or len(labels) > MAX_DATASET_MENU:
         return [_dataset_item(0, None)]
     has_ids = not isinstance(labels, range)
@@ -106,12 +107,12 @@ def dataset_index(index, labels):
 
 
 def get_dataset_choice(op):
-    _, labels = surface_source(browser_path(op, bpy.context))
+    _, labels = surface_source(browser_path(op, bpy.context), op.frame_start)
     return dataset_index(op.cube_dataset, labels)
 
 
 def draw_surfaces(layout, op, context):
-    kind, labels = surface_source(browser_path(op, context))
+    kind, labels = surface_source(browser_path(op, context), op.frame_start)
     if kind not in ('molden', 'cube'):
         return
     box = layout.box()

@@ -29,6 +29,7 @@ import json
 import os
 import sys
 
+from .options import trajectory_range
 from .util import stopwatch
 from .periodictable import symbols
 from .constants import bohr2ang
@@ -217,66 +218,52 @@ def molecule_from_sdf(filename, options):
 
 @stopwatch("read xyz")
 def molecule_from_xyz(filename, options):
-    """Read in xyz file and return a dictionary of results"""
-    out = {"atoms": []}
-    ignore_h = options.get("ignore_hydrogen", False)
-    animate = options.get("plot_type", "") in [ "animate", "auto" ]
-
-    with Reader(filename) as f:
-        # first line contains number of atoms
-        natoms = int(f.readline().split()[0])
-        # second line is a comment
-        f.readline()
-
-        for iatom in range(natoms):
-            # Expecting:
-            #   <symbol> <x> <y> <z> [<charge> [<vx> <vy> <vz>]]
-            # e.g.
-            #   h 0.0 0.0 1.0 0.0 1.0 2.0 3.0
-            tmp = f.readline().split()
-            symb = str(tmp[0]).lower()
-            position = [float(x) for x in tmp[1:4]]
-            charge = float(tmp[4]) if len(tmp) >= 5 else 0.0
-            gradient = [float(x) for x in tmp[5:8]] if len(
-                tmp) >= 8 else [0.0 for x in range(3)]
-            hidden = ignore_h and symb == "h"
-            new_atom = make_atom_dict(symb, position, iatom, charge, gradient,
-                hidden)
-
-            if animate:
-                new_atom["trajectory"] = [make_snap_dict(position, charge, gradient)]
-
-            out["atoms"].append(new_atom)
-
-        while animate:
-            try:  # gracefully exit if at the end of a file
-                line = f.readline()
-            except EOFError:
+    """Stream XYZ snapshots, retaining atom data only for selected source frames."""
+    start, end, step = trajectory_range(options)
+    animate = options.get("plot_type") in ("animate", "auto")
+    atoms, frames = [], []
+    count = None
+    with Reader(filename) as reader:
+        index = 0
+        while end < 0 or index <= end:
+            line = reader.f.readline()
+            if not line:
                 break
-
-            # painfully fail if EOF is reached when it's not expected
-            frame_atoms = int(line.split()[0])  # natoms
-            if frame_atoms != natoms:
-                raise Exception(
-                    "All frames in trajectory must have the same number of atoms.")
-
-            f.readline()  # comment line
-            for iatom in range(natoms):
-                tmp = f.readline().split()
-                symb = str(tmp[0]).lower()
-                if symb != out["atoms"][iatom]["symbol"]:
-                    raise Exception(
-                        "The order of the atoms must be the same for each frame.")
-                position = [float(x) for x in tmp[1:4]]
-                charge = float(tmp[4]) if len(tmp) >= 5 else 0.0
-                gradient = [float(x) for x in tmp[5:8]] if len(
-                    tmp) >= 8 else [0.0 for x in range(3)]
-                out["atoms"][iatom]["trajectory"].append(
-                    make_snap_dict(position, charge, gradient))
-            if animate:
-                options["plot_type"] = "animate"
-
-    return out
+            natoms = int(line.split()[0])
+            if count is None:
+                count = natoms
+            if natoms != count or natoms < 1:
+                raise ValueError("All frames in trajectory must have the same number of atoms")
+            reader.readline()
+            keep = index >= start and (index - start) % step == 0
+            for i in range(natoms):
+                line = reader.readline()
+                if not keep:
+                    continue
+                fields = line.split()
+                if len(fields) < 4:
+                    raise ValueError(f"XYZ frame {index}, atom {i} needs an element and three coordinates")
+                symbol = fields[0].lower()
+                position = list(map(float, fields[1:4]))
+                charge = float(fields[4]) if len(fields) >= 5 else 0.
+                gradient = list(map(float, fields[5:8])) if len(fields) >= 8 else [0.] * 3
+                if not frames:
+                    atoms.append(make_atom_dict(symbol, position, i, charge, gradient,
+                                                options.get("ignore_hydrogen", False) and symbol == "h"))
+                elif symbol != atoms[i]["symbol"]:
+                    raise ValueError("The order of the atoms must be the same for each frame")
+                if animate:
+                    atoms[i]["trajectory"].append(make_snap_dict(position, charge, gradient))
+            if keep:
+                frames.append(index)
+                if not animate:
+                    break
+            index += 1
+    if not frames:
+        raise ValueError("Frame range selects no XYZ snapshots")
+    if animate and len(frames) > 1:
+        options["plot_type"] = "animate"
+    return {"atoms": atoms, "frame_numbers": frames}
 
 
 ANY_RE = re.compile(r"\[[a-zA-Z0-9 ]*\]")
@@ -679,6 +666,7 @@ def molecule_from_json(filename, options):
     if not isinstance(entries, list) or not entries:
         raise ValueError("Expected a nonempty molecules list in " + os.fspath(filename))
 
+    start, end, step = trajectory_range(options)
     previous = -1
     frames = []
     merged = None
@@ -691,10 +679,15 @@ def molecule_from_json(filename, options):
             if type(frame) is not int or frame <= previous:
                 raise ValueError("Frame indices must be strictly increasing nonnegative integers")
             previous = frame
+            # A single XYZ reference is also used to wrap an entire XYZ trajectory.
+            wrapped_xyz = (len(entries) == 1 and isinstance(entry.get("filename"), str)
+                           and file_format(entry["filename"]) == "xyz" and "frame" not in entry)
+            if not wrapped_xyz and (i < start or (end >= 0 and i > end) or (i - start) % step):
+                continue
             frames.append(frame)
             child_options = dict(options)
             if len(entries) > 1 or "frame" in entry:
-                child_options["plot_type"] = "frame"
+                child_options.update(plot_type="frame", frame_start=0, frame_end=-1, frame_step=1)
             directory = os.path.dirname(filename)
             if not isinstance(entry.get("filename"), str) or not entry["filename"].strip():
                 raise ValueError("Expected a filename")
@@ -730,6 +723,8 @@ def molecule_from_json(filename, options):
         except Exception as exc:
             raise ValueError("{}: {}".format(label, exc or "invalid frame")) from exc
 
+    if merged is None:
+        raise ValueError("Frame range selects no JSON entries in " + os.fspath(filename))
     merged["frame_numbers"] = frames
     options["plot_type"] = "animate"
     return merged

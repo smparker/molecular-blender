@@ -241,6 +241,25 @@ class TestSidebarActions(unittest.TestCase):
         bpy.ops.molecular_blender.select_atoms(match='fragment')
         self.assertEqual(set(bpy.context.selected_objects), {oxygen})
 
+    def test_manifest_positions_and_orbitals_use_the_same_blender_frames(self):
+        import json
+        from molecular_blender.plotter import BlendMoleculeSetup, compute_surface_vertex_sets
+        from molecular_blender.scene_state import owned_objects
+        manifest = self.path.with_suffix('.json')
+        manifest.write_text(json.dumps({'molecules': [
+            {'filename': 'skipped.molden', 'frame': 0}, {'filename': 'water.molden', 'frame': 1},
+            {'filename': 'skipped.molden', 'frame': 2}, {'filename': 'water.molden', 'frame': 4}]}))
+        model, _, options = BlendMoleculeSetup(bpy.context, str(manifest), orbital='5', keystride=2, frame_start=1, frame_step=2,
+                                               isovalues='.05', cumulative=False, resolution=.4, remesh=0)
+        atom = owned_objects(model.scene_owner, 'atom')[0]
+        times = {p.co.x for curve in atom.animation_data.action.fcurves for p in curve.keyframe_points}
+        self.assertEqual(times, {3, 9})
+        definitions, frames = compute_surface_vertex_sets(model, options)
+        self.assertEqual(set(frames), times)
+        self.assertTrue(all(frames.values()))
+        self.assertNotEqual(frames[3], frames[9])
+        self.assertTrue(all(len(d['triangles']) for d in definitions))
+
     def test_legacy_animated_groups_preserve_keyframes_and_save_visibility(self):
         from molecular_blender.scene_state import tag, read_record, write_record
         from molecular_blender.scene_surfaces import surface_groups, surface_visible, set_surface_visibility

@@ -13,6 +13,9 @@ DEFAULTS = {"bonds": True,
                 "plot_type": "auto",
                 "object_type": "mesh",
                 "keystride": 1,
+                "frame_start": 0,
+                "frame_end": -1,
+                "frame_step": 1,
                 "animate_bonds": "staticfirst",
                 "universal_bonds": True,
                 "ignore_hydrogen": True,
@@ -51,6 +54,14 @@ ENUMS = {
 }
 
 
+def trajectory_range(options):
+    start, end, step = (options.get("frame_start", 0), options.get("frame_end", -1),
+                        options.get("frame_step", 1))
+    if any(type(v) is not int for v in (start, end, step)) or start < 0 or step < 1 or (end != -1 and end < start):
+        raise ValueError("Frame range needs a nonnegative start, an inclusive end >= start (or -1), and a positive step")
+    return start, end, step
+
+
 def validated_options(values):
     """Return a fresh settings block without mutating the caller's choices.
 
@@ -85,6 +96,7 @@ def validated_options(values):
     for name in ('bond_thickness', 'cube_dataset', 'sdf_record', 'remesh'):
         if out[name] < 0:
             raise ValueError(name + ' must not be negative')
+    trajectory_range(out)
     if out['atom_scale'] <= 0:
         raise ValueError('Atom size multiplier must be positive')
     if not 0 <= out['surface_opacity'] <= 1:

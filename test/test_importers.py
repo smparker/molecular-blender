@@ -165,6 +165,16 @@ class TestXYZRead(unittest.TestCase):
         all_h = [a for a in geo["atoms"] if a["symbol"] == "h"]
         assert len(hidden_h) == len(all_h)
 
+    def test_sample_source_positions_and_preserve_timing(self):
+        path = self._write('frames.xyz', ''.join(f'1\nframe\nHe {i} 0 0\n' for i in range(7)))
+        data = molecule_from_xyz(path, dict(plot_type='auto', frame_start=1, frame_end=5, frame_step=2))
+        self.assertEqual(data['frame_numbers'], [1, 3, 5])
+        atom, = data['atoms']
+        self.assertEqual(atom['position'][0], 1)
+        self.assertEqual([s['position'][0] for s in atom['trajectory']], [1, 3, 5])
+        with self.assertRaisesRegex(ValueError, 'no XYZ'):
+            molecule_from_xyz(path, {'frame_start': 7})
+
     def test_mismatched_atoms_raises(self):
         f = self._write("bad.xyz", "2\nframe1\nC 0 0 0\nH 1 0 0\n2\nframe2\nC 0 0 0\nC 1 0 0\n")
         with self.assertRaisesRegex(Exception, "order of the atoms"):
@@ -380,6 +390,16 @@ class TestJsonRead(unittest.TestCase):
         self._write('b.cube', cube.replace('1 15', '1 17'))
         with self.assertRaisesRegex(ValueError, 'entry 2.*dataset IDs'):
             molecule_from_json(path, {})
+
+    def test_sampling_skips_files_and_keeps_manifest_timeline(self):
+        self._write('a.xyz', '1\natom\nHe 2 0 0\n')
+        path = self.manifest([{'filename': name + '.xyz', 'frame': t} for name, t in
+                              [('missing', 2), ('a', 5), ('unused', 7), ('a', 11), ('unused', 20)]])
+        data = molecule_from_json(path, dict(frame_start=1, frame_end=3, frame_step=2))
+        self.assertEqual(data['frame_numbers'], [5, 11])
+        self.assertEqual(len(data['atoms'][0]['trajectory']), 2)
+        with self.assertRaisesRegex(ValueError, 'no JSON'):
+            molecule_from_json(path, {'frame_start': 5})
 
 
     def test_json_referencing_json_raises(self):

@@ -146,6 +146,13 @@ if _HAS_BPY:
             description="Striding between keyframes in animation",
             default=1)
 
+        frame_start: IntProperty(name="First input frame", default=0, min=0,
+            description="Zero-based position in the XYZ trajectory or JSON entry list")
+        frame_end: IntProperty(name="Last input frame", default=-1, min=-1,
+            description="Inclusive input frame, or -1 to read through the end")
+        frame_step: IntProperty(name="Read every Nth frame", default=1, min=1,
+            description="Sample starting at the first selected input frame and preserve source timing")
+
         cube_field_type: EnumProperty(
             name="Cube field type",
             description="How cumulative cube surfaces integrate values",
@@ -243,6 +250,11 @@ if _HAS_BPY:
             box.label(text="Animation")
             box.row().prop(self, "animate_bonds")
             box.row().prop(self, "keystride")
+            if importers.file_format(import_dialog.browser_path(self, context)) in ('xyz', 'json'):
+                row = box.row(align=True)
+                row.prop(self, "frame_start")
+                row.prop(self, "frame_end")
+                box.prop(self, "frame_step")
 
             import_dialog.draw_surfaces(layout, self, context)
 
@@ -275,6 +287,7 @@ if _HAS_BPY:
                 plot_style=self.plot_style,
                 object_type=self.object_type,
                 keystride=self.keystride,
+                frame_start=self.frame_start, frame_end=self.frame_end, frame_step=self.frame_step,
                 animate_bonds=self.animate_bonds,
                 universal_bonds=self.universal_bonds,
                 ignore_hydrogen=self.ignore_hydrogen,
@@ -311,7 +324,7 @@ if _HAS_BPY:
         def execute(self, context):
             """Load molecule, plot atoms/bonds, then compute isosurfaces in background if needed."""
             try:
-                source = import_dialog.surface_source(self.filepath)
+                source = import_dialog.surface_source(self.filepath, self.frame_start)
                 settings = self._build_options(source, self.options.is_invoke)
                 molecule, styler, options = BlendMoleculeSetup(context, self.filepath, **settings)
             except Exception as e:

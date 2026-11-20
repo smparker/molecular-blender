@@ -440,3 +440,13 @@ places the key at `1 + frame × keystride`. Atom identities and explicit SDF
 topology must match across frames. Molden frames retain their own coefficients
 and occupations and share a compatible basis and orbital channels. Cube frames
 can have different grid origins and spacings and must use the same dataset IDs.
+
+### Sample trajectory frames
+
+For XYZ and JSON imports, **First input frame** and **Last input frame** are
+inclusive, zero-based positions. A last frame of `-1` reads through the end.
+**Read every Nth frame** counts from the first selected position. For example,
+`100` through `500` with a step of `10` loads 41 frames. Explicit JSON frame
+times survive sampling, and **Keystride** still controls the spacing of Blender
+keyframes. The Python options are `frame_start`, `frame_end`, and `frame_step`.
+A single JSON entry wrapping an XYZ trajectory samples the XYZ frames.
