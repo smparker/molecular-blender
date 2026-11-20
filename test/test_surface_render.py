@@ -1,5 +1,6 @@
 """Check rendered coverage on a fixed transparent scene using Blender's CPU renderer."""
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 
@@ -74,6 +75,25 @@ class TestSurfacePNG(unittest.TestCase):
                         self.assertEqual(alpha[0, 0], 0)
                     finally:
                         bpy.data.images.remove(image)
+                if hasattr(bpy.utils, 'register_cli_command'):
+                    # Start another Blender on the saved scene and use the checkout's CLI.
+                    blend = Path(directory) / 'styled figure.blend'
+                    bpy.data.libraries.write(str(blend), {scene})
+                    checkout = str(Path(__file__).resolve().parents[1])
+                    register = (f'import sys; sys.path.insert(0, {checkout!r}); '
+                                'from molecular_blender import render_cli; render_cli.register()')
+                    output = Path(directory) / 'orbital panels'
+                    cmd = [bpy.app.binary_path, '-b', '--factory-startup', str(blend), '--python-expr', register,
+                           '-c', 'molecular_render', '--molecule', owner.name, '--output', str(output)]
+                    def run(label):
+                        return subprocess.run(cmd + ['--surface', label], capture_output=True, text=True,
+                                              timeout=90)
+                    result = run('Orbital 5')
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertEqual([p.name for p in output.glob('*.png')], [files[1].name])
+                    result = run('Missing group')
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('Available surfaces', result.stderr + result.stdout)
             self.assertFalse(scene.render.film_transparent)
             self.assertEqual(scene.render.image_settings.file_format, 'JPEG')
         finally:

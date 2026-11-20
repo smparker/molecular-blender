@@ -68,8 +68,9 @@ def export_surface_pngs(context, owner, groups, keys, directory):
     if any(key not in groups for key in keys):
         raise ValueError('A selected surface was removed. Open the export dialog again.')
     visibility = {obj: visibility_state(obj) for group in groups.values() for obj in group['objects']}
-    selected = list(context.selected_objects)
-    active = context.view_layer.objects.active
+    layer = context.view_layer
+    selected = [obj for obj in layer.objects if obj.select_get(view_layer=layer)]
+    active = layer.objects.active
     wm = context.window_manager
     wm.progress_begin(0, len(keys))
     try:
@@ -96,11 +97,11 @@ def export_surface_pngs(context, owner, groups, keys, directory):
     finally:
         for obj, state in visibility.items():
             restore_visibility(obj, state)
-        context.view_layer.update()
+        layer.update()
         for obj in selected:
-            if not obj.select_get():
-                obj.select_set(True)
-        context.view_layer.objects.active = active
+            if not obj.select_get(view_layer=layer):
+                obj.select_set(True, view_layer=layer)
+        layer.objects.active = active
         wm.progress_end()
 
 

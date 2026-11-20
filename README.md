@@ -434,6 +434,20 @@ settings afterward and adds a numeric suffix if a filename already exists.
 For an ordinary still, **Output Properties → Output → Use Transparent PNG**
 sets transparent film and RGBA PNG output for the scene.
 
+To regenerate a series from a saved figure, run Blender with the add-on enabled.
+Use the molecule root's Outliner name when the scene contains several molecules.
+
+```sh
+blender -b "figure.blend" -c molecular_render --molecule "water" --output "panels"
+```
+
+The command creates the output directory and renders one PNG per saved surface
+group with the scene's camera, lighting, resolution and current frame. To render
+a subset, repeat `--surface` with exact sidebar labels such as
+`--surface "Orbital HOMO" --surface "Orbital LUMO"`. A failed render or unknown
+name returns a nonzero exit code. Run `blender -c molecular_render --help` for
+the arguments. Blender 4.3 supports this command.
+
 **Make Molecule Independent** detaches geometry and materials shared with
 objects outside the molecule, including multiple-bond bevel shapes. It keeps
 internal sharing, so identical atoms can still reuse a mesh. The action
