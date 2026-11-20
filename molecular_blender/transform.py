@@ -68,17 +68,20 @@ def transform_sph_to_cart(orbitals, spherical, basis):
 def get_sph_to_cart(sh):
     """Returns real spherical to cartesian GTO transformation
 
-    Data was generated with sph_to_cart.py script
+    The d columns expand each normalized spherical harmonic as a Cartesian
+    polynomial. The higher-shell tables are from util/sph_to_cart.py.
     """
     if sh=="s":
         return np.eye(1)
     elif sh=="p":
         return np.eye(3)
     elif sh=="d":
+        # Expand normalized real harmonics in normalized Cartesian functions.
+        # Columns follow Molden m = 0, +1, -1, +2, -2.
         return np.array(
-                [[-1/3, 0, 0, (1/3)*sqrt(3), 0],
-                 [-1/3, 0, 0,  -1/3*sqrt(3), 0],
-                 [2/3, 0, 0, 0, 0],
+                [[-0.5, 0, 0, sqrt(3)/2, 0],
+                 [-0.5, 0, 0, -sqrt(3)/2, 0],
+                 [1, 0, 0, 0, 0],
                  [0, 0, 0, 0, 1],
                  [0, 1, 0, 0, 0],
                  [0, 0, 1, 0, 0]]

@@ -1,0 +1,22 @@
+! RHF def2-SVP TightSCF NoAutoStart NoRI
+%plots
+ Format Cube
+ dim1 33
+ dim2 33
+ dim3 33
+ min1 -4
+ max1 4
+ min2 -4
+ max2 4
+ min3 -4
+ max3 4
+ MO("pi.cube",7,0);
+end
+* xyz 0 1
+C  -0.383 -0.383 -0.383
+C   0.383  0.383  0.383
+H  -1.360 -0.036 -0.698
+H  -0.036 -1.360 -0.698
+H   1.360  0.036  0.698
+H   0.036  1.360  0.698
+*

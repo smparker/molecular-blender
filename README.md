@@ -623,3 +623,11 @@ units and numeric labels. It reads the connected material's Color Ramp and
 Map Range, including edited colors and limits. A signed scale marks zero at
 its position between the two limits. The SVG uses sRGB swatches for the
 material colors before scene lighting and the render view transform.
+
+### ORCA Molden normalization
+
+For Molden files written by ORCA 6.1.1 `orca_2mkl`, enable **Orca molden fix**
+in the import options (`orca_fix=True` in Python). This reads the normalization
+already present in the contraction coefficients, including the spherical d-shell
+factor. The [ethene reference calculation](test/fixtures/orca_ethene/ethene.inp)
+checks a π orbital against ORCA's own cube values on both lobes and near the node.

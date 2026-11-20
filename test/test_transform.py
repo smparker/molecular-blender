@@ -1,6 +1,7 @@
 """Tests for molecular_blender.transform"""
 
 import unittest
+from pathlib import Path
 import numpy as np
 
 from molecular_blender.transform import get_sph_to_cart, transform_sph_to_cart
@@ -26,10 +27,25 @@ class TestGetSphToCart(unittest.TestCase):
         np.testing.assert_array_equal(mat, np.eye(3))
 
     def test_d_normalization(self):
-        """For d-shell, each column of the transform should have nonzero norm."""
+        """The five harmonics are orthonormal in the Cartesian overlap metric."""
         mat = get_sph_to_cart("d")
-        for col in range(mat.shape[1]):
-            assert np.linalg.norm(mat[:, col]) > 1e-10
+        metric = np.eye(6)
+        metric[:3, :3] = 1 / 3
+        np.fill_diagonal(metric, 1)
+        np.testing.assert_allclose(mat.T @ metric @ mat, np.eye(5), atol=1e-14)
+
+    def test_ethene_pi_orbital_against_orca_cube(self):
+        from molecular_blender.importers import molecule_from_molden
+        from molecular_blender.orbitals import MOData
+        directory = Path(__file__).parent / 'fixtures' / 'orca_ethene'
+        samples = np.loadtxt(directory / 'mo8.dat')
+        orbitals = MOData.from_dict(molecule_from_molden(directory / 'ethene.molden', {'orca_fix': True}))
+        self.assertEqual(orbitals.homo(), 8)
+        pi = orbitals.get_orbital(8)
+        actual = np.array([pi.value(*p) for p in samples[:, :3]])
+        reference = samples[:, 3]
+        sign = -1 if np.dot(reference, actual) < 0 else 1
+        np.testing.assert_allclose(actual, sign * reference, atol=1e-7, rtol=5e-6)
 
     def _check_transform_rank(self, shell, ncart, nsph):
         """Transform matrix should have full column rank (nsph)."""

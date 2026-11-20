@@ -589,6 +589,13 @@ def molecule_from_molden(filename, _options):
             molden_mo = molden_read_mo(f, nao)
 
             if spherical and molden_mo:
+                if not out["denorm"] and "d" in spherical:
+                    # orca_2mkl stores the normalized xy primitive factor in
+                    # spherical d contractions. Our radial factor is for xx.
+                    for atom_basis in out["basis"]:
+                        for shell in atom_basis:
+                            if shell["shell"] == "d":
+                                shell["contractions"] = [c / np.sqrt(3.) for c in shell["contractions"]]
                 molden_mo = transform_sph_to_cart(molden_mo, spherical, out["basis"])
 
             out["mo"] = molden_mo
