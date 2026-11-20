@@ -235,6 +235,71 @@ class MB_OT_restyle(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def make_molecule_independent(owner):
+    """Detach geometry and top-level materials shared outside this hierarchy."""
+    objects = {o for o in [owner, *owned_objects(owner)] if o.type in {'MESH', 'CURVE', 'SURFACE', 'META', 'FONT'}}
+    if any(o.library for o in objects):
+        raise ValueError('Make library-linked objects local in Blender before editing their molecule')
+    geometry = {o.data for o in objects}
+    users = bpy.data.user_map(subset=geometry)
+    copies = {data: data.copy() for data in geometry if data.library or users[data] - objects}
+    for obj in objects:
+        if obj.data in copies:
+            obj.data = copies[obj.data]
+    geometry = {copies.get(data, data) for data in geometry}
+
+    # Generated bevel objects live outside collections and can be shared even
+    # when the centerline curves have already been made single-user.
+    profiles = {}
+    for curve in geometry:
+        profile = getattr(curve, 'bevel_object', None)
+        if profile is not None and profile.get('molecular_blender_bond_profile'):
+            profiles.setdefault(profile, []).append(curve)
+    for profile, curves in profiles.items():
+        if (profile.library or profile.users_collection
+                or any(c not in geometry and c.bevel_object == profile for c in bpy.data.curves)):
+            local = profile.copy()
+            local.data = profile.data.copy()
+            local.use_fake_user = True
+            for curve in curves:
+                curve.bevel_object = local
+        elif profile.data.users > 1:
+            profile.data = profile.data.copy()
+
+    materials = {m for data in geometry for m in data.materials if m}
+    materials.update(slot.material for obj in objects for slot in obj.material_slots if slot.material)
+    users = bpy.data.user_map(subset=materials)
+    local_users = objects | geometry
+    copies = {m: m.copy() for m in materials if m.library or users[m] - local_users}
+    for data in geometry:
+        for i, material in enumerate(data.materials):
+            if material in copies:
+                data.materials[i] = copies[material]
+    for obj in objects:
+        for slot in obj.material_slots:
+            if slot.link == 'OBJECT' and slot.material in copies:
+                slot.material = copies[slot.material]
+
+
+class MB_OT_make_independent(bpy.types.Operator):
+    bl_idname = 'molecular_blender.make_independent'
+    bl_label = 'Make Molecule Independent'
+    bl_description = 'Give this molecule private geometry and materials wherever they are shared with other objects'
+    bl_options = {'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and resolve_owner(context.object) is not None
+
+    def execute(self, context):
+        try:
+            make_molecule_independent(resolve_owner(context.object))
+        except (ValueError, RuntimeError) as exc:
+            self.report({'ERROR'}, str(exc))
+            return {'CANCELLED'}
+        return {'FINISHED'}
+
+
 class MB_OT_style_selected(bpy.types.Operator):
     bl_idname = 'molecular_blender.style_selected'
     bl_label = 'Style Selected'
@@ -298,8 +363,10 @@ class MB_OT_style_selected(bpy.types.Operator):
 def register():
     bpy.utils.register_class(MB_OT_restyle)
     bpy.utils.register_class(MB_OT_style_selected)
+    bpy.utils.register_class(MB_OT_make_independent)
 
 
 def unregister():
+    bpy.utils.unregister_class(MB_OT_make_independent)
     bpy.utils.unregister_class(MB_OT_style_selected)
     bpy.utils.unregister_class(MB_OT_restyle)

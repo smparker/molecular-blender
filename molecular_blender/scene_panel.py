@@ -341,6 +341,7 @@ class MB_PT_molecule(bpy.types.Panel):
                 for i in range(0, len(levels), 3):
                     prefix = 'Isovalues  ' if i == 0 else ''
                     entry.label(text=prefix + ', '.join(levels[i:i+3]))
+        layout.operator('molecular_blender.make_independent', icon='DUPLICATE')
         if summary['object_type'] != 'wireframe':
             layout.operator('molecular_blender.restyle', text='Restyle molecule…')
             box = layout.box()

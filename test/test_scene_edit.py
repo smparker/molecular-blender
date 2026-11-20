@@ -13,6 +13,33 @@ except ImportError:
 
 @unittest.skipUnless(bpy, 'requires Blender')
 class TestRestyle(unittest.TestCase):
+    def test_make_independent_preserves_internal_sharing_and_detaches_bevel_sources(self):
+        from molecular_blender.plotter import BlendMoleculeSetup
+        from molecular_blender.scene_edit import make_molecule_independent
+        from molecular_blender.scene_state import owned_objects
+        model, _, _ = BlendMoleculeSetup(bpy.context, 'examples/bond_orders.sdf', draw_bond_orders=True,
+                                        ignore_hydrogen=False, isovalues='')
+        root = model.scene_owner
+        other = root.copy()
+        model.scene_collection.objects.link(other)
+        pairs = []
+        for obj in owned_objects(root):
+            copy = obj.copy()
+            copy.parent = other
+            model.scene_collection.objects.link(copy)
+            pairs.append((obj, copy))
+        make_molecule_independent(other)
+        groups = {}
+        for original, copy in pairs:
+            self.assertNotEqual(original.data, copy.data)
+            self.assertEqual(groups.setdefault(original.data, copy.data), copy.data)
+            self.assertNotEqual(original.active_material, copy.active_material)
+            if original.get('mb_order', 1) > 1:
+                self.assertNotEqual(original.data.bevel_object.data, copy.data.bevel_object.data)
+        baseline = [(b.data, b.active_material) for _, b in pairs]
+        make_molecule_independent(other)
+        self.assertEqual(baseline, [(b.data, b.active_material) for _, b in pairs])
+
     def setUp(self):
         self.before = set(bpy.data.objects)
         self.collections = set(bpy.data.collections)
