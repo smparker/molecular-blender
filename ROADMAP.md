@@ -58,7 +58,8 @@ Entry points: [orbitals.py](molecular_blender/orbitals.py), [compute_ao_py.py](m
 - [x] **View a selected plane face-on.** Three atoms define the viewing direction for the framed molecule.
 - [x] **Export a surface series.** Render selected surface groups to individual transparent PNGs with the active scene camera.
 - [x] **Set ordinary renders to transparent PNG.** Output Properties includes a one-click film and RGBA output preset.
-- [ ] **Improve publication output.** Add principal-axis alignment, scale bars and legends.
+- [x] **Align the viewport to molecular principal axes.** Frame the current geometry with its longest dimension horizontal and best-fit plane face-on, using the current view to resolve ambiguous axes.
+- [ ] **Improve publication output.** Scale bars and legends.
 
 ## 4. Bond perception and chemical representation
 

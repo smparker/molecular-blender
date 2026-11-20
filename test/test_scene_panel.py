@@ -22,6 +22,27 @@ def panel_labels(obj):
 
 @unittest.skipUnless(bpy, 'requires Blender')
 class TestMoleculePanel(unittest.TestCase):
+    def test_principal_axes_and_ambiguous_views(self):
+        import numpy as np
+        from mathutils import Euler
+        from molecular_blender.scene_view import principal_view_rotation
+        current = Euler((.5, .7, .9)).to_quaternion()
+        basis = np.array(Euler((.8, -.5, .6)).to_matrix())
+        yz_plane = np.array([[0., y, z] for y in (-4., 4.) for z in (-1., 1.)])
+        coords = yz_plane @ basis.T + [15, 6, -9]
+        rotation = principal_view_rotation(coords, current)
+        x, y, z = np.array(rotation.to_matrix()).T
+        self.assertAlmostEqual(abs(x @ basis[:, 1]), 1., places=6)
+        self.assertAlmostEqual(abs(z @ basis[:, 0]), 1., places=6)
+        self.assertGreater(z @ np.array(current.to_matrix())[:, 2], 0)
+        # A near-square in the current screen plane should keep its in-plane angle.
+        square = np.array([[u, v, 0.] for u in (-1., 1.) for v in (-1.001, 1.001)])
+        view_basis = np.array(current.to_matrix())
+        for points in (square, [[-1, 0, 0], [1, 0, 0]], np.eye(3).tolist() + (-np.eye(3)).tolist(),
+                       [[0, 0, 0]]):
+            result = principal_view_rotation(np.array(points) @ view_basis.T, current)
+            np.testing.assert_allclose(result.to_matrix(), view_basis, atol=1e-6)
+
     def setUp(self):
         self.before = set(bpy.data.objects)
         self.collections = set(bpy.data.collections)

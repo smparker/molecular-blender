@@ -1,8 +1,9 @@
 """Frame displayed molecular geometry in the invoking 3D viewport."""
 import bpy
 import blf
+import numpy as np
 from bpy_extras.view3d_utils import location_3d_to_region_2d
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 from .scene_state import ID, ROLE, owned_objects, read_record, resolve_owner
 
@@ -44,8 +45,43 @@ def draw_atom_indices():
         blf.disable(0, blf.SHADOW)
 
 
+def principal_view_rotation(positions, current):
+    """Put the longest geometric axis across the screen and the shortest toward the viewer."""
+    if len(positions) < 2:
+        return current
+    centered = np.array(positions, dtype=np.float64)
+    centered -= centered.mean(axis=0)
+    spread, axes = np.linalg.eigh(centered.T @ centered)
+    tolerance = .01 * spread[-1]
+    if spread[-1] - spread[0] <= tolerance:
+        return current
+
+    # Resolve signs and near-degenerate eigenspaces using the invoking viewport.
+    right, up, front = np.asarray(current.to_matrix()).T
+    def closest_in(subspace, candidates):
+        for candidate in candidates:
+            vector = subspace @ (subspace.T @ candidate)
+            length = np.linalg.norm(vector)
+            if length > 1e-6:
+                return vector / length
+
+    # A nearly spherical cloud can have two small adjacent gaps. Choose the
+    # better-defined axis and treat the perpendicular plane as degenerate.
+    short_gap, long_gap = np.diff(spread)
+    if short_gap < long_gap and short_gap <= tolerance:
+        normal_space = axes[:, :2]
+        long_space = axes[:, 2:]
+    else:
+        normal_space = axes[:, :1]
+        long_space = axes[:, 1:] if long_gap <= tolerance else axes[:, 2:]
+    x = closest_in(long_space, (right, up, front))
+    z = closest_in(normal_space, (front, up, right))
+    return Matrix(np.column_stack((x, np.cross(z, x), z))).to_quaternion()
+
+
 class _FrameMolecule:
     face_on = False
+    principal_axes = False
 
     @classmethod
     def poll(cls, context):
@@ -79,6 +115,20 @@ class _FrameMolecule:
                 if normal.dot(toward_viewer) < 0:
                     normal.negate()
                 rotation = toward_viewer.rotation_difference(normal) @ rotation
+            if self.principal_axes:
+                if owner.type == 'CURVE':
+                    # Wireframe imports share junctions across several curve splines.
+                    curve = owner.evaluated_get(context.evaluated_depsgraph_get())
+                    positions = list({tuple(curve.matrix_world @ point.co.to_3d())
+                                      for spline in curve.data.splines
+                                      for point in (*spline.points, *spline.bezier_points)})
+                else:
+                    positions = [o.matrix_world.translation for o in owned_objects(owner, 'atom')
+                                 if o.visible_get(view_layer=context.view_layer, viewport=space)]
+                if not positions:
+                    self.report({'INFO'}, 'Show an atom to align the molecule')
+                    return {'CANCELLED'}
+                rotation = principal_view_rotation(positions, rotation)
             to_view = rotation.inverted().to_matrix().to_4x4()
             depsgraph = context.evaluated_depsgraph_get()
             low = [float('inf')] * 3
@@ -132,3 +182,10 @@ class MB_OT_view_face_on(_FrameMolecule, bpy.types.Operator):
     bl_label = 'View Face-On'
     bl_description = 'Look perpendicular to the plane of three selected atoms and frame their molecule'
     face_on = True
+
+
+class MB_OT_view_principal_axes(_FrameMolecule, bpy.types.Operator):
+    bl_idname = 'molecular_blender.view_principal_axes'
+    bl_label = 'View Principal Axes'
+    bl_description = 'Frame the molecule face-on to its best-fit plane, with its longest dimension horizontal'
+    principal_axes = True

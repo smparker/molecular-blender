@@ -13,7 +13,7 @@ from .scene_surfaces import (SOLO_GROUP, MB_OT_add_surface, MB_OT_locate_source,
                              set_surface_opacity, surface_color, surface_groups, surface_opacity, surface_visible)
 from .surface_export import MB_ExportSurface, MB_OT_export_surface_series, MB_OT_transparent_png, draw_png_preset
 from .scene_esp import BASE_MESH, MB_OT_map_esp, MB_OT_clear_esp, density_group
-from .scene_view import MB_OT_frame_molecule, MB_OT_view_face_on, draw_atom_indices
+from .scene_view import MB_OT_frame_molecule, MB_OT_view_face_on, MB_OT_view_principal_axes, draw_atom_indices
 from .surface_operator import DENSITIES, ORBITAL_SPINS
 
 REPRESENTATIONS = {'vdw': 'Van der Waals', 'bs': 'Ball and stick',
@@ -270,6 +270,7 @@ class MB_PT_molecule(bpy.types.Panel):
         owner = summary['owner']
         layout.label(text=owner.name, icon='OUTLINER_OB_EMPTY')
         layout.operator('molecular_blender.frame_molecule', icon='VIEWZOOM')
+        layout.operator('molecular_blender.view_principal_axes')
         if summary['selected_atom'] is not None:
             layout.operator('molecular_blender.view_face_on', text='View Face-On (3 Atoms)')
         box = layout.box()
@@ -387,7 +388,7 @@ class MB_PT_molecule(bpy.types.Panel):
 _CLASSES = (MB_OT_select_atoms, MB_OT_select_atom_indices, MB_OT_surface_visibility, MB_OT_solo_surface,
             MB_ExportSurface, MB_OT_export_surface_series, MB_OT_transparent_png, MB_OT_locate_source,
             MB_OT_map_esp, MB_OT_clear_esp, MB_OT_add_surface, MB_OT_recompute_surface, MB_OT_remove_surface,
-            MB_OT_jump_orbital, MB_OT_frame_molecule, MB_OT_view_face_on, MB_PT_molecule)
+            MB_OT_jump_orbital, MB_OT_frame_molecule, MB_OT_view_face_on, MB_OT_view_principal_axes, MB_PT_molecule)
 
 
 def register():

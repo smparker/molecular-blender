@@ -371,6 +371,10 @@ Click **Frame Molecule** to fit the molecule and its visible surfaces in the
 current viewport. It preserves the selection. In camera view it switches to a
 perspective view and keeps the render camera in place. Select three noncollinear
 atoms and click **View Face-On (3 Atoms)** to look perpendicular to their plane.
+**View Principal Axes** uses the displayed atom positions at the current frame.
+It looks along the molecule's shortest dimension and puts its longest dimension
+across the screen. For a nearly circular planar molecule, the current view
+sets the in-plane angle. These axes give each displayed atom equal weight.
 
 Select an atom to see its element, stored atom index, partial charge, and formal
 charge. The index follows the importer's numbering. Charge values come from the
