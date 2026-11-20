@@ -433,6 +433,9 @@ the surfaces to export in the file browser's options sidebar (press **N** to
 show it). Each PNG has a transparent background and shows one chosen surface
 with the rest of your scene. The exporter restores visibility and render
 settings afterward and adds a numeric suffix if a filename already exists.
+Enable **Include field legends** to save an SVG beside each mapped PNG.
+The pair shares a filename stem, including when an existing PNG or SVG
+requires a new suffix. Ordinary orbital panels produce just a PNG.
 For an ordinary still, **Output Properties → Output → Use Transparent PNG**
 sets transparent film and RGBA PNG output for the scene.
 
@@ -446,6 +449,8 @@ to render a particular panel.
 blender -b "figure.blend" -c molecular_render --list
 blender -b "figure.blend" -c molecular_render --molecule "water" --output "panels"
 ```
+
+Add `--legends` to the render command to include the SVG field legends.
 
 The command creates the output directory and renders one PNG per saved surface
 group with the scene's camera, lighting, resolution and current frame. To render

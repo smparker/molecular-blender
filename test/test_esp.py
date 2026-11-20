@@ -215,6 +215,18 @@ class TestMappedDensity(unittest.TestCase):
                 ramp = scale_nodes(target.active_material)[0].color_ramp
                 np.testing.assert_allclose(ramp.evaluate(.25)[:3], [1., 1., 1.], atol=1e-6)
 
+                output = root / 'panels'
+                output.mkdir()
+                stem = bpy.path.clean_name(peer.scene_owner.name + '-Cube', replace='-')
+                occupied = output / (stem + '.svg')
+                occupied.write_text('existing legend')
+                series = bpy.ops.molecular_blender.export_surface_series
+                self.assertEqual(series(directory=str(output), legends=True), {'FINISHED'})
+                png, = output.glob('*.png')
+                self.assertEqual(png.stem, stem + '-2')
+                self.assertGreater(png.stat().st_size, 0)
+                self.assertIn('Second panel (e/bohr³)', png.with_suffix('.svg').read_text())
+                self.assertEqual(occupied.read_text(), 'existing legend')
                 bpy.context.view_layer.objects.active = owner
 
                 write_cube(esp, x)

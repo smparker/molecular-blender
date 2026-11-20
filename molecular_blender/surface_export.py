@@ -5,6 +5,9 @@ from pathlib import Path
 import bpy
 from bpy.props import BoolProperty, CollectionProperty, StringProperty
 
+from .field_legend import write_field_legend
+from .field_scale import scale_values
+from .scene_esp import field_map_settings
 from .scene_state import read_record, resolve_owner
 from .scene_surfaces import restore_visibility, set_surface_visibility, surface_groups, visibility_state
 
@@ -45,19 +48,38 @@ def png_render_settings(render):
          image.file_format, image.color_depth, image.color_mode) = previous
 
 
-def reserve_png(directory, stem):
-    path = directory / (stem + '.png')
+def reserve_outputs(directory, stem, legend):
     number = 1
     while True:
+        name = stem if number == 1 else f'{stem}-{number}'
+        png = directory / (name + '.png')
+        svg = directory / (name + '.svg') if legend else None
         try:
-            path.touch(exist_ok=False)
-            return path
+            png.touch(exist_ok=False)
+            try:
+                if svg:
+                    svg.touch(exist_ok=False)
+            except BaseException:
+                png.unlink()
+                raise
+            return png, svg
         except FileExistsError:
             number += 1
-            path = directory / '{}-{}.png'.format(stem, number)
 
 
-def export_surface_pngs(context, owner, groups, keys, directory):
+def _legend_material(group):
+    materials = {obj.active_material for obj in group['objects']}
+    signatures = set()
+    for mat in materials:
+        settings = field_map_settings(mat)
+        signatures.add((settings['label'], settings['units'], settings['kind'] == 'unsigned', scale_values(mat))
+                       if settings else None)
+    if len(signatures) != 1:
+        raise ValueError(f"{group['label']} uses several color scales. Choose a common scale to export one legend.")
+    return next(iter(materials)) if None not in signatures else None
+
+
+def export_surface_pngs(context, owner, groups, keys, directory, *, legends=False):
     scene = context.scene
     if scene.camera is None:
         raise ValueError('Set an active scene camera before exporting surfaces')
@@ -67,6 +89,7 @@ def export_surface_pngs(context, owner, groups, keys, directory):
         raise ValueError('Choose at least one surface to export')
     if any(key not in groups for key in keys):
         raise ValueError('A selected surface was removed. Open the export dialog again.')
+    mapped = {key: _legend_material(groups[key]) for key in keys} if legends else {}
     visibility = {obj: visibility_state(obj) for group in groups.values() for obj in group['objects']}
     layer = context.view_layer
     selected = [obj for obj in layer.objects if obj.select_get(view_layer=layer)]
@@ -84,14 +107,18 @@ def export_surface_pngs(context, owner, groups, keys, directory):
                         else:
                             obj.hide_render = group_key != key
                 stem = bpy.path.clean_name(owner.name + '-' + groups[key]['label'], replace='-')
-                path = reserve_png(directory, stem)
+                path, svg = reserve_outputs(directory, stem, mapped.get(key) is not None)
                 try:
+                    if svg:
+                        write_field_legend(mapped[key], svg)
                     scene.render.filepath = str(path)
                     status = bpy.ops.render.render(write_still=True, scene=scene.name)
                     if 'FINISHED' not in status or path.stat().st_size == 0:
                         raise RuntimeError('Render did not finish for ' + groups[key]['label'])
                 except BaseException:
                     path.unlink(missing_ok=True)
+                    if svg:
+                        svg.unlink(missing_ok=True)
                     raise
                 wm.progress_update(i + 1)
     finally:
@@ -118,6 +145,7 @@ class MB_OT_export_surface_series(bpy.types.Operator):
     directory: StringProperty(name='Output folder', subtype='DIR_PATH', options={'SKIP_SAVE'})
     filter_folder: BoolProperty(default=True, options={'HIDDEN'})
     surfaces: CollectionProperty(type=MB_ExportSurface, options={'SKIP_SAVE'})
+    legends: BoolProperty(name='Include field legends', description='Write a matching SVG for each mapped panel')
 
     def invoke(self, context, event):
         self._owner = resolve_owner(context.object)
@@ -136,6 +164,7 @@ class MB_OT_export_surface_series(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
     def draw(self, context):
+        self.layout.prop(self, 'legends')
         self.layout.label(text='Surfaces to render')
         for item in self.surfaces:
             self.layout.prop(item, 'include', text=item.label)
@@ -148,7 +177,7 @@ class MB_OT_export_surface_series(bpy.types.Operator):
             groups = surface_groups(owner, read_record(owner))
             keys = [item.name for item in self.surfaces if item.include] if self.surfaces else list(groups)
             directory = Path(bpy.path.abspath(self.directory)).resolve()
-            export_surface_pngs(context, owner, groups, keys, directory)
+            export_surface_pngs(context, owner, groups, keys, directory, legends=self.legends)
         except (OSError, ValueError, RuntimeError, ReferenceError) as exc:
             self.report({'ERROR'}, str(exc))
             return {'CANCELLED'}

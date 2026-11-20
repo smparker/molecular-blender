@@ -20,10 +20,13 @@ def render_series(argv):
     action.add_argument('--output', type=Path, help='Destination directory for transparent PNGs.')
     action.add_argument('--list', action='store_true', help='List the camera, molecule names, surface labels and group IDs.')
     parser.add_argument('--surface', action='append', default=[], help='Exact sidebar label or group ID. Repeat to select several.')
+    parser.add_argument('--legends', action='store_true', help='Write matching SVG field legends for mapped PNGs.')
     try:
         args = parser.parse_args(argv)
         if args.list and args.surface:
             parser.error('--surface selects panels to render with --output')
+        if args.list and args.legends:
+            parser.error('--legends requires --output')
     except SystemExit as exc:
         return exc.code
     try:
@@ -61,7 +64,7 @@ def render_series(argv):
         directory = args.output.expanduser().resolve()
         directory.mkdir(parents=True, exist_ok=True)
         keys = keys or list(groups)
-        export_surface_pngs(bpy.context, owner, groups, keys, directory)
+        export_surface_pngs(bpy.context, owner, groups, keys, directory, legends=args.legends)
         print(f'Exported {len(keys)} PNG(s) to {directory}')
     except (OSError, ValueError, RuntimeError, KeyError) as exc:
         print(f'molecular_render: {exc}', file=sys.stderr)
