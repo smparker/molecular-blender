@@ -65,6 +65,15 @@ class TestCubeDatasets(unittest.TestCase):
                 self.path.write_text('axes\ngrid\n1 0 0 0\n' + '\n'.join(axes) + '\n')
                 molecule_from_cube(str(self.path), {})
 
+    def test_surface_positions_are_invariant_to_scalar_units(self):
+        from molecular_blender import marching_cube_py
+        from molecular_blender.marching_cube import marching_cube_box
+        z = np.indices((2, 2, 2), dtype=np.float32)[2].copy()
+        for marcher in (marching_cube_py.marching_cube_box, marching_cube_box):
+            for units in (1., 1e-7, 1e-12):
+                surface, = marcher(z * units, [.375 * units])
+                np.testing.assert_allclose(np.asarray(surface)[:, :, 2], .375, atol=1e-7)
+
     def test_left_handed_grid_preserves_surface_normals(self):
         from molecular_blender.isosurfaces import cube_isosurface
         data = np.indices((2, 2, 2), dtype=np.float32)[2].copy()

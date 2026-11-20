@@ -391,13 +391,12 @@ def polygonise(cornervalues, isolevel, x1, y1, z1, x2, y2, z2):
 
 def vertexinterp(isolevel, p1, p2, valp1, valp2):
     """Returns linearly interpolated value along edge."""
-    if abs(isolevel - valp1) < 0.00001:
+    if valp1 == valp2 or isolevel == valp1:
         return p1
-    if abs(isolevel - valp2) < 0.00001:
+    if isolevel == valp2:
         return p2
-    if abs(valp1 - valp2) < 0.00001:
-        return p1
-    mu = (isolevel - valp1) / (valp2 - valp1)
+    # An active edge brackets the level. An absolute epsilon distorts weak fields.
+    mu = (float(isolevel) - float(valp1)) / (float(valp2) - float(valp1))
     x = p1[0] + mu * (p2[0] - p1[0])
     y = p1[1] + mu * (p2[1] - p1[1])
     z = p1[2] + mu * (p2[2] - p1[2])

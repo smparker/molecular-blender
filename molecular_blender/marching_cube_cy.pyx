@@ -402,24 +402,10 @@ cdef void polygonise(triangle_vec* tri_list, const DTYPE_t* cornervalues,
 @cython.initializedcheck(CYDEBUG)
 @cython.nonecheck(CYDEBUG)
 cdef void vertex_interp(point* vert_out, float isolevel, const DTYPE_t* p1, const DTYPE_t* p2, const float v1, const float v2) noexcept nogil:
-    cdef float zero = 1e-8
-    if (fabs(isolevel-v1) < zero):
-        vert_out.x = p1[0]
-        vert_out.y = p1[1]
-        vert_out.z = p1[2]
-        return
-    if (fabs(isolevel-v2) < zero):
-        vert_out.x = p2[0]
-        vert_out.y = p2[1]
-        vert_out.z = p2[2]
-        return
-    if (fabs(v1-v2) < zero):
-        vert_out.x = p1[0]
-        vert_out.y = p1[1]
-        vert_out.z = p1[2]
-        return
-
-    cdef float mu = (isolevel - v1) / (v2 - v1);
+    # Active edges bracket the level. Preserve interpolation at every field scale.
+    cdef double mu = 0.
+    if v1 != v2:
+        mu = (<double>isolevel - v1) / (<double>v2 - v1)
     vert_out.x = p1[0] + mu * (p2[0] - p1[0]);
     vert_out.y = p1[1] + mu * (p2[1] - p1[1]);
     vert_out.z = p1[2] + mu * (p2[2] - p1[2]);

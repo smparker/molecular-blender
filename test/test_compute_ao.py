@@ -377,6 +377,58 @@ class TestFractionalDensity(unittest.TestCase):
             np.testing.assert_allclose(levels_a, levels_b, rtol=2e-4, atol=1e-6)
 
     @unittest.skipUnless(HAS_CYTHON_AO, 'requires compiled AO backend')
+    def test_signed_lobes_match_on_finished_blender_meshes(self):
+        try:
+            import bpy
+            from molecular_blender import marching_cube_cy
+        except ImportError:
+            self.skipTest('requires Blender and the compiled mesher')
+        from mathutils.kdtree import KDTree
+        from unittest.mock import patch
+        from molecular_blender import isosurfaces, marching_cube_py
+        from molecular_blender.plotter import create_geometry, create_surface_mesh_data, field_weld_distance
+        resolution = .23
+        results = []
+        for backend, marcher in ((ao_py, marching_cube_py), (ao_cy, marching_cube_cy)):
+            shapes = []
+            for field, level, method in zip(diffuse_fields(backend), (.038, .0015), ('tiled', 'adaptive')):
+                with patch.object(isosurfaces, 'marching_cube_box', marcher.marching_cube_box):
+                    surfaces = isosurfaces.molden_isosurface(field, [level, -level], resolution, method=method)
+                for surface in surfaces:
+                    mesh = create_surface_mesh_data('Parity', *create_geometry(surface['triangles']),
+                                                    field_weld_distance(resolution))
+                    try:
+                        points = [v.co.copy() for v in mesh.vertices]
+                        self.assertTrue(points, (backend, method, surface['isovalue']))
+                        edges = np.array([p.vertices[:] for p in mesh.polygons])[:, [0, 1, 1, 2, 2, 0]]
+                        edges, counts = np.unique(np.sort(edges.reshape(-1, 2), axis=1), axis=0, return_counts=True)
+                        self.assertTrue(np.all(counts == 2), 'open or nonmanifold signed lobe')
+                        adjacent = [set() for _ in points]
+                        for u, v in edges:
+                            adjacent[u].add(v)
+                            adjacent[v].add(u)
+                        unseen, components = set(range(len(points))), 0
+                        while unseen:
+                            components += 1
+                            pending = [unseen.pop()]
+                            while pending:
+                                neighbors = adjacent[pending.pop()] & unseen
+                                unseen.difference_update(neighbors)
+                                pending.extend(neighbors)
+                        shapes.append((points, components, len(mesh.polygons)))
+                    finally:
+                        bpy.data.meshes.remove(mesh)
+            results.append(shapes)
+        for (a, parts_a, faces_a), (b, parts_b, faces_b) in zip(*results):
+            self.assertEqual((parts_a, faces_a), (parts_b, faces_b))
+            for source, target in ((a, b), (b, a)):
+                tree = KDTree(len(target))
+                for i, point in enumerate(target):
+                    tree.insert(point, i)
+                tree.balance()
+                self.assertLess(max(tree.find(p)[2] for p in source), 2e-5)
+
+    @unittest.skipUnless(HAS_CYTHON_AO, 'requires compiled AO backend')
     def test_fractional_electron_count_and_density_match_python(self):
         coefficients = np.array([1.0], dtype=np.float32)
         density = np.array([[0.5]], dtype=np.float32)
