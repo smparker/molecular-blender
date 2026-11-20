@@ -224,6 +224,34 @@ jobs:
           path: molecular_blender.zip
           retention-days: 90
 
+  test_blender_zip:
+    name: Install release ZIP and render in Blender 4.3.2 (Linux x64)
+    needs: build_blender_addon
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: blender-addon-universal
+          path: ${{ runner.temp }}/addon
+      - name: Download and verify Blender 4.3.2
+        working-directory: ${{ runner.temp }}
+        run: |
+          base=https://download.blender.org/release/Blender4.3
+          archive=blender-4.3.2-linux-x64.tar.xz
+          curl --fail --location --retry 3 -O "$base/$archive"
+          echo "4da1c956673c0485e63054e563ee69198cc8f80d8157dd7592dffc8a6a5592e6  $archive" | sha256sum --check
+          tar -xf "$archive"
+      - name: Install and exercise the downloaded add-on
+        working-directory: ${{ runner.temp }}
+        env:
+          BLENDER_USER_SCRIPTS: ${{ runner.temp }}/profile/scripts
+          BLENDER_USER_CONFIG: ${{ runner.temp }}/profile/config
+        run: |
+          mkdir -p "$BLENDER_USER_SCRIPTS/addons" "$BLENDER_USER_CONFIG"
+          ./blender-4.3.2-linux-x64/blender -b --factory-startup --python-exit-code 1 \
+            --python "$GITHUB_WORKSPACE/test/blender_release_zip.py" -- "$RUNNER_TEMP/addon/molecular_blender.zip"
+
   test_wheels:
     name: Test wheels on ${{ matrix.os }} with Python ${{ matrix.python }}
     needs: [build_wheels]
@@ -271,7 +299,7 @@ jobs:
 
   create_release_assets:
     name: Create release with wheels and Blender addons
-    needs: [build_wheels, build_sdist, build_blender_addon]
+    needs: [build_wheels, build_sdist, build_blender_addon, test_blender_zip]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
 
