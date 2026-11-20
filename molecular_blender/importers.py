@@ -560,7 +560,6 @@ def molecule_from_cube(filename, options):
 
         # 3rd line is <natoms> <origin_x> <origin_y> <origin_z>
         natoms, origin, nvalues = _cube_origin_header(f)
-        out["volume"]["origin"] = np.array(origin, dtype=np.float32) * bohr2ang
 
         nres = [0, 0, 0]  # number of points in each direction
         # axes[i,:] defines the i-th axis
@@ -571,27 +570,32 @@ def molecule_from_cube(filename, options):
             res, vx, vy, vz = f.readline().split()
             nres[i] = int(res)
             axes[i, :] = np.array([vx, vy, vz], dtype=np.float32)
-            if nres[i] > 0:  # axes defined in Bohr
-                axes[i, :] *= bohr2ang
-            else:  # axes defined in Angstrom
-                nres[i] *= -1
-
+        if all(n > 0 for n in nres):
+            length_unit = bohr2ang
+        elif all(n < 0 for n in nres):
+            length_unit = 1.0
+        else:
+            raise ValueError("Cube voxel counts must be nonzero and have the same sign")
+        nres = [abs(n) for n in nres]
+        axes *= length_unit
+        out["volume"]["origin"] = np.array(origin, dtype=np.float32) * length_unit
         out["volume"]["nres"] = nres
         out["volume"]["axes"] = axes
 
         # make sure axes aren't oblique
-        overlap = np.dot(axes.T, axes)
-        for x in (overlap[0, 1], overlap[0, 2], overlap[1, 2]):
-            if abs(x) > 1e-6:
-                raise Exception(
-                    "Sheared axes are not supported with cube files!")
+        lengths = np.linalg.norm(axes, axis=1)
+        if not np.all(np.isfinite(lengths) & (lengths > 0)):
+            raise ValueError("Cube grid axes must be finite and nonzero")
+        directions = axes / lengths[:, None]
+        if not np.allclose(directions @ directions.T, np.eye(3), atol=1e-5):
+            raise ValueError("Sheared axes are not supported with cube files")
 
         # next natoms lines define the molecule
         # <atomic number> <charge> <x> <y> <z>
         for i in range(abs(natoms)):
             ato, chg, x, y, z = f.readline().split()
             iatom = int(ato)
-            position = [bohr2ang * float(xx) for xx in [x, y, z]]
+            position = [length_unit * float(xx) for xx in [x, y, z]]
             hidden = ignore_h and symbols[iatom] == "h"
             new_atom = make_atom_dict(symbols[iatom], position, i, chg,
                     [0.0, 0.0, 0.0], hidden)

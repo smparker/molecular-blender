@@ -387,9 +387,8 @@ class TestBondOrders(unittest.TestCase):
             # Blender does not allow direct construction of Operator instances.
             # Read the registered UI defaults and exercise its options builder.
             rna = getattr(bpy.ops, 'import').molecular_blender.get_rna_type()
-            operator = SimpleNamespace(**{name: rna.properties[name].default
-                                          for name in MolecularBlender.__annotations__
-                                          if name != 'dataset_choice'})
+            operator = SimpleNamespace(**{p.identifier: p.default for p in rna.properties
+                                          if p.identifier != 'dataset_choice' and hasattr(p, 'default')})
             self.assertFalse(operator.draw_bond_orders)
             options = MolecularBlender._build_options(operator)
             self.assertFalse(options['draw_bond_orders'])

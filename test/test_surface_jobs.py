@@ -88,7 +88,7 @@ class TestSurfaceWorker(unittest.TestCase):
                                  _owner_exists=lambda: owner_exists)
             op._cleanup = lambda ctx: MolecularBlender._cleanup(op, ctx)
             op.cancel = lambda ctx: MolecularBlender.cancel(op, ctx)
-            with patch('molecular_blender.create_surface_meshes') as create:
+            with patch('molecular_blender.surface_operator.create_surface_meshes') as create:
                 self.assertEqual(MolecularBlender.modal(op, context, SimpleNamespace(type=event)), {'CANCELLED'})
                 create.assert_not_called()
             job.cancel.assert_called_once()

@@ -1,28 +1,32 @@
 # Molecular Blender roadmap
 
-An editable menu of possible work, based on a code review on 2026-11-15. These are suggestions, not release commitments. Completed increments are checked; broad items remain open until their full scope is complete. Existing features are mentioned as foundations, not proposed as new work. Items described as audits need focused reproduction and tests before changing behavior.
+An editable menu of possible work, based on the 2026-11-15 code review. Status was checked against the working tree on 2026-11-19. Checked items are implemented. Open items describe remaining work.
 
 Keep the current curve-extrusion approach for bonds as the baseline. Keep bond-order drawing and perception opt-in until their behavior has broader validation.
 
 ## Suggested starting points
 
-- **Make imports editable:** persistent molecule identity and settings → a selected-molecule panel → restyle and regenerate operators.
+- **Extend post-import editing.** The sidebar already supports restyling, bond edits and surface management. Source refresh and surface replacement are open.
 - **Build ESP maps incrementally:** general scalar-field sampling → map an imported ESP grid onto a density surface → evaluate ESP directly from Molden wavefunctions.
-- **Remove correctness traps:** option defaults, element-dependent bond radii, numerical units, cancellation, and wheel validation.
-- **Improve chemistry incrementally:** actionable perception diagnostics and manual overrides before expanding the supported chemistry.
+- **Improve import recovery.** Surface workers support cancellation. Rolling back a partially built scene remains open.
+- **Extend bond perception.** Diagnostics and manual overrides are available. Solver scaling and trajectory orientation remain open.
 
 ## 1. Post-import editing and scene interaction
 
-Current foundations: linked atom geometry, element materials, molecule collections, endpoint hooks, and a direct `set_bond_order` helper. Most settings and the `Molecule` instance currently live only during import. Start in [molecule.py](molecular_blender/molecule.py), [plotter.py](molecular_blender/plotter.py), and [the importer UI](molecular_blender/__init__.py).
+Imports retain their settings and object identities in the blend file. The sidebar resolves the owning molecule through its root. See [scene records](molecular_blender/scene_state.py), [sidebar controls](molecular_blender/scene_panel.py) and [surface actions](molecular_blender/scene_surfaces.py).
 
-- [ ] **Persist molecule identity and settings in the `.blend`.** Store a versioned settings block, source path, molecule ID, atom IDs, bond endpoints, explicit/perceived order provenance, and surface definitions. Resolve objects by IDs rather than requiring their original names; survive renaming, save/reopen, and duplication.
-- [ ] **Add a selected-molecule sidebar panel.** Show source, atom/bond counts, units, charge, representation, and available orbital/field data. Make the owning molecule discoverable when an atom, bond, or surface is selected.
-- [ ] **Restyle without reimporting.** Change atom size, bond thickness, multiple-bond spacing, palette, opacity, and surface appearance for one molecule or the current selection. Update custom bevel profiles as well as round bonds, and avoid changing unrelated objects that share materials.
-- [ ] **Add an orbital/surface browser.** The sidebar now lists saved orbital indices, energies, occupations, spin labels, and symmetries. Add controls for choosing a density and adding, replacing, hiding, or removing surfaces. Appearance-only changes should not recompute the field.
+- [x] **Persist molecule identity and settings in the blend file.** Versioned records store the source, settings, atom IDs, bond endpoints and order provenance, orbital metadata, and surface definitions. IDs survive renames and save/reopen. Duplicating a hierarchy gives its root an independent identity. [Scene record tests](test/test_scene_state.py)
+- [x] **Add a selected-molecule sidebar panel.** Selecting the root, an atom, a bond, or a surface shows its source, counts, units, charge setting, representation, and available fields. [Panel tests](test/test_scene_panel.py)
+- [x] **Restyle a molecule and individual surfaces.** Adjust atom size, bond thickness, palette, and surface opacity. Multiple-bond profiles and junctions resize together. Each surface calculation has independent lobe colors and opacity, including for linked duplicates. [Restyle tests](test/test_scene_edit.py) and [surface tests](test/test_scene_surfaces.py)
+- [ ] **Extend atom and bond styling.** Apply styles to a selection and expose multiple-bond strand spacing as an independent setting.
+- [x] **Add an orbital and surface browser.** Browse saved orbital metadata, jump to HOMO/LUMO by spin, and show, hide, style or remove a surface calculation. Single-frame Molden imports can add orbitals and densities after import. [Sidebar action tests](test/test_scene_surfaces.py)
+- [ ] **Replace a surface calculation in place.** Recompute an existing field at new settings and retain its presentation.
 - [x] **Expose bond editing tools.** Set an order, add/delete a bond, lock a manual assignment against reperception, and adjust strand tilt. Split bonds update both halves. Order changes update junction sizes, and profile rebuilds preserve manual tilt.
-- [ ] **Add atom-aware selection and inspection.** The selected atom now shows its element, index, partial charge, and formal charge. Add selection by element, fragment, index, or bonded neighbors, optional atom labels, and distance, angle, and dihedral measurements.
+- [x] **Inspect and select atoms.** Inspect element, index, and charges. Select visible atoms by element, direct neighbor, or connected fragment using the current bond graph. [Panel tests](test/test_scene_panel.py) and [selection tests](test/test_scene_surfaces.py)
+- [ ] **Select atoms by index and show optional atom labels.**
 - [ ] **Refresh source data while preserving presentation.** Reload coordinates or orbitals and retain user colors, visibility, transforms, and locked edits where atom identities still match. Report incompatible atom lists rather than silently rebinding objects.
-- [ ] **Make edits undoable and repeatable.** Provide explicit Apply, Rebuild Geometry, Recompute Surface, and Reset Style operations, with molecule-scoped cleanup. Define whether a manual move updates the chemistry model and whether moving atoms invalidates wavefunction-derived surfaces.
+- [x] **Support undo and redo for sidebar edits.** Molecule restyling, manual bond edits, and surface removal support Blender Undo/Redo. Moving atoms changes the displayed geometry. Wavefunction surfaces use the original calculation coordinates.
+- [ ] **Add Rebuild Geometry and Reset Style actions.** Scope cleanup to the owning molecule. Surface recomputation is tracked above.
 - [ ] **Save reusable visual presets.** Store/import/export molecular styles and surface color ranges; include a “make this molecule independent” action for linked geometry/materials.
 
 ## 2. Electrostatic-potential maps
@@ -41,20 +45,21 @@ Current foundations: [MOData.get_density](molecular_blender/orbitals.py) constru
 
 Entry points: [orbitals.py](molecular_blender/orbitals.py), [compute_ao_py.py](molecular_blender/compute_ao_py.py), [compute_ao_cy.pyx](molecular_blender/compute_ao_cy.pyx), [isosurfaces.py](molecular_blender/isosurfaces.py), and [stylers.py](molecular_blender/stylers.py).
 
-- [x] **Expose existing density modes properly.** Provide explicit total, alpha, beta, and spin-density controls; validate restricted/unrestricted inputs and explain when spin information is absent. These evaluators already exist, but their selection is primarily text-driven. Completed with commit `ba0d216` and visualization defaults approved 2026-11-16.
+- [x] **Expose existing density modes properly.** The field menu offers total, alpha, beta, and spin density. Restricted, unrestricted and fractional populations follow the documented visualization defaults. Commit `ba0d216`.
 - [x] **Show orbital metadata and support spin-specific frontier orbitals.** Retain energies and symmetry labels in `MOData`; select HOMO/LUMO separately for alpha/beta sets and handle fractional occupations and unsorted orbitals deliberately. Completed with commit `0a287ce` and visualization defaults approved 2026-11-16.
 - [ ] **Support field differences.** Compute density/ESP differences between two compatible calculations, with explicit alignment and grid resampling. Show positive and negative contributions with a shared scale.
 - [ ] **Import and animate normal modes.** Read Molden frequency/displacement sections and expose mode, amplitude, phase, and playback controls; keep the equilibrium structure intact. The [format already defines these sections](https://www.theochem.ru.nl/molden/molden_format.html), but the reader currently does not consume them.
-- [ ] **Improve publication output.** Add molecule framing, principal-axis/selected-plane alignment, orthographic camera presets, scale bars, legends, transparent-background render presets, and batch figure export without modifying an existing camera unexpectedly.
+- [x] **Frame the visible molecule in the viewport.** Frame Molecule fits the current geometry and visible surfaces while preserving the active selection and render camera.
+- [ ] **Improve publication output.** Add principal-axis or selected-plane alignment, orthographic camera presets, scale bars, legends, transparent-background render presets, and batch figure export.
 
 ## 4. Bond perception and chemical representation
 
 Current implementation: covalent-radius connectivity, bounded valence/charge search, explicit SDF precedence, and fixed initial strand orientation. Start in [bond_perception.py](molecular_blender/bond_perception.py), [molecule.py](molecular_blender/molecule.py), and [aromatics.py](molecular_blender/aromatics.py).
 
 - [x] **Make failures explainable.** Report the offending atom IDs/elements, degrees, candidate valences, requested charge, and search budget. Distinguish bad connectivity, unsupported chemistry, missing hydrogens, incompatible charge, and exhausted search. Commit `a4c6961`.
-- [ ] **Allow manually specifying bonds and bond orders after import.** Should be able to select two atoms and then click a button to add a single, double, or whatever else.
+- [x] **Allow manually specifying bonds and bond orders after import.** Select two atoms to create or change a single, double, or triple bond. Both halves of a split-color bond update together. [Bond edit tests](test/test_bond_edit.py)
 - [ ] **Scale the solver and expose ambiguity.** Partition independent graph work where possible, propagate charge constraints across fragments, add timing/node diagnostics, and benchmark symmetric/fused systems. Preserve search limits and atomic application of successful results.
-- [ ] **Keep multiple-bond orientation coherent.** Use a ring/molecular plane where appropriate, allow manual overrides, and maintain frame-to-frame continuity instead of flipping with the strongest neighbor. Avoid unstable orientation for nearly collinear geometry.
+- [ ] **Keep multiple-bond orientation coherent across frames.** Initial strand alignment uses neighboring atoms and the sidebar supports manual tilt. Ring-plane alignment and continuity through near-collinear geometries remain open.
 
 ## 5. Import, export, and data fidelity
 
@@ -63,15 +68,16 @@ Entry points: [importers.py](molecular_blender/importers.py), [transform.py](mol
 - [x] **Harden Molden basis parsing.** Expands `sp` shells, registers standalone `[7F]`, maps GTO blocks by atom reference, reads Fortran D/d numbers, and validates indexed coefficient blocks and section endings. Existing molecular fixtures and focused synthetic cases pass. Commit `f1547e0`.
 - [ ] **Make normalization and AO ordering explicit.** Replace a loosely explained producer workaround with documented conventions and validated transformations for Cartesian/spherical shells. Include independent orbital-overlap and density checks across supported quantum-chemistry writers.
 - [x] **Preserve all cube datasets.** All cube fields and dataset IDs are retained, with a zero-based importer/API selector and first-field compatibility. Optional header value counts and malformed lengths are tested. Free-form comments are retained without guessing physical field types or units.
-- [ ] **Audit cube coordinates and grid conventions.** Test positive/negative voxel-count conventions, origins, atom coordinates, rotated orthogonal axes, optional header values, and malformed data lengths. Support affine/sheared grids where justified, with voxel volume from the grid determinant rather than orthogonal-axis assumptions.
+- [x] **Audit cube coordinates and grid conventions.** Tests cover both voxel-count unit conventions, nonzero origins, atom positions on a known surface, rotated orthogonal grids with unequal spacings, and surface normals on left-handed grids. Dataset tests cover optional header values and malformed data lengths. The reader reports mixed signs, zero counts, and degenerate or sheared axes. General sheared-grid support remains a possible extension.
 - [ ] **Consider PDB/mmCIF, MOL2, and periodic inputs.** Choose formats based on actual use cases: biomolecular hierarchy, typed bonds, or unit cells. The disabled Babel fallback has been removed; unsupported formats now report the supported formats.
-- [ ] **Make JSON trajectory manifests consistent with native imports.** Validate referenced paths, atom identity, frame counts, and compatible basis/grid data; decide how SDF records and explicit topology fit the manifest instead of silently dropping information.
+- [x] **Check atom counts and element order across JSON trajectory frames.** The reader resolves paths relative to the manifest and checks each subsequent frame against the first. [JSON reader](molecular_blender/importers.py)
+- [ ] **Finish JSON trajectory validation.** Validate frame numbers, missing references, compatible basis/grid data, and preservation of explicit SDF topology and record selection.
 
 ## 6. Trajectories and interactive performance
 
 Entry points: `AnimateMolecule`, `compute_surface_vertex_sets`, and `create_surface_meshes` in [plotter.py](molecular_blender/plotter.py).
 
-- [ ] **Expose trajectory sampling.** Choose start/end frames, stride, time units, frame rate, and interpolation policy; stream or downsample long trajectories before allocating Blender animation data.
+- [ ] **Expose trajectory sampling.** Keystride controls the spacing between Blender keyframes. Add input frame range and sampling stride, time units, frame rate, and interpolation policy. Stream or downsample long trajectories before allocating animation data.
 - [ ] **Stabilize topology over time.** Add bond-formation/breaking hysteresis near cutoffs. Design and test per-frame bond-order perception separately from the existing fixed-first-frame assignment, including strand appearance/disappearance and charge conservation.
 - [ ] **Improve orbital animation continuity.** Track orbital overlap/phase across frames and expose the limitations around crossings and near-degenerate orbitals rather than trusting an unchanged index alone.
 - [ ] **Avoid retaining every surface frame in memory.** Offer lazy calculation, a bounded disk cache, and staged scene updates instead of storing all triangle sets and all mesh objects simultaneously.
@@ -80,7 +86,8 @@ Entry points: `AnimateMolecule`, `compute_surface_vertex_sets`, and `create_surf
 
 The existing split between field computation and main-thread mesh creation is a useful starting point; extend it instead of discarding it.
 
-- [ ] **Define one validated options model.** Share names, defaults, units, and validation across the UI, Python API, saved settings, and CLI. The charge-option spelling mismatch is fixed below; sharing and validating the complete model remains open.
+- [x] **Validate and persist import settings.** The importer, Python setup API and scene records use the same validation function. Runtime options are derived from a separate copy. [Settings model](molecular_blender/options.py) and [settings tests](test/test_scene_state.py)
+- [ ] **Unify option declarations across entry points.** Share UI and API property definitions, preserve their intentional default differences, and use the model for a future CLI.
 - [ ] **Separate scientific data from Blender objects.** Keep parsing, topology, perception, scalar fields, and numerical calculations usable without `bpy`/`mathutils`; let a scene adapter own object/material names and handles. Avoid a missing Blender-only import being indistinguishable from a broken package import.
 - [ ] **Split `plotter.py` by responsibility.** Extract atom/bond geometry, surface generation, animation, scene ownership, and driver orchestration behind small interfaces. Factor the duplicated split/unsplit curve setup while preserving the tested extrusion and hook behavior.
 - [ ] **Introduce a scalar-field interface.** Standardize point/batch/grid evaluation, bounds, units, sign semantics, provenance, and optional derivatives for cube fields, orbitals, densities, and future ESP. Keep numerical values independent of color/material choices.
@@ -96,9 +103,10 @@ These are concrete targets spotted in the current code, not a claim that every p
 - [x] **Audit isosurface method forwarding and resolution units.** Forwards the requested method, converts both adaptive spacings from angstrom to Bohr, and rejects invalid methods/spacings. Analytic Gaussian-sphere regressions check displayed geometry and final sampling spacing with both backends. Commit `537bf83`.
 - [x] **Harden cumulative-isovalue calculations.** Validate fractions, signs, all-zero fields, non-finite inputs, tiny grids, and termination tolerances. Define whether a field integrates `ψ²`, density, or absolute signed density; an untyped cube should not silently inherit orbital-square semantics. Completed with commit `500a232` and visualization defaults approved 2026-11-16.
 - [x] **Audit occupations and spin densities.** Validate absent/inconsistent spin labels, fractional occupations, electron counts, and alpha/beta frontier indexing. Check the Cython density constructor's integer electron-count argument against fractional-occupation inputs.
-- [ ] **Implement real cancellation and worker cleanup.** Explicitly handle Escape, propagate a cancellation signal into long loops, account for orbital trajectory tasks in progress, and prevent stale results from reaching a cancelled/deleted molecule. Restore timers/status and free temporary data on every exit path.
-- [ ] **Review the background execution model.** The operator currently runs a daemon thread while Blender remains active; “no `bpy` calls in the worker” alone does not establish support under Blender's [threading guidance](https://docs.blender.org/api/5.0/info_gotchas_threading.html). Evaluate a cancellable subprocess worker or chunked main-thread jobs and make pure-Python/Cython responsiveness measurable.
-- [ ] **Make scene generation transactional.** Restore selection, active object, and mode after operations; roll back partial imports on errors. Test translated/rotated/scaled molecule parents and moved atoms for bonds, gradients, and surfaces. Temporary BMesh objects are now freed; transactional scene rollback and context restoration remain open.
+- [x] **Implement real cancellation and worker cleanup.** Escape, a deleted owner, loading another file, and disabling the add-on cancel pending work. Workers are reaped, temporary files removed, and cancelled results discarded. Progress includes orbital trajectory frames. [Worker tests](test/test_surface_jobs.py)
+- [x] **Move surface calculations into a cancellable subprocess.** Import and sidebar actions launch a separate Blender process. The main thread handles progress and creates meshes. Commit `f306fb7`. [Worker implementation](molecular_blender/surface_jobs.py)
+- [ ] **Benchmark interactive responsiveness.** Compare viewport responsiveness and cancellation latency during representative Python and Cython calculations.
+- [ ] **Make scene generation transactional.** Roll back partial imports and restore selection, active object, and mode after failures. Sidebar surface additions already preserve selection under transformed parents. New bond hooks follow moved atoms. Broader import and gradient transform coverage remains open.
 
 ## 9. Performance and numerical implementation
 
@@ -115,13 +123,16 @@ Entry points: [molecule.py](molecular_blender/molecule.py), [compute_ao_cy.pyx](
 
 There is already useful coverage for readers, numerical routines, geometry, bond orders, and an optional RDKit comparison. Extend those foundations rather than adding tests that only mirror implementation details.
 
-- [ ] **Add scene-edit lifecycle tests.** Cover save/reopen, undo/redo, renaming, duplicate imports, shared-material edits, molecule-scoped deletion, source reload, and cancellation/error rollback.
+- [x] **Test persisted scene edits and worker cancellation.** Tests cover save/reopen, undo/redo, renames, duplicated molecules, shared materials, scoped bond and surface deletion, and discarded worker results. [Bond lifecycle](test/test_bond_edit.py), [surface lifecycle](test/test_scene_surfaces.py) and [worker lifecycle](test/test_surface_jobs.py)
+- [ ] **Test source refresh and partial-import rollback.** Cover these operations as they are implemented.
 - [ ] **Add controlled render regressions.** Use small fixed scenes for split-color multiple bonds, transparency, gradients, mapped scalar fields, and parent transforms. Pair image checks with geometric/numerical assertions and keep renderer/version differences explicit.
-- [ ] **Strengthen Python/Cython parity.** Force each backend in CI and compare shell values, orbital/density grids, screening, bounds, cumulative levels, and surface geometry across s–g functions and diffuse/fractional/open-shell cases.
+- [x] **Check shell bounds and fractional density across backends.** Tests compare Python and Cython bounds for s–g shells and check fractional electron counts and density values. CI exercises the installed compiled wheels and an isolated Python fallback. [Backend parity tests](test/test_compute_ao.py)
+- [ ] **Extend Python/Cython parity coverage.** Compare shell values, orbital/density grids, screening, cumulative levels, and surface geometry across diffuse and open-shell cases.
 - [x] **Fix the empty orbital surface in the pure-Python fallback.** Discovered on 2026-11-15: with compiled `.so`/`.pyd` extensions excluded from an isolated checkout, `TestMoldenIsosurface.test_small_orbital` in `test/test_isosurfaces.py` fails because orbital 1 of `examples/fake-atom.molden`, at isovalue `0.05` and resolution `0.3`, produces no triangles. Reproduced with Python 3.14 and NumPy 2.5.3; the full Blender 4.3.2 suite with compiled extensions passes. Fixed the shell-bound formula (`l` → `l + 1`), which collapsed s-shell bounds to zero. Added analytic and s–g backend-parity bounds checks; the complete isolated fallback suite passes, and fallback CI now runs full test discovery. Commit `614be0b`.
-- [ ] **Grow independent scientific references.** Add electron-count/overlap tests, exact or analytic fields with known surfaces, ESP reference values, and molecule fixtures covering charges, resonance, distorted geometry, and deliberately invalid chemistry. Run the optional RDKit comparison in a dedicated environment so it is not always skipped in Blender.
+- [x] **Validate against analytic surfaces and electron counts.** Tests check the radius of a Gaussian isosurface, the location of a rotated cube plane, and integrated densities with fractional occupations. [Gaussian surface](test/test_isosurfaces.py), [cube plane](test/test_cube_datasets.py) and [density tests](test/test_orbitals.py)
+- [ ] **Grow independent scientific references.** Add orbital-overlap and ESP reference values and expand fixtures for distorted geometry. The bond-perception suite already covers ions, resonance and invalid chemistry. Add a dedicated environment for its optional RDKit comparison.
 - [x] **Test the installed artifacts, not just the checkout.** Standalone wheel tests require both compiled extensions from the installed package and exercise known Gaussian/surface results independently of test ordering. Missing installations/binaries fail; a separate CI job verifies Python fallback. Commit `9f085b1`.
-- [ ] **Make test execution reproducible.** Resolve fixtures/imports independently of the current directory, quote shell paths, preserve test arguments as arrays, support Blender paths with spaces, and ensure tests leave scene/datablock state clean. Add targeted malformed/truncated-input tests and performance baselines with peak-memory reporting.
+- [ ] **Finish test isolation and performance baselines.** The test runner handles external working directories and paths with spaces. Reader tests exercise malformed Molden, SDF and cube input. Verify scene/datablock cleanup across the suite and add peak-memory and runtime baselines.
 
 ## 11. Packaging, compatibility, and user workflows
 
@@ -132,7 +143,8 @@ Entry points: [pyproject.toml](pyproject.toml), [setup.py](setup.py), [blender_s
 - [ ] **Maintain an explicit Blender/Python/NumPy compatibility matrix.** CI currently pins Blender 3.6.7 while material code uses newer Principled socket names and transparency settings. Test the versions actually claimed, gate API differences by capability, and verify compiled modules inside each Blender runtime rather than trusting documentation's Python-version mapping.
 - [ ] **Validate every supported release artifact.** Install the addon ZIP in a clean Blender configuration, exercise a tiny import/render, and verify binary extension selection on each supported OS/architecture. Review pinned build tools and runner availability against the chosen matrix.
 - [ ] **Add a stable headless CLI.** Build on `BlendMoleculeSetup` with commands for inspect, validate, import, render, and export; support a settings file and repeatable batch runs with useful exit codes. Carry forward the existing command-line simplification idea from [improvement_ideas.md](improvement_ideas.md).
-- [ ] **Improve discovery and troubleshooting.** The format-aware import label and active-backend diagnostics are complete; add small examples for post-import edits, ESP, trajectories, and common quantum-chemistry writers. Show active numerical backends and actionable import diagnostics without assuming an installed compiler.
+- [x] **Adapt import controls to the selected file and field.** The highlighted file determines the available controls. Cube files expose the appropriate dataset picker, Molden densities hide orbital controls, and JSON manifests preview the first frame. Import Details reports the active numerical backends. [Dialog tests](test/test_import_dialog.py)
+- [ ] **Add workflow examples.** Expand the examples for post-import edits, ESP, trajectories, and common quantum-chemistry writers.
 
 ## Bugs found during implementation
 
@@ -156,7 +168,7 @@ Entry points: [pyproject.toml](pyproject.toml), [setup.py](setup.py), [blender_s
 
 - [x] **Correct the duplicated AO index in `fake-atom.molden`.** Stricter Molden coefficient validation exposed a fixture typo: line 384 labelled coefficient 20 as 10. Corrected the label without changing any numerical coefficient. Commit `476f7d1`.
 
-- [x] **Honor the density volume selector.** Inspection while preparing importer diagnostics found that `compute_surface_vertex_sets` chooses the field only from `options["orbital"]`; selecting `volume="density"` still samples the requested orbital. Density selection now samples total density and ignores orbital text, with matching progress counts and an end-to-end Blender regression. Restricted/unrestricted validation and explicit spin controls remain in section 3. Commit `6431742`.
+- [x] **Honor the density volume selector.** Inspection while preparing importer diagnostics found that `compute_surface_vertex_sets` chooses the field only from `options["orbital"]`; selecting `volume="density"` still samples the requested orbital. Density selection now samples total density and ignores orbital text, with matching progress counts and an end-to-end Blender regression. Section 3 records the subsequent spin controls and population validation. Commit `6431742`.
 
 - [x] **Harden Blender configuration discovery.** Installer review found that Linux requires `XDG_CONFIG_HOME` even when unset, absent configuration directories raise instead of being skipped, and float-based version sorting places 4.10 before 4.9. Handle missing roots and sort version components numerically. Commit `6a8740f`.
 
@@ -168,13 +180,13 @@ Entry points: [pyproject.toml](pyproject.toml), [setup.py](setup.py), [blender_s
 - [x] **Validate orbital and density requests.** Reject noninteger and out-of-range orbital indices, undefined HOMO-relative requests, and unknown density names while retaining valid relative indexing. Commit `28b3e50`.
 
 
-- [x] **Harden cumulative-isovalue edge cases.** Signed fractions, zero/non-finite/empty fields, voxel volume, iteration budgets, and tolerances are validated; extreme-scale and tiny-grid regressions pass. Thresholds retain precision and tied samples are treated as groups. Field-type selection for untyped cube inputs remains open. Commit `85e8e7d`.
+- [x] **Harden cumulative-isovalue edge cases.** Signed fractions, zero/non-finite/empty fields, voxel volume, iteration budgets, and tolerances are validated; extreme-scale and tiny-grid regressions pass. Thresholds retain precision and tied samples are treated as groups. Commit `500a232` subsequently added cube field-type selection. Commit `85e8e7d`.
 
 
 - [x] **Preserve fractional electron counts.** The compiled density constructor stores a public double electron count; rebuilt-extension parity and integrated half-electron density regressions pass. Commit `cd3a8cf`.
 
 
-- [x] **Preserve orbital energies and symmetry labels.** `MOData` retains metadata in input order with explicit missing entries; frontier-orbital selection remains open. Commit `4b3dd10`.
+- [x] **Preserve orbital energies and symmetry labels.** `MOData` retains metadata in input order with explicit missing entries; frontier selection followed in `0a287ce`. Commit `4b3dd10`.
 
 
 - [x] **Remove the disabled Babel fallback.** Commit `092fb42`; unsupported formats raise an actionable `ValueError`.

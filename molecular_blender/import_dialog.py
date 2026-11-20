@@ -116,6 +116,10 @@ def draw_surfaces(layout, op, context):
         return
     box = layout.box()
     box.label(text='Surfaces')
+    draw_surface_controls(box, op, kind, labels)
+
+
+def draw_surface_controls(box, op, kind, labels=None):
     if kind == 'molden':
         box.prop(op, 'volume')
         if op.volume == 'orbital':

@@ -1,0 +1,158 @@
+"""Shared Molden controls and modal surface computation for Blender operators."""
+import bpy
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
+
+from . import import_dialog
+from .plotter import create_surface_meshes
+from .surface_jobs import SurfaceJob
+
+
+DENSITIES = (('density', 'Total density', 'Total electron density'),
+             ('alpha', 'Alpha density', 'Alpha electron density'),
+             ('beta', 'Beta density', 'Beta electron density'),
+             ('spin', 'Spin density', 'Alpha minus beta density'))
+ORBITAL_SPINS = (('all', 'All', 'All orbitals'), ('alpha', 'Alpha', 'Alpha frontier orbitals'),
+                 ('beta', 'Beta', 'Beta frontier orbitals'))
+
+
+class MoldenSurfaceProperties:
+    isovalues: StringProperty(
+        name="Isovalues to plot",
+        description="Comma-separated surface levels. Leave empty to import just the structure",
+        default="0.25,0.50")
+
+    cumulative: BoolProperty(
+        name="Cumulative isovalues",
+        description="Set isovalues so they contain given proportion of the total density",
+        default=True)
+
+    orca_fix: BoolProperty(
+            name="Orca molden fix",
+            description="Fix for orca molden files with incorrect AO norms",
+            default=False)
+
+    volume: EnumProperty(
+        name="Field",
+        description="Field to calculate from the Molden wavefunction",
+        items=DENSITIES + (('orbital', 'Molecular orbital', "Plot orbitals (positive and negative isovalues)"),),
+        default='orbital')
+
+    orbital_spin: EnumProperty(
+        name="Orbital Spin", description="Channel for frontier-orbital names; explicit numbers always use file indices",
+        items=ORBITAL_SPINS, default='all')
+
+    orbital: StringProperty(
+        name="Orbital",
+        description="Plot this orbital from molden file. Accepts comma separated list, homo-n, lumo+m. (ignored for other inputs)",
+        default="homo")
+
+    # These UI selectors edit the existing RNA properties used by scripts and presets.
+    orbital_choice: EnumProperty(
+        name="Orbital", items=(('homo', 'HOMO', '', 0), ('lumo', 'LUMO', '', 1),
+                              ('custom', 'Custom…', 'Enter indices, frontier expressions, or a list', 2)),
+        get=import_dialog.get_orbital_choice, set=import_dialog.set_orbital_choice,
+        options={'SKIP_SAVE'})
+
+    level_mode: EnumProperty(
+        name="Level mode", items=(('fraction', 'Fraction enclosed', '', 1),
+                                 ('absolute', 'Absolute isovalue', '', 0)),
+        get=lambda op: int(op.cumulative), set=lambda op, value: setattr(op, 'cumulative', bool(value)),
+        options={'SKIP_SAVE'})
+
+    surface_advanced: BoolProperty(name="Advanced", default=False, options={'SKIP_SAVE'})
+
+    resolution: FloatProperty(
+        name="Resolution",
+        description="Desired spacing between points in isosurface (Angstrom)",
+        default=0.05,
+        min=0.001,
+        max=0.5,
+        step=0.01,
+        precision=3)
+
+    remesh: IntProperty(
+        name="Remesh Octree Depth",
+        description="Octree depth for remesh modifier",
+        default=8)
+
+
+class SurfaceJobOperator:
+    def start_surface_job(self, context, molecule, styler, options, *, select_surfaces):
+        self._molecule = molecule
+        self._styler = styler
+        self._options = options
+        self._timer = None
+        self._job = None
+        self._cancelled = False
+        self._select_surfaces = select_surfaces
+        self._owner = molecule.scene_owner
+        self._collection = molecule.scene_collection
+        try:
+            self._job = SurfaceJob(bpy.app.binary_path, molecule.surface_input, options)
+            wm = context.window_manager
+            self._timer = wm.event_timer_add(0.1, window=context.window)
+            wm.modal_handler_add(self)
+            wm.progress_begin(0, 100)
+            context.workspace.status_text_set("Molecular Blender: computing isosurfaces... (Esc to cancel)")
+        except Exception as exc:
+            self.cancel(context)
+            self.report({'ERROR'}, str(exc))
+            return {'CANCELLED'}
+        return {'RUNNING_MODAL'}
+
+    def _owner_exists(self):
+        try:
+            return (self._owner is not None and self._collection is not None
+                    and bpy.data.objects.get(self._owner.name) == self._owner
+                    and bpy.data.collections.get(self._collection.name) == self._collection)
+        except ReferenceError:
+            return False
+
+    def _cleanup(self, context):
+        if self._job is not None:
+            self._job.close()
+            self._job = None
+        if self._timer is not None:
+            context.window_manager.event_timer_remove(self._timer)
+            self._timer = None
+        context.window_manager.progress_end()
+        if context.workspace is not None:
+            context.workspace.status_text_set(None)
+
+    def modal(self, context, event):
+        if event.type == 'ESC' or self._cancelled or not self._owner_exists():
+            self.cancel(context)
+            return {'CANCELLED'}
+        if event.type != 'TIMER':
+            return {'PASS_THROUGH'}
+        try:
+            progress = self._job.progress()
+            context.window_manager.progress_update(
+                int(100 * progress.get('completed', 0) / max(progress.get('total', 1), 1)))
+            if self._job.running:
+                return {'RUNNING_MODAL'}
+            vertex_sets, trajectory_map = self._job.result()
+            # A renamed owner remains valid; scene generation uses these handles.
+            self._molecule.scene_owner = self._owner
+            self._molecule.scene_collection = self._collection
+            if not self._select_surfaces:
+                vertex_sets = [v for v in vertex_sets if len(v["triangles"])]
+                if not vertex_sets:
+                    self.report({'INFO'}, 'No surface at the requested levels')
+            create_surface_meshes(self._molecule, self._styler, context,
+                                  self._options, vertex_sets, trajectory_map,
+                                  select_surfaces=self._select_surfaces)
+        except Exception as exc:
+            self._cleanup(context)
+            self.report({'ERROR'}, str(exc))
+            return {'CANCELLED'}
+        finally:
+            if self._job is not None and not self._job.running:
+                self._cleanup(context)
+        return {'FINISHED'}
+
+    def cancel(self, context):
+        self._cancelled = True
+        if self._job is not None:
+            self._job.cancel()
+        self._cleanup(context)

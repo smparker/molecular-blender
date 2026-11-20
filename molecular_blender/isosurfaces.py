@@ -44,6 +44,9 @@ def transform_triangles(triangles, origin, axes):
         return triangles
     coords = np.array(triangles, dtype=DTYPE)
     out = np.dot(coords, axes) + origin
+    if np.linalg.det(axes) < 0:
+        # A left-handed grid reflects the mesh. Preserve the field's normal.
+        out = out[:, ::-1, :]
     return [ out[i,:] for i in range(out.shape[0]) ]
 
 

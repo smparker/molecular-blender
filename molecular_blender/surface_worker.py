@@ -12,6 +12,7 @@ def main(directory):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from molecular_blender.molecule import Molecule
     from molecular_blender.plotter import compute_surface_vertex_sets
+    from molecular_blender.surface_jobs import SavedMoldenSource
 
     class Progress(dict):
         def __setitem__(self, key, value):
@@ -23,7 +24,10 @@ def main(directory):
     try:
         with (directory / 'request.pkl').open('rb') as stream:
             data, options = pickle.load(stream)
-        molecule = Molecule.from_dict('surface-worker', data)
+        if isinstance(data, SavedMoldenSource):
+            molecule = data.load(options)
+        else:
+            molecule = Molecule.from_dict('surface-worker', data)
         result = compute_surface_vertex_sets(molecule, options, Progress())
         with (directory / 'result.pkl').open('wb') as stream:
             pickle.dump(result, stream, protocol=4)

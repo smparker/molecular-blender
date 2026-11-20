@@ -26,8 +26,8 @@ class TestAdaptiveImport(unittest.TestCase):
             bpy.utils.register_class(MolecularBlender)
             self.addCleanup(bpy.utils.unregister_class, MolecularBlender)
         props = getattr(bpy.ops, 'import').molecular_blender.get_rna_type().properties
-        self.op = SimpleNamespace(**{name: props[name].default for name in MolecularBlender.__annotations__
-                                     if name != 'dataset_choice'})  # Dataset entries are file-dependent.
+        self.op = SimpleNamespace(**{p.identifier: p.default for p in props
+                                     if p.identifier != 'dataset_choice' and hasattr(p, 'default')})
         self.op.filepath = str(self.folder / 'stale.xyz')
         self.params = SimpleNamespace(directory=bytes(self.folder), filename='')
         self.context = SimpleNamespace(space_data=SimpleNamespace(type='FILE_BROWSER', params=self.params),

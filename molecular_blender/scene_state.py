@@ -91,6 +91,14 @@ def normalize_duplicate_ids(*_args):
         _normalizing = False
 
 
+def orbital_metadata(model):
+    if model is None:
+        return []
+    return [dict(index=i+1, energy=float(e) if e is not None and math.isfinite(e) else None,
+                 symmetry=sym, occupation=float(occ), spin=model.spins[i] if model.spins is not None else None)
+            for i, (e, sym, occ) in enumerate(zip(model.energies, model.symmetries, model.occupations))]
+
+
 def persist_molecule(molecule, source, settings):
     owner = molecule.scene_owner
     atoms = []
@@ -107,15 +115,8 @@ def persist_molecule(molecule, source, settings):
                   order=int(b.order), provenance=provenance, locked=False,
                   direction=list(b.direction) if b.direction is not None else None)
              for b in molecule.bonds]
-    orbital_data = []
-    if molecule.orbitals is not None:
-        model = molecule.orbitals
-        orbital_data = [dict(index=i+1, energy=float(e) if e is not None and math.isfinite(e) else None,
-                             symmetry=sym, occupation=float(occ),
-                             spin=model.spins[i] if model.spins is not None else None)
-                        for i, (e, sym, occ) in enumerate(zip(model.energies, model.symmetries, model.occupations))]
     record = dict(version=VERSION, id=new_id(), source=os.path.abspath(source), units='Angstrom',
-                  settings=settings, atoms=atoms, bonds=bonds, surfaces=[], orbitals=orbital_data,
+                  settings=settings, atoms=atoms, bonds=bonds, surfaces=[], orbitals=orbital_metadata(molecule.orbitals),
                   fields=(dict(datasets=list(molecule.volume.labels), field_type=molecule.volume.field_type)
                           if molecule.volume is not None else None))
     write_record(owner, record)
@@ -142,13 +143,19 @@ def persist_molecule(molecule, source, settings):
     return owner
 
 
-def persist_surface(molecule, obj, definition):
-    owner = molecule.scene_owner
+def persist_surfaces(owner, definitions, options):
+    """Each calculation of a field has one switch for all signs, levels and frames."""
     record = read_record(owner)
-    identifier = new_id()
-    tag(obj, owner, 'surface', identifier)
-    record['surfaces'].append(dict(id=identifier, field=definition['name'],
-                                   isovalue=float(definition['isovalue'])))
+    groups = {}
+    for definition in definitions:
+        field = definition.get('series', definition['name'])
+        if field not in groups:
+            groups[field] = new_id()
+        identifier = new_id()
+        tag(definition['mesh'], owner, 'surface', identifier)
+        record['surfaces'].append(dict(id=identifier, field=field, group=groups[field],
+                                       orbital_spin=options.get('orbital_spin', 'all'),
+                                       isovalue=float(definition['isovalue'])))
     write_record(owner, record)
 
 

@@ -329,6 +329,10 @@ file index regardless of spin selection.
 levels to import just the structure. For cubes, **Advanced → Include both signs**
 defaults on. Turn it off to plot only the signs entered.
 
+Cube voxel counts set one length unit for the grid axes, origin, and atoms.
+Positive counts use Bohr and negative counts use Å. The reader accepts rotated
+orthogonal grids with unequal spacings. It reports mixed signs and sheared axes.
+
 **Cube field type** appears for enclosed fractions and controls integration: orbital amplitude uses
 squared values; density and signed scalar fields use absolute magnitude. Auto
 uses field metadata if available and otherwise defaults to scalar magnitude,
@@ -358,14 +362,41 @@ Inspection uses the saved record and does not recalculate surfaces or reread the
 source. The charge setting is the requested molecular charge for perception;
 it is distinct from each atom's partial charge.
 
+Click **Frame Molecule** to fit the molecule and its visible surfaces in the
+current viewport. It preserves the selection. In camera view it switches to a
+perspective view and keeps the render camera in place.
+
 Select an atom to see its element, stored atom index, partial charge, and formal
 charge. The index follows the importer's numbering. Charge values come from the
 saved atom record, which defaults missing charges to zero. Cube imports label
 the charge from the atom line as **Cube atom charge**.
 
+**Select Same Element** selects the visible atoms of that element on this
+molecule. **Select Bonded Neighbors** selects the active atom and its directly
+bonded visible neighbors, including bonds added in the sidebar. **Select Bonded
+Fragment** follows those bonds to select every visible, selectable atom in the
+same connected fragment. A hidden atom can connect two visible atoms.
+
 Expand **Orbitals** to browse the saved index, energy, occupation, spin, and
 symmetry in input order. Use the **Page** arrows or enter a page number.
+**Go to HOMO** and **Go to LUMO** jump to and mark the matching row for the
+chosen **Orbital Spin**, even when the source file is unavailable.
 A dash marks missing metadata. Energies are shown as supplied by the source.
+
+For a single-frame Molden import, click **Add Surface…** next to an orbital,
+or choose a density and click **Add Surface…** beside it. Adjust the levels
+and grid spacing in the dialog. The calculation reads the original Molden file
+and runs in the background. Escape cancels it. New surfaces follow the molecule
+root's transforms and use the coordinates from the source calculation.
+
+Under **Surfaces**, each row shows a field and its calculated isovalues. Click
+the eye to show or hide all lobes and levels of that calculation in both the
+viewport and render. Visibility is saved in the blend file and works offline.
+The color swatches change the positive and negative lobes independently. The
+opacity slider affects every lobe, level, and frame in that row. Both controls
+edit the materials directly, so you can see the result in Material Preview or
+Rendered shading as you adjust them. The trash button removes that calculation
+and supports Blender Undo.
 
 Choose **Restyle molecule…** in that sidebar to change atom size, bond thickness,
 palette, and surface opacity. Apply acts on the whole owning molecule and supports

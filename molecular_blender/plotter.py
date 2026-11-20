@@ -253,6 +253,7 @@ def make_iso_materials(molecule, styler, vertex_sets, options):
                 else:
                     # but the outer is so cool, so use that if there's only one
                     material = styler.outer_isosurface_material(matname)
+                material['mb_surface_material'] = True
             else:
                 material = bpy.data.materials.get(matname)
             out[matname] = material
@@ -265,6 +266,7 @@ def make_iso_materials(molecule, styler, vertex_sets, options):
                 if not (options["recycle_materials"] and matname in bpy.data.materials.keys()):
                     matname = unique_name(matname, bpy.data.materials.keys())
                     material = styler.outer_isosurface_material(matname)
+                    material['mb_surface_material'] = True
                 else:
                     material = bpy.data.materials.get(matname)
                 out[matname] = material
@@ -782,6 +784,8 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None):
                 vol_snap.select_dataset(options.get("cube_dataset", 0))
                 name = "cube-{:5d}".format(i)
                 vsets = cube_isosurface(vol_snap.data, vol_snap.origin, vol_snap.axes, isovals, name=name)
+                for v in vsets:
+                    v['series'] = 'cube'
                 tick()
                 fi = fmap(i)
                 vertex_trajectory_map.setdefault(fi, []).extend([v["name"] for v in vsets])
@@ -822,6 +826,8 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None):
                 for i, orbital_snap in enumerate(molecule.orbitals_trajectory, 1):
                     snap_name = f"{orbname:s}-{i:4d}"
                     vsets_snap, _ = field_surface(orbital_snap, orbname, orbnumber, snap_name, orbital_isovals)
+                    for v in vsets_snap:
+                        v['series'] = orbname
                     tick()
                     fi = fmap(i)
                     vertex_trajectory_map.setdefault(fi, []).extend([v["name"] for v in vsets_snap])
@@ -830,17 +836,22 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None):
     return vertex_sets, vertex_trajectory_map
 
 
-def create_surface_meshes(molecule, styler, context, options, vertex_sets, vertex_trajectory_map):
+def create_surface_meshes(molecule, styler, context, options, vertex_sets, vertex_trajectory_map,
+                          *, select_surfaces=True):
     """Create Blender mesh objects from precomputed isosurface data. Must run on main thread."""
     if not vertex_sets:
         return
 
     molecule_collection = getattr(molecule, "scene_collection", None) or bpy.data.collections[molecule.name]
-    materials = make_iso_materials(molecule, styler, vertex_sets, options)
+    make_iso_materials(molecule, styler, vertex_sets, options)
     mol_obj = getattr(molecule, "scene_owner", None) or bpy.data.objects[molecule.name]
 
-    meshes = []
-    function_names = set([v["name"] for v in vertex_sets])
+    # Vertices are in source coordinates. The imported empty starts at the
+    # center of mass, while a wireframe root starts at the source origin.
+    parent_inverse = mathutils.Matrix.Identity(4)
+    if options["object_type"] != "wireframe":
+        parent_inverse = mathutils.Matrix.Translation(-molecule.center_of_mass())
+    function_names = dict.fromkeys(v["name"] for v in vertex_sets)
     for func in function_names:
         fsets = [v for v in vertex_sets if v["name"] == func]
         fmeshes = []
@@ -852,21 +863,22 @@ def create_surface_meshes(molecule, styler, context, options, vertex_sets, verte
             fmeshes.append(vmesh)
 
         function_collection = bpy.data.collections.new(f"{molecule.name}-isosurface-{func}")
+        function_collection['mb_surface_collection'] = True
         molecule_collection.children.link(function_collection)
         for m in fmeshes:
             function_collection.objects.link(m)
-            m.select_set(True)
+            m.parent = mol_obj
+            m.matrix_parent_inverse = parent_inverse
+            if select_surfaces:
+                m.select_set(True)
 
-        meshes.extend(fmeshes)
-
-    mol_obj.select_set(True)
-    context.view_layer.objects.active = mol_obj
-    bpy.ops.object.parent_set(type='OBJECT', keep_transform=False)
+    if select_surfaces:
+        mol_obj.select_set(True)
+        context.view_layer.objects.active = mol_obj
 
     if hasattr(molecule, 'scene_owner'):
-        from .scene_state import persist_surface
-        for definition in vertex_sets:
-            persist_surface(molecule, definition['mesh'], definition)
+        from .scene_state import persist_surfaces
+        persist_surfaces(mol_obj, vertex_sets, options)
         if options.get('surface_opacity', 1.0) != 1.0:
             from .scene_edit import _set_opacity
             for definition in vertex_sets:

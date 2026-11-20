@@ -27,6 +27,44 @@ from .compute_ao import *
 
 """Classes and functions to compute orbital values in real space."""
 
+
+def _spin_weights(occupations, spins):
+    labels = np.array(spins if spins is not None else ['Alpha'] * len(occupations))
+    if np.any(occupations > 1):
+        majority = np.minimum(occupations, 1.)
+        minority = np.maximum(occupations - 1., 0.)
+        return np.where(labels == 'Beta', minority, majority), np.where(labels == 'Beta', majority, minority)
+    return np.where(labels == 'Alpha', occupations, 0.), np.where(labels == 'Beta', occupations, 0.)
+
+
+def frontier_index(occupations, spins, energies, kind, spin=None, offset=0):
+    """Resolve a one-based frontier index from orbital metadata alone."""
+    if kind not in ('homo', 'lumo') or isinstance(offset, bool) or not isinstance(offset, (int, np.integer)) or offset < 0:
+        raise ValueError('Invalid frontier kind or offset')
+    if spin not in (None, 'alpha', 'beta'):
+        raise ValueError('Orbital spin must be alpha, beta, or omitted')
+    weights = np.asarray(occupations)
+    capacity = 2. if np.any(weights > 1) else 1.
+    indices = list(range(len(weights)))
+    if spin is not None:
+        if capacity == 1:
+            labels = spins or ('Alpha',) * len(weights)
+            indices = [i for i in indices if labels[i].lower() == spin]
+        weights = _spin_weights(weights, spins)[0 if spin == 'alpha' else 1]
+        capacity = 1.
+    # Use input order for the whole channel when an energy is missing.
+    if all(energies[i] is not None and np.isfinite(energies[i]) for i in indices):
+        indices.sort(key=lambda i: (energies[i], i))
+    if kind == 'homo':
+        candidates = [i for i in reversed(indices) if weights[i] > capacity / 2]
+    else:
+        candidates = [i for i in indices if weights[i] <= capacity / 2]
+    if offset >= len(candidates):
+        raise ValueError('Orbital expression {}{} is out of range: no matching {} orbital'.format(
+            (spin + ':') if spin else '', kind, 'occupied' if kind == 'homo' else 'empty'))
+    return candidates[offset] + 1
+
+
 class MOData:
     """Organizes data for computing orbitals in real space"""
 
@@ -82,35 +120,12 @@ class MOData:
             raise ValueError('Spin labels are incomplete; provide Alpha/Beta for every orbital or omit all labels')
         return occupations, tuple(labels)
 
-    def _frontier_candidates(self, spin=None):
-        if spin not in (None, 'alpha', 'beta'):
-            raise ValueError('Orbital spin must be alpha, beta, or omitted')
-        weights = self.occupations
-        capacity = self.occupation_scale
-        indices = list(range(len(weights)))
-        if spin is not None:
-            weights = self.spin_populations()[0 if spin == 'alpha' else 1]
-            capacity = 1.
-            if self.occupation_scale == 1:
-                labels = self.spins or ('Alpha',) * len(weights)
-                indices = [i for i in indices if labels[i].lower() == spin]
-        # Fall back to input order as a whole when energy metadata is incomplete.
-        if all(self.energies[i] is not None and np.isfinite(self.energies[i]) for i in indices):
-            indices.sort(key=lambda i: (self.energies[i], i))
-        occupied = [i for i in indices if weights[i] > capacity / 2]
-        empty = [i for i in indices if weights[i] <= capacity / 2]
-        return occupied, empty
-
     def frontier(self, kind='homo', spin=None, offset=0):
         """Return a one-based input index using the half-occupation heuristic."""
-        if kind not in ('homo', 'lumo') or isinstance(offset, bool) or not isinstance(offset, (int, np.integer)) or offset < 0:
-            raise ValueError('Invalid frontier kind or offset')
-        occupied, empty = self._frontier_candidates(spin)
-        candidates = occupied[::-1] if kind == 'homo' else empty
-        if offset >= len(candidates):
-            raise ValueError('Orbital expression {}{} is out of range: no matching {} orbital'.format(
-                (spin + ':') if spin else '', kind, 'occupied' if kind == 'homo' else 'empty'))
-        return candidates[offset] + 1
+        occupations, spins = self.occupations, self.spins
+        if spin is not None:
+            occupations, spins = self._validate_populations(occupations, spins, self.coeff.shape[0])
+        return frontier_index(occupations, spins, self.energies, kind, spin, offset)
 
     def homo(self, spin=None):
         return self.frontier('homo', spin)
@@ -166,13 +181,7 @@ class MOData:
         """
         occupations, spins = self._validate_populations(
             self.occupations, self.spins, self.coeff.shape[0])
-        if self.occupation_scale == 2:
-            majority = np.minimum(occupations, 1.)
-            minority = np.maximum(occupations - 1., 0.)
-            beta_majority = np.array(spins or ('Alpha',) * len(occupations)) == 'Beta'
-            return np.where(beta_majority, minority, majority), np.where(beta_majority, majority, minority)
-        labels = np.array(spins if spins is not None else ['Alpha'] * len(occupations))
-        return np.where(labels == 'Alpha', occupations, 0.), np.where(labels == 'Beta', occupations, 0.)
+        return _spin_weights(occupations, spins)
 
     def density_matrix(self, densityname='density'):
         """Return the AO matrix and population for a known field."""

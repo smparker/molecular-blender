@@ -5,6 +5,7 @@ child uses the same Blender executable (and thus Python/NumPy ABI) as the parent
 Terminating the process interrupts even a compiled numerical loop.
 """
 import atexit
+from dataclasses import dataclass
 import json
 from pathlib import Path
 import pickle
@@ -13,6 +14,28 @@ import tempfile
 
 
 _jobs = set()
+
+
+@dataclass
+class SavedMoldenSource:
+    """A sidebar job can reopen the source directly inside the worker."""
+    path: str
+    atoms: list
+    orbitals: list
+
+    def load(self, options):
+        from .importers import molecule_from_file
+        from .molecule import Molecule
+        from .scene_state import orbital_metadata
+
+        data = molecule_from_file(self.path, options)
+        model = Molecule.from_dict('surface-worker', data)
+        actual = [(a.index, a.element.symbol, tuple(a.position)) for a in model.atoms]
+        if actual != self.atoms:
+            raise ValueError('Source atom identities or coordinates have changed. Reimport the Molden file.')
+        if orbital_metadata(model.orbitals) != self.orbitals:
+            raise ValueError('Source orbital metadata has changed. Reimport the Molden file.')
+        return model
 
 
 class SurfaceJob:

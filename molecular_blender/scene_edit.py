@@ -83,8 +83,15 @@ def _set_color(material, color):
                 for name in ('Emission Color', 'Emission'):
                     if name in node.inputs:
                         node.inputs[name].default_value = darken_color(color, 0.3)
-            elif node.type == 'BSDF_DIFFUSE':
+            elif node.type in ('BSDF_DIFFUSE', 'EMISSION'):
                 node.inputs['Color'].default_value = color
+
+
+def _surface_output(material):
+    output = next((n for n in material.node_tree.nodes if n.type == 'OUTPUT_MATERIAL' and n.is_active_output), None)
+    if output is None or not output.inputs['Surface'].links:
+        raise ValueError('Surface material has no connected surface shader')
+    return output
 
 
 def _set_opacity(material, opacity):
@@ -93,9 +100,7 @@ def _set_opacity(material, opacity):
     tree = material.node_tree
     mix = tree.nodes.get('MB Surface Opacity')
     if mix is None:
-        output = next((n for n in tree.nodes if n.type == 'OUTPUT_MATERIAL' and n.is_active_output), None)
-        if output is None or not output.inputs['Surface'].links:
-            raise ValueError('Surface material has no connected surface shader')
+        output = _surface_output(material)
         original = output.inputs['Surface'].links[0].from_socket
         transparent = tree.nodes.new('ShaderNodeBsdfTransparent')
         mix = tree.nodes.new('ShaderNodeMixShader')
@@ -105,6 +110,7 @@ def _set_opacity(material, opacity):
         tree.links.new(original, mix.inputs[2])
         tree.links.new(mix.outputs[0], output.inputs['Surface'])
     mix.inputs[0].default_value = opacity
+    material.diffuse_color[3] = opacity
     if hasattr(material, 'surface_render_method'):
         material.surface_render_method = 'DITHERED'
     elif hasattr(material, 'blend_method'):
@@ -119,6 +125,7 @@ def restyle_molecule(owner, *, atom_scale=None, bond_thickness=None,
     atom_scale = old_settings['atom_scale'] if atom_scale is None else atom_scale
     bond_thickness = old_settings['bond_thickness'] if bond_thickness is None else bond_thickness
     colors = old_settings['colors'] if colors is None else colors
+    edit_surface_opacity = surface_opacity is not None
     surface_opacity = old_settings['surface_opacity'] if surface_opacity is None else surface_opacity
     settings = validated_options(dict(old_settings, atom_scale=atom_scale,
                                       bond_thickness=bond_thickness, colors=colors,
@@ -127,7 +134,7 @@ def restyle_molecule(owner, *, atom_scale=None, bond_thickness=None,
         raise ValueError('Bond thickness must be positive when restyling')
     atoms = owned_objects(owner, 'atom')
     bonds = owned_objects(owner, 'bond')
-    surfaces = owned_objects(owner, 'surface')
+    surfaces = owned_objects(owner, 'surface') if edit_surface_opacity else []
     # Fail before making changes if a saved/externally edited object cannot be handled.
     for atom in atoms:
         if atom.get('mb_atom_radius', _atom_radius(atom['mb_element'], old_settings)) <= 0:
@@ -211,13 +218,17 @@ class MB_OT_restyle(bpy.types.Operator):
         settings = read_record(resolve_owner(context.object))['settings']
         for name in ('atom_scale', 'bond_thickness', 'colors', 'surface_opacity'):
             setattr(self, name, settings[name])
+        self._initial_opacity = self.surface_opacity
         return context.window_manager.invoke_props_dialog(self)
 
     def execute(self, context):
+        opacity = self.surface_opacity if self.properties.is_property_set('surface_opacity') else None
+        if opacity == getattr(self, '_initial_opacity', None):
+            opacity = None
         try:
             restyle_molecule(resolve_owner(context.object), atom_scale=self.atom_scale,
                              bond_thickness=self.bond_thickness, colors=self.colors,
-                             surface_opacity=self.surface_opacity)
+                             surface_opacity=opacity)
         except (ValueError, KeyError) as exc:
             self.report({'ERROR'}, str(exc))
             return {'CANCELLED'}

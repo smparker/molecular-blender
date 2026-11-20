@@ -134,8 +134,7 @@ class VolumeData(object):
             raise ValueError('Cube dataset shape and labels must match the grid')
         self.select_dataset(dataset_index)
 
-        self.axis_norms = np.array(
-            [np.linalg.norm(self.axes[:, i]) for i in range(3)], dtype=np.float32)
+        self.axis_norms = np.linalg.norm(self.axes, axis=1).astype(np.float32)
         self.dvol = abs(float(np.linalg.det(np.asarray(self.axes, dtype=float))))
 
     def select_dataset(self, index):
