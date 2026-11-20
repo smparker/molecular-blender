@@ -28,7 +28,7 @@ def main(directory):
             molecule = data.load(options)
         else:
             molecule = Molecule.from_dict('surface-worker', data)
-        result = compute_surface_vertex_sets(molecule, options, Progress())
+        result = compute_surface_vertex_sets(molecule, options, Progress(), indexed=True)
         with (directory / 'result.pkl').open('wb') as stream:
             pickle.dump(result, stream, protocol=4)
     except Exception as exc:

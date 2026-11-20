@@ -30,6 +30,7 @@ import re
 
 import bpy
 import mathutils
+from mathutils.kdtree import KDTree
 import bmesh
 import numpy as np
 
@@ -686,9 +687,66 @@ def field_weld_distance(resolution):
     return resolution * 1e-4
 
 
+def index_field_triangles(triangles, resolution):
+    """Share float32 intersections and close sub-grid seams before allocating a Blender mesh."""
+    points = np.ascontiguousarray(triangles, dtype=np.float32).reshape(-1, 3)
+    if not len(points):
+        return points, np.empty((0, 3), dtype=np.int32)
+    # Sort complete XYZ triples as one key. Most shared edges match exactly.
+    keys = points.view(np.dtype((np.void, points.strides[0]))).ravel()
+    _, first, corners = np.unique(keys, return_index=True, return_inverse=True)
+    vertices = points[first]
+    faces = corners.reshape(-1, 3)
+
+    # Adjacent marching cells can interpolate the same edge in opposite directions.
+    # Merge residual roundoff by distance, including points across rounding-bin boundaries.
+    tree = KDTree(len(vertices))
+    for index, point in enumerate(vertices):
+        tree.insert(point, index)
+    tree.balance()
+    representatives = np.arange(len(vertices), dtype=np.int32)
+    tolerance = field_weld_distance(resolution)
+    for index, point in enumerate(vertices):
+        if representatives[index] == index:
+            for _, other, _ in tree.find_range(point, tolerance):
+                if other > index and representatives[other] == other:
+                    representatives[other] = index
+    faces = representatives[faces]
+    a, b, c = faces.T
+    faces = faces[(a != b) & (b != c) & (c != a)]
+    # Collapsing a tiny sliver can also make two faces share all three corners.
+    face_keys = np.sort(faces, axis=1).view(np.dtype((np.void, 3 * faces.itemsize))).ravel()
+    _, first_face = np.unique(face_keys, return_index=True)
+    faces = faces[np.sort(first_face)]
+    used, indices = np.unique(faces, return_inverse=True)
+    return vertices[used], indices.reshape(-1, 3).astype(np.int32)
+
+
+def field_geometry(definition, resolution):
+    if 'faces' in definition:
+        return definition['vertices'], definition['faces']
+    return index_field_triangles(definition['triangles'], resolution)
+
+
+def _write_indexed_triangles(mesh, vertices, faces):
+    """Fill Blender's vertex, loop and polygon arrays without a second mesh or weld."""
+    mesh.vertices.add(len(vertices))
+    mesh.vertices.foreach_set('co', vertices.ravel())
+    mesh.loops.add(faces.size)
+    mesh.loops.foreach_set('vertex_index', faces.ravel())
+    mesh.polygons.add(len(faces))
+    mesh.polygons.foreach_set('loop_start', np.arange(0, faces.size, 3, dtype=np.int32))
+    if hasattr(mesh, 'shade_flat'):
+        mesh.shade_flat()
+    mesh.update(calc_edges=True)
+
+
 def create_surface_mesh_data(name, verts, faces, weld_distance):
     me = bpy.data.meshes.new(name)
     try:
+        if weld_distance is None:
+            _write_indexed_triangles(me, verts, faces)
+            return me
         me.from_pydata(verts, [], faces)
         me.update()
         bm = bmesh.new()
@@ -739,11 +797,12 @@ def create_geometry(verts):
     return list(chain.from_iterable(verts)), faces
 
 
-def compute_surface_vertex_sets(molecule, options, progress_state=None):
+def compute_surface_vertex_sets(molecule, options, progress_state=None, *, indexed=False):
     """Compute isosurface triangle data, synchronously or in an isolated worker process.
 
     progress_state is an optional dict with keys 'completed' and 'total' that this function
     updates as isosurfaces are computed, for use by a modal progress bar.
+    With indexed=True, Molden fields carry shared vertices and triangle indices.
     """
     if molecule.volume is None and molecule.orbitals is None:
         return [], {}
@@ -817,7 +876,11 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None):
             if levels is None:
                 levels = field.isovalue_containing_proportion(isovals) if options['cumulative'] else isovals
             method = 'adaptive' if model.is_density(name) else 'tiled'
-            return molden_isosurface(field, levels, resolution, label, method=method), levels
+            surfaces = molden_isosurface(field, levels, resolution, label, method=method)
+            if indexed:
+                for surface in surfaces:
+                    surface['vertices'], surface['faces'] = index_field_triangles(surface.pop('triangles'), resolution)
+            return surfaces, levels
 
         for orbname, orbnumber in zip(orbnames, orblist):
             vset, orbital_isovals = field_surface(orbitals, orbname, orbnumber, orbname)
@@ -862,9 +925,12 @@ def create_surface_meshes(molecule, styler, context, options, vertex_sets, verte
         fmeshes = []
         for v in fsets:
             name = "{0}_{1}_{2}".format(molecule.name, v["name"], v["isovalue"])
-            verts, faces = create_geometry(v["triangles"])
-            # Weld duplicate intersections without collapsing nearby grid edges.
-            weld_distance = .01 if molecule.volume is not None else field_weld_distance(options['resolution'])
+            if molecule.volume is not None:
+                verts, faces = create_geometry(v["triangles"])
+                weld_distance = .01
+            else:
+                verts, faces = field_geometry(v, options['resolution'])
+                weld_distance = None
             vmesh = create_mesh(name, verts, faces, v["material"], context,
                                 remesh=options["remesh"], weld_distance=weld_distance)
             v["mesh"] = vmesh
@@ -918,7 +984,7 @@ def create_surface_meshes(molecule, styler, context, options, vertex_sets, verte
 @stopwatch("draw surfaces")
 def draw_surfaces(molecule, styler, context, options):
     """Draws isosurfaces"""
-    vertex_sets, vertex_trajectory_map = compute_surface_vertex_sets(molecule, options)
+    vertex_sets, vertex_trajectory_map = compute_surface_vertex_sets(molecule, options, indexed=True)
     create_surface_meshes(molecule, styler, context, options, vertex_sets, vertex_trajectory_map)
 
 @stopwatch("draw rings")

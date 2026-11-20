@@ -55,7 +55,7 @@ class TestSurfaceWorker(unittest.TestCase):
         data = molecule_from_file('examples/fake-atom.molden', {})
         options = default_options(dict(orbital='1', cumulative=False, isovalues='0.05', resolution=0.3))
         process_options(options)
-        expected, mapping = compute_surface_vertex_sets(Molecule.from_dict('reference', data), options)
+        expected, mapping = compute_surface_vertex_sets(Molecule.from_dict('reference', data), options, indexed=True)
         job = SurfaceJob(bpy.app.binary_path, data, options)
         try:
             job.process.wait(timeout=60)
@@ -63,7 +63,8 @@ class TestSurfaceWorker(unittest.TestCase):
             self.assertEqual(actual_mapping, mapping)
             self.assertEqual(len(actual), len(expected))
             for a, b in zip(actual, expected):
-                np.testing.assert_allclose(a['triangles'], b['triangles'])
+                np.testing.assert_array_equal(a['faces'], b['faces'])
+                np.testing.assert_array_equal(a['vertices'], b['vertices'])
             self.assertEqual(job.progress()['completed'], job.progress()['total'])
         finally:
             job.close()

@@ -39,6 +39,22 @@ class TestSidebarActions(unittest.TestCase):
         obj.select_set(True)
         bpy.context.view_layer.objects.active = obj
 
+    def test_indexed_field_mesh_keeps_winding_and_welds_only_sub_grid_seams(self):
+        from molecular_blender.plotter import create_surface_mesh_data, index_field_triangles
+        a, b, c, d = (0, 0, 0), (1, 0, 0), (0, 1, 0), (1, 1, 0)
+        seam = (1.000001, 0, 0)
+        triangles = [(a, b, c), (seam, d, c), (c, b, a), (b, seam, d),
+                     [(x, y, .0001) for x, y, z in (a, c, b)]]
+        verts, faces = index_field_triangles(triangles, .05)
+        mesh = create_surface_mesh_data('Indexed field', verts, faces, weld_distance=None)
+        try:
+            self.assertEqual((len(mesh.vertices), len(mesh.polygons)), (7, 3))
+            self.assertEqual([round(p.normal.z) for p in mesh.polygons], [1, 1, -1])
+            self.assertAlmostEqual(sum(p.area for p in mesh.polygons), 1.5, places=5)
+            self.assertFalse(mesh.validate())
+        finally:
+            bpy.data.meshes.remove(mesh)
+
     def test_legacy_surface_convention_survives_recomputing(self):
         from molecular_blender.scene_state import read_record
         from molecular_blender.scene_surfaces import recompute_settings

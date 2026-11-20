@@ -396,7 +396,7 @@ class TestFractionalDensity(unittest.TestCase):
         from mathutils.kdtree import KDTree
         from unittest.mock import patch
         from molecular_blender import isosurfaces, marching_cube_py
-        from molecular_blender.plotter import create_geometry, create_surface_mesh_data, field_weld_distance
+        from molecular_blender.plotter import field_geometry, create_surface_mesh_data
         resolution = .23
         results = []
         for backend, marcher in ((ao_py, marching_cube_py), (ao_cy, marching_cube_cy)):
@@ -405,8 +405,7 @@ class TestFractionalDensity(unittest.TestCase):
                 with patch.object(isosurfaces, 'marching_cube_box', marcher.marching_cube_box):
                     surfaces = isosurfaces.molden_isosurface(field, [level, -level], resolution, method=method)
                 for surface in surfaces:
-                    mesh = create_surface_mesh_data('Parity', *create_geometry(surface['triangles']),
-                                                    field_weld_distance(resolution))
+                    mesh = create_surface_mesh_data('Parity', *field_geometry(surface, resolution), None)
                     try:
                         points = [v.co.copy() for v in mesh.vertices]
                         self.assertTrue(points, (backend, method, surface['isovalue']))

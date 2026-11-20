@@ -8,7 +8,7 @@ from . import import_dialog
 from .importers import FORMAT_SUFFIXES, file_format
 from .molecule import Atom, Molecule
 from .options import molden_convention, validated_options
-from .plotter import create_geometry, create_surface_mesh_data, field_weld_distance, process_options
+from .plotter import create_surface_mesh_data, field_geometry, process_options
 from .scene_edit import _set_color, _set_opacity, _surface_output
 from .scene_state import ID, new_id, surface_sampling, owned_objects, read_record, resolve_owner, write_record
 from .surface_jobs import SavedMoldenSource
@@ -433,8 +433,8 @@ def replace_surface_geometry(context, owner, record, key, group, definitions, op
 
             obj = min((o for o in phase if o in remaining), key=distance, default=None)
             template = obj or min(phase, key=distance, default=old_objects[0])
-            mesh = create_surface_mesh_data(template.data.name, *create_geometry(item['triangles']),
-                                            weld_distance=field_weld_distance(options['resolution']))
+            mesh = create_surface_mesh_data(template.data.name, *field_geometry(item, options['resolution']),
+                                            weld_distance=None)
             new_meshes.append(mesh)
             for mat in template.data.materials:
                 mesh.materials.append(mat)

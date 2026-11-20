@@ -142,7 +142,7 @@ class SurfaceJobOperator:
             self._molecule.scene_owner = self._owner
             self._molecule.scene_collection = self._collection
             if not self._select_surfaces:
-                vertex_sets = [v for v in vertex_sets if len(v["triangles"])]
+                vertex_sets = [v for v in vertex_sets if len(v["faces"] if "faces" in v else v["triangles"])]
                 if not vertex_sets:
                     self.report({'INFO'}, 'No surface at the requested levels')
                     return {'CANCELLED'}
