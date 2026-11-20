@@ -536,20 +536,23 @@ times survive sampling, and **Keystride** still controls the spacing of Blender
 keyframes. The Python options are `frame_start`, `frame_end`, and `frame_step`.
 A single JSON entry wrapping an XYZ trajectory samples the XYZ frames.
 
-### Map an ESP cube onto a density surface
+### Color a density surface with a field cube
 
 Import a density cube or add a **Total**, **Alpha**, or **Beta Density** surface
-to a Molden molecule. In **Molecule → Surfaces**, choose **Map ESP Cube…** on
-the single-frame density surface. Select the cube containing the potential,
-its dataset index, its scalar units (Hartree/e or volts), and the negative and
-positive color limits. Use the same units and limits across figures. The map
-shows negative potential in red, zero in white, and positive potential in blue.
+to a Molden molecule. In **Molecule → Surfaces**, choose **Map Field Cube…** on
+the single-frame density surface. Select the cube, dataset and color limits.
+Use **Electrostatic Potential** for an ESP cube in Hartree/e or volts. For other
+quantities, enter a field name and units (`1` for dimensionless values).
+**Signed Field** and ESP use red for negative values, white at zero and blue
+for positive values. **Unsigned Field** runs from white at the lower limit to
+blue at the upper limit. Use the same units and limits across figures.
 Use Material Preview or Rendered shading to see the colors.
 
-The potential cube must list the same atoms in the same order and source
+The field cube must list the same atoms in the same order and source
 positions (within 0.0001 Å). Its grid can have different spacing, orientation,
 or origin, and must cover the whole density surface. The add-on interpolates
 the supplied values onto the displayed vertices after remeshing and saves
-them as the `mb_esp` point attribute. The material's Color Ramp is editable
-in the Shader Editor. **Change ESP Map…** can change the file or limits.
+them as a point attribute (`mb_esp` for ESP or `mb_field` for a custom field).
+The material's Color Ramp is editable in the Shader Editor.
+**Change Field Map…** reopens the file, field and range settings.
 **Remove Map** restores the original geometry, material, and Remesh settings.

@@ -39,7 +39,7 @@ class TestMappedDensity(unittest.TestCase):
         from molecular_blender.plotter import BlendMoleculeSetup, draw_surfaces
         from molecular_blender.scene_state import owned_objects, read_record
         from molecular_blender.scene_surfaces import surface_groups
-        from molecular_blender.scene_esp import ATTRIBUTE
+        from molecular_blender.scene_esp import ATTRIBUTE, field_map_settings
         old = bpy.context.window.scene
         scene = bpy.data.scenes.new('ESP regression')
         bpy.context.window.scene = scene
@@ -106,6 +106,37 @@ class TestMappedDensity(unittest.TestCase):
                     self.assertGreater(blue[2], 2 * blue[0])
                 finally:
                     bpy.data.images.remove(image)
+                # Materials saved by the original ESP-only mapper have no kind or label.
+                del surf.active_material['mb_field_kind'], surf.active_material['mb_field_label']
+                self.assertEqual(field_map_settings(surf.active_material)['kind'], 'esp')
+                for kind, low, high, stops in [('signed', -2., 1., 3), ('unsigned', .25, 2., 2)]:
+                    values = x if kind == 'signed' else x+2.
+                    write_cube(esp, values)
+                    label = 'Density change' if kind == 'signed' else 'Density'
+                    args = dict(group=key, filepath=str(esp), field_kind=kind, field_label=label,
+                                field_units='e/bohr^3', minimum=low, maximum=high)
+                    self.assertEqual(bpy.ops.molecular_blender.map_esp(**args), {'FINISHED'})
+                    self.assertNotIn(ATTRIBUTE, surf.data.attributes)
+                    np.testing.assert_allclose([p.value for p in surf.data.attributes['mb_field'].data],
+                                               [v.co.x + (2. if kind == 'unsigned' else 0.)
+                                                for v in surf.data.vertices], atol=1e-6)
+                    saved = field_map_settings(surf.active_material)
+                    self.assertEqual((saved['label'], saved['units'], saved['kind']), (label, 'e/bohr^3', kind))
+                    np.testing.assert_allclose(saved['limits'], [low, high])
+                    nodes = surf.active_material.node_tree.nodes
+                    self.assertEqual(nodes.get('Attribute').attribute_name, 'mb_field')
+                    colors = nodes.get('Color Ramp').color_ramp
+                    self.assertEqual(len(colors.elements), stops)
+                    white = colors.evaluate(0. if kind == 'unsigned' else -low / (high-low))
+                    np.testing.assert_allclose(white[:3], [1., 1., 1.], atol=1e-5)
+                    old_data = surf.data
+                    with self.assertRaisesRegex(RuntimeError, 'units'):
+                        bpy.ops.molecular_blender.map_esp(**dict(args, field_units=''))
+                    self.assertEqual(surf.data, old_data)
+                write_cube(esp, x)
+                self.assertEqual(apply(), {'FINISHED'})
+                self.assertNotIn('mb_field', surf.data.attributes)
+                check_values()
                 self.assertEqual(bpy.ops.molecular_blender.clear_esp(group=key), {'FINISHED'})
                 self.assertEqual((surf.data, surf.active_material), (mesh, mat))
                 self.assertTrue(surf.modifiers[0].show_render)

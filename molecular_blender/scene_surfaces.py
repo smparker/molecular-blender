@@ -502,7 +502,7 @@ class MB_OT_recompute_surface(MoldenSurfaceProperties, SurfaceJobOperator, bpy.t
         if group is None:
             raise ValueError('The surface calculation no longer exists')
         if any('mb_esp_original_mesh' in obj for obj in group['objects']):
-            raise ValueError('Remove the ESP map before recomputing the density geometry')
+            raise ValueError('Remove the field map before recomputing the density geometry')
         return record, group, recompute_settings(record, group)
 
     def invoke(self, context, event):

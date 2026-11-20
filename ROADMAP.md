@@ -7,7 +7,7 @@ Keep the current curve-extrusion approach for bonds as the baseline. Keep bond-o
 ## Suggested starting points
 
 - **Extend post-import editing.** The sidebar already supports restyling, bond edits and surface management. Reloading coordinates and orbitals from a changed source is open.
-- **Extend ESP maps.** External ESP cubes can color density surfaces. Direct wavefunction evaluation and a general field-mapping interface remain open.
+- **Extend field maps.** External scalar cubes can color density surfaces. Direct wavefunction ESP evaluation and legends remain open.
 - **Improve import recovery.** Surface workers support cancellation. Rolling back a partially built scene remains open.
 - **Extend bond perception.** Diagnostics and manual overrides are available. Solver scaling and trajectory orientation remain open.
 
@@ -37,7 +37,8 @@ Imports retain their settings and object identities in the blend file. The sideb
 External potential cubes can color single-frame density surfaces. [Sampling](molecular_blender/esp.py) and [Blender mapping](molecular_blender/scene_esp.py).
 
 - [x] **Map supplied ESP grids.** Sample a selected cube dataset on the final displayed density mesh, with atom alignment and coverage checks. Save per-vertex values, declared potential units, editable diverging colors and explicit limits. Removing the map restores the original surface.
-- [ ] **Generalize field-mapped materials.** Extend the ESP workflow to other scalar fields and add a legend.
+- [x] **Generalize field-mapped materials.** Single-frame density surfaces support signed and unsigned scalar cubes with named fields, explicit units and editable color ramps.
+- [ ] **Add a field legend.** Use the mapped field's units, limits and colors.
 
 - [ ] **Implement a wavefunction ESP evaluator.** In atomic units, evaluate `V(r) = Σ_A Z_A / |r-R_A| - ∫ ρ(r') / |r-r'| dr'`. Reuse the AO density matrix, but add the electron–point Coulomb integrals; existing pointwise density evaluation does not supply this integral. Compare a native Gaussian-integral backend with an optional external calculation path. [PySCF's MEP example](https://github.com/pyscf/pyscf/blob/master/examples/1-advanced/031-MEP.py) is a useful implementation/reference calculation.
 - [ ] **Define the scientific input contract before claiming general Molden ESP support.** Check occupations, orbital completeness, normalization, nuclear charges, ghost centers, and effective-core-potential treatment. Preserve needed atom metadata; require missing core-charge information or explicitly restrict the first implementation to validated all-electron inputs. See the [Molden format](https://www.theochem.ru.nl/molden/molden_format.html).

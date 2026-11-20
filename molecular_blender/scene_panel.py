@@ -12,7 +12,7 @@ from .scene_surfaces import (SOLO_GROUP, MB_OT_add_surface, MB_OT_locate_source,
                              MB_OT_remove_surface, MB_OT_solo_surface, MB_OT_surface_visibility, set_surface_color,
                              set_surface_opacity, surface_color, surface_groups, surface_opacity, surface_visible)
 from .surface_export import MB_ExportSurface, MB_OT_export_surface_series, MB_OT_transparent_png, draw_png_preset
-from .scene_esp import BASE_MESH, MB_OT_map_esp, MB_OT_clear_esp, density_group
+from .scene_esp import BASE_MESH, MB_OT_map_esp, MB_OT_clear_esp, density_group, field_map_settings
 from .scene_view import MB_OT_frame_molecule, MB_OT_view_face_on, MB_OT_view_principal_axes, draw_atom_indices
 from .surface_operator import DENSITIES, ORBITAL_SPINS
 
@@ -345,11 +345,11 @@ class MB_PT_molecule(bpy.types.Panel):
                     action.operator('molecular_blender.recompute_surface', text='', icon='FILE_REFRESH').group = key
                 row.operator('molecular_blender.remove_surface', text='', icon='TRASH').group = key
                 if mapped:
-                    mat = obj.active_material
-                    if mat and 'mb_esp_limits' in mat:
-                        low, high = mat['mb_esp_limits']
-                        entry.label(text='ESP · ' + os.path.basename(mat['mb_esp_path']))
-                        entry.label(text=f"{low:g} to {high:g} {mat['mb_esp_units']}")
+                    saved = field_map_settings(obj.active_material)
+                    if saved:
+                        low, high = saved['limits']
+                        entry.label(text=saved['label'] + ' · ' + os.path.basename(saved['path']))
+                        entry.label(text=f"{low:g} to {high:g} {saved['units']}")
                 else:
                     colors = entry.row(align=True)
                     for sign, label in ((True, 'Positive'), (False, 'Negative')):
@@ -359,7 +359,7 @@ class MB_PT_molecule(bpy.types.Panel):
                 if density_group(group):
                     controls = entry.row(align=True)
                     controls.operator('molecular_blender.map_esp',
-                                      text='Change ESP Map…' if mapped else 'Map ESP Cube…').group = key
+                                      text='Change Field Map…' if mapped else 'Map Field Cube…').group = key
                     if mapped:
                         controls.operator('molecular_blender.clear_esp', text='Remove Map').group = key
                 entry.prop(group['objects'][0], 'mb_surface_opacity', text='Opacity', slider=True)
