@@ -107,6 +107,7 @@ The existing split between field computation and main-thread mesh creation is a 
 - [x] **Locate malformed Molden basis and orbital data.** The Blender import report gives the source path, physical line number and GTO atom or MO orbital for bad or incomplete blocks.
 - [ ] **Use structured errors and diagnostics across the remaining readers.** Carry filename/record/section/atom context from readers and chemistry into Blender reports; retain detailed tracebacks in logs. Replace broad exception swallowing and misleading fallback messages with precise causes.
 - [ ] **Make object/material reuse explicit.** Cache by molecule/style identity and validated parameters, not just global names. Provide safe cleanup for molecule-owned meshes, materials, actions, bevel profiles, and collections, including fake-user profiles.
+- [x] **Repair repeat imports of rings and charges.** Recycled ring materials are bound on each molecule and charge spheres use the materials returned for that import.
 - [x] **Document the orbital evaluator interface.** The public module documents Bohr and grid axis order and exposes `OrbitalCalculator` and `DensityCalculator` alongside the original spellings.
 - [ ] **Clarify remaining numerical APIs.** Add type hints and shape/unit contracts at other module boundaries and distinguish atom IDs from positional indices.
 

@@ -183,13 +183,9 @@ def make_atom_materials(molecule, styler, options):
         styler.atom_material(atom, elements[a])
 
     if options["charges"] != "none":  # make materials used for showing charges
-        pc = unique_name("pluscharge", bpy.data.materials.keys()) + "_mat"
-        nc = unique_name("negcharge", bpy.data.materials.keys()) + "_mat"
-
-        molecule.pluscharge_mat = pc
-        molecule.negcharge_mat = nc
-
-        styler.charge_material(pc, nc, elements[a])
+        positive, negative = styler.charge_material("pluscharge_mat", "negcharge_mat", elements[a])
+        molecule.pluscharge_mat = positive.name
+        molecule.negcharge_mat = negative.name
     return
 
 
@@ -220,8 +216,8 @@ def make_ring_materials(molecule, styler, options):
     ringmat = "ring_mat"
     if not (options["recycle_materials"] and ringmat in bpy.data.materials.keys()):
         ringmat = unique_name(ringmat, bpy.data.materials.keys())
-        molecule.materials["ring"] = ringmat
         styler.ring_material(ringmat)
+    molecule.materials["ring"] = ringmat
     return
 
 

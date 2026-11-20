@@ -80,3 +80,18 @@ class TestGeometryRollback(unittest.TestCase):
                 self.assertEqual(before, self.ids())
                 self.assertEqual(set(bpy.context.selected_objects), {self.figure, second})
                 self.assertEqual(bpy.context.view_layer.objects.active, self.figure)
+
+    def test_second_molecule_uses_its_own_charges_and_recycled_ring(self):
+        from molecular_blender.plotter import BlendMoleculeSetup
+        args = dict(find_aromatic=True, charges='scale', recycle_materials=True, isovalues='')
+        ring = bpy.data.materials.get('ring_mat') or bpy.data.materials.new('ring_mat')
+        models = [BlendMoleculeSetup(bpy.context, 'examples/tetracene_dimer.xyz', **args)[0] for _ in range(2)]
+        for model in models:
+            rings = [obj for obj in model.scene_owner.children_recursive if obj.name.startswith(model.name + '_ring')]
+            self.assertTrue(rings)
+            self.assertTrue(all(obj.active_material == ring for obj in rings))
+            atom = model.atoms[0]
+            self.assertEqual(bpy.data.objects[atom.plus_charge].active_material.name, model.pluscharge_mat)
+            self.assertEqual(bpy.data.objects[atom.neg_charge].active_material.name, model.negcharge_mat)
+        self.assertNotEqual(models[0].pluscharge_mat, models[1].pluscharge_mat)
+        self.assertNotEqual(models[0].negcharge_mat, models[1].negcharge_mat)
