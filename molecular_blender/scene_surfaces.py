@@ -5,7 +5,7 @@ import bpy
 from bpy.props import StringProperty
 
 from . import import_dialog
-from .importers import file_format
+from .importers import FORMAT_SUFFIXES, file_format
 from .molecule import Atom, Molecule
 from .options import validated_options
 from .plotter import create_geometry, create_surface_mesh_data, field_weld_distance, process_options
@@ -235,13 +235,49 @@ def surface_model(owner, record):
         raise ValueError('Adding a surface requires a single-frame Molden molecule with orbitals')
     if not os.path.isfile(path):
         raise ValueError('Molden source unavailable: ' + path)
-    atoms = [(a['index'], a['element'], tuple(a['position'])) for a in record['atoms']]
+    source = SavedMoldenSource.from_record(path, record)
     # Scene placement only needs the original center of mass.
-    model = Molecule(owner.name, [Atom(symbol, pos, index) for index, symbol, pos in atoms])
-    model.surface_input = SavedMoldenSource(path, atoms, record['orbitals'])
+    model = Molecule(owner.name, [Atom(symbol, pos, index) for index, symbol, pos in source.atoms])
+    model.surface_input = source
     model.scene_owner = owner
     model.scene_collection = owner.users_collection[0]
     return model
+
+
+class MB_OT_locate_source(bpy.types.Operator):
+    bl_idname = 'molecular_blender.locate_source'
+    bl_label = 'Locate Molden Source'
+    bl_description = 'Check the selected Molden file against the saved atoms and orbital metadata, then relink it'
+    bl_options = {'UNDO'}
+
+    filepath: StringProperty(subtype='FILE_PATH', options={'SKIP_SAVE'})
+    filter_glob: StringProperty(default=';'.join('*' + s for s in FORMAT_SUFFIXES['molden']), options={'HIDDEN'})
+
+    def invoke(self, context, event):
+        self._owner = resolve_owner(context.object)
+        if self._owner is None:
+            return {'CANCELLED'}
+        self.filepath = read_record(self._owner)['source']
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        try:
+            owner = self._owner if hasattr(self, '_owner') else resolve_owner(context.object)
+            if owner is None:
+                raise ValueError('Select an imported Molden molecule')
+            record = read_record(owner)
+            path = os.path.abspath(bpy.path.abspath(self.filepath))
+            if file_format(record['source']) != 'molden' or file_format(path) != 'molden':
+                raise ValueError('Choose a Molden source file for a Molden molecule')
+            SavedMoldenSource.from_record(path, record).load(record['settings'])
+            record['source'] = path
+            write_record(owner, record)
+        except Exception as exc:
+            self.report({'ERROR'}, str(exc) or 'Could not read the Molden source')
+            return {'CANCELLED'}
+        self.report({'INFO'}, 'Linked ' + os.path.basename(path))
+        return {'FINISHED'}
 
 
 class MB_OT_add_surface(MoldenSurfaceProperties, SurfaceJobOperator, bpy.types.Operator):

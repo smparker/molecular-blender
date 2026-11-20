@@ -350,6 +350,30 @@ class TestSidebarActions(unittest.TestCase):
         self.assertNotEqual(frames[3], frames[9])
         self.assertTrue(all(len(d['triangles']) for d in definitions))
 
+    def test_relink_validates_and_changes_only_the_root_source(self):
+        from molecular_blender.scene_state import read_record
+        from molecular_blender.scene_surfaces import surface_model
+        owner = self.molecule().scene_owner
+        peer = self.molecule().scene_owner
+        self.select(owner)
+        before = read_record(owner)
+        moved = self.path.with_name('moved.molden')
+        self.path.rename(moved)
+        bad = self.path.with_name('other.molden')
+        original = moved.read_text()
+        for content, message in [(original.replace('1.857299866800e-01', '2.0'), 'coordinates'),
+                                 (original.replace('-20.670655', '-21.0'), 'orbital metadata'),
+                                 ('invalid file', 'Molden Format')]:
+            bad.write_text(content)
+            with self.assertRaisesRegex(RuntimeError, message):
+                bpy.ops.molecular_blender.locate_source(filepath=str(bad))
+            self.assertEqual(read_record(owner), before)
+        self.assertEqual(bpy.ops.molecular_blender.locate_source(filepath=str(moved)), {'FINISHED'})
+        after = read_record(owner)
+        self.assertEqual(after, dict(before, source=str(moved)))
+        self.assertEqual(read_record(peer)['source'], before['source'])
+        self.assertEqual(len(surface_model(owner, after).surface_input.load(after['settings']).atoms), 3)
+
     def test_legacy_animated_groups_preserve_keyframes_and_save_visibility(self):
         from molecular_blender.scene_state import tag, read_record, write_record
         from molecular_blender.scene_surfaces import surface_groups, surface_visible, set_surface_visibility

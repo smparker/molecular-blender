@@ -8,7 +8,7 @@ from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProp
 from .importers import file_format
 from .orbitals import frontier_index
 from .scene_state import ID, RECORD, ROLE, read_record, resolve_owner, owned_objects
-from .scene_surfaces import (MB_OT_add_surface, MB_OT_recompute_surface,
+from .scene_surfaces import (MB_OT_add_surface, MB_OT_locate_source, MB_OT_recompute_surface,
                              MB_OT_remove_surface, MB_OT_surface_visibility, set_surface_color,
                              set_surface_opacity, surface_color, surface_groups, surface_opacity, surface_visible)
 from .scene_view import MB_OT_frame_molecule, MB_OT_view_face_on, draw_atom_indices
@@ -276,6 +276,8 @@ class MB_PT_molecule(bpy.types.Panel):
         available = os.path.isfile(summary['source'])
         if not available:
             box.label(text='Source unavailable; saved scene remains editable', icon='INFO')
+            if file_format(summary['source']) == 'molden':
+                box.operator('molecular_blender.locate_source', text='Locate Source…', icon='FILE_FOLDER')
         box.label(text='Atoms: {}    Bonds: {}'.format(summary['atoms'], summary['bonds']))
         if summary['object_type'] != 'wireframe' and summary['visible_atoms'] != summary['atoms']:
             box.label(text='Displayed atoms: {}'.format(summary['visible_atoms']))
@@ -363,6 +365,7 @@ class MB_PT_molecule(bpy.types.Panel):
 
 
 _CLASSES = (MB_OT_select_atoms, MB_OT_select_atom_indices, MB_OT_surface_visibility,
+            MB_OT_locate_source,
             MB_OT_add_surface, MB_OT_recompute_surface, MB_OT_remove_surface,
             MB_OT_jump_orbital, MB_OT_frame_molecule, MB_OT_view_face_on, MB_PT_molecule)
 

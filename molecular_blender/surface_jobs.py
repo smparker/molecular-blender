@@ -23,6 +23,11 @@ class SavedMoldenSource:
     atoms: list
     orbitals: list
 
+    @classmethod
+    def from_record(cls, path, record):
+        atoms = [(a['index'], a['element'], tuple(a['position'])) for a in record['atoms']]
+        return cls(path, atoms, record['orbitals'])
+
     def load(self, options):
         from .importers import molecule_from_file
         from .molecule import Molecule

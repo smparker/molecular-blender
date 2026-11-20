@@ -355,6 +355,11 @@ whole molecule, duplicate its root and children together; the copy receives a
 new molecule identity while preserving atom identities within that molecule.
 Older imports without this record must be reimported to use molecule editing.
 
+If a Molden file moves, select its molecule and click **Locate Source…**
+beside the missing path. Choose the relocated file. The add-on checks the saved
+atom indices, elements, coordinates, and orbital metadata before updating the
+path. You can then add or recompute surfaces in the same scene.
+
 In the 3D Viewport, open the sidebar (`N`) and choose **Molecule**. Select an
 imported atom, bond, surface, or molecule root to inspect its source, counts,
 coordinate units, charge setting, representation, and available scientific data.
