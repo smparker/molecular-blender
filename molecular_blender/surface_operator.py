@@ -139,9 +139,8 @@ class SurfaceJobOperator:
                 vertex_sets = [v for v in vertex_sets if len(v["triangles"])]
                 if not vertex_sets:
                     self.report({'INFO'}, 'No surface at the requested levels')
-            create_surface_meshes(self._molecule, self._styler, context,
-                                  self._options, vertex_sets, trajectory_map,
-                                  select_surfaces=self._select_surfaces)
+                    return {'CANCELLED'}
+            self.apply_surface_result(context, vertex_sets, trajectory_map)
         except Exception as exc:
             self._cleanup(context)
             self.report({'ERROR'}, str(exc))
@@ -150,6 +149,10 @@ class SurfaceJobOperator:
             if self._job is not None and not self._job.running:
                 self._cleanup(context)
         return {'FINISHED'}
+
+    def apply_surface_result(self, context, vertex_sets, trajectory_map):
+        create_surface_meshes(self._molecule, self._styler, context, self._options,
+                              vertex_sets, trajectory_map, select_surfaces=self._select_surfaces)
 
     def cancel(self, context):
         self._cancelled = True

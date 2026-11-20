@@ -182,6 +182,75 @@ class TestSidebarActions(unittest.TestCase):
         mesh = sets[0]['mesh'].data
         self.assertEqual((len(mesh.vertices), len(mesh.edges), len(mesh.polygons)), (4, 6, 4))
 
+    def test_recompute_keeps_identity_presentation_and_other_groups(self):
+        from molecular_blender.plotter import BlendMoleculeSetup, compute_surface_vertex_sets, draw_surfaces
+        from molecular_blender.scene_state import read_record
+        from molecular_blender.scene_surfaces import MB_OT_recompute_surface, surface_groups, set_surface_visibility
+        model, styler, options = BlendMoleculeSetup(bpy.context, str(self.path), orbital='5',
+            isovalues='.05', cumulative=False, resolution=.32, remesh=0)
+        owner = model.scene_owner
+        self.select(owner)
+        for _ in range(2):
+            draw_surfaces(model, styler, bpy.context, options)
+        (key, group), (other_key, other) = surface_groups(owner, read_record(owner)).items()
+        minus, plus = group['phases'][False][0], group['phases'][True][0]
+        plus.name = 'custom lobe'
+        plus.mb_surface_color = (.1, .8, .3)
+        minus.mb_surface_color = (.2, .3, .9)
+        plus.mb_surface_opacity = .37
+        set_surface_visibility(group['objects'], False)
+        before = {o: o.data.as_pointer() for o in group['objects']}
+        other_meshes = [o.data for o in other['objects']]
+        def finish(op, ctx, model, styler, options, **kwargs):
+            op._owner, op._styler, op._options = owner, styler, options
+            sets, frames = compute_surface_vertex_sets(model.surface_input.load(options), options)
+            op.apply_surface_result(ctx, [v for v in sets if len(v['triangles'])], frames)
+            return {'FINISHED'}
+        with patch.object(MB_OT_recompute_surface, 'start_surface_job', finish):
+            self.assertEqual(bpy.ops.molecular_blender.recompute_surface(
+                group=key, isovalues='.05,.13', resolution=.24), {'FINISHED'})
+            first, second = surface_groups(owner, read_record(owner)).items()
+            self.assertEqual((first[0], second[0]), (key, other_key))
+            updated = first[1]
+            self.assertEqual(updated['levels'], {-.13, -.05, .05, .13})
+            self.assertEqual(updated['sampling']['isovalues'], '0.05, 0.13')
+            self.assertAlmostEqual(updated['sampling']['resolution'], .24)
+            for obj in updated['objects']:
+                self.assertAlmostEqual(obj.mb_surface_opacity, .37)
+                self.assertTrue(obj.hide_viewport and obj.hide_render)
+                self.assertAlmostEqual(obj.mb_surface_color[1], .8 if obj in updated['phases'][True] else .3)
+            self.assertTrue(all(o.data.as_pointer() != mesh for o, mesh in before.items()))
+            self.assertIn(bpy.data.objects['custom lobe'], updated['objects'])
+            self.assertEqual(bpy.ops.molecular_blender.recompute_surface(group=key, isovalues='.05'), {'FINISHED'})
+            self.assertEqual(set(surface_groups(owner, read_record(owner))[key]['objects']), set(before))
+            self.assertEqual([o.data for o in other['objects']], other_meshes)
+
+    def test_failed_recompute_retains_original_meshes_and_saved_settings(self):
+        from molecular_blender.plotter import BlendMoleculeSetup, draw_surfaces, create_surface_mesh_data
+        from molecular_blender.scene_state import read_record
+        from molecular_blender.scene_surfaces import replace_surface_geometry, surface_groups, recompute_settings
+        model, styler, options = BlendMoleculeSetup(bpy.context, str(self.path), orbital='5',
+            isovalues='.05', cumulative=False, resolution=.32, remesh=0)
+        draw_surfaces(model, styler, bpy.context, options)
+        owner = model.scene_owner
+        record = read_record(owner)
+        for entry in record['surfaces']:
+            entry.pop('sampling')
+        key, group = next(iter(surface_groups(owner, record).items()))
+        self.assertEqual(recompute_settings(record, group)['isovalues'], '0.05')
+        self.assertFalse(recompute_settings(record, group)['cumulative'])
+        baseline = (owner['mb_molecule'], set(bpy.data.meshes), set(bpy.data.objects))
+        triangles = [[(0,0,0), (1,0,0), (1,1,0)]]
+        defs = [dict(isovalue=x, triangles=triangles) for x in (.02, -.02)]
+        def fail_second(name, verts, faces, weld_distance):
+            if set(bpy.data.meshes) != baseline[1]:
+                raise ValueError('second mesh failed')
+            return create_surface_mesh_data(name, verts, faces, weld_distance)
+        with patch('molecular_blender.scene_surfaces.create_surface_mesh_data', fail_second):
+            with self.assertRaisesRegex(ValueError, 'second mesh failed'):
+                replace_surface_geometry(bpy.context, owner, record, key, group, defs, options, styler)
+        self.assertEqual((owner['mb_molecule'], set(bpy.data.meshes), set(bpy.data.objects)), baseline)
+
     def test_frontier_jumps_use_saved_populations_spin_and_import_order(self):
         from molecular_blender.scene_state import read_record, write_record
         from test_scene_panel import panel_labels

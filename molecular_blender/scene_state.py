@@ -149,6 +149,15 @@ def persist_molecule(molecule, source, settings):
     return owner
 
 
+def surface_sampling(options):
+    levels = options['isovalues']
+    if options['volume'] in ('orbital', 'spin'):
+        levels = sorted({abs(level) for level in levels})
+    return dict(isovalues=', '.join(str(level) for level in levels),
+                cumulative=options['cumulative'], resolution=options['resolution'],
+                orca_fix=options.get('orca_fix', False))
+
+
 def persist_surfaces(owner, definitions, options):
     """Each calculation of a field has one switch for all signs, levels and frames."""
     record = read_record(owner)
@@ -162,6 +171,8 @@ def persist_surfaces(owner, definitions, options):
         record['surfaces'].append(dict(id=identifier, field=field, group=groups[field],
                                        orbital_spin=options.get('orbital_spin', 'all'),
                                        isovalue=float(definition['isovalue'])))
+        if record['orbitals'] and 'isovalues' in options:
+            record['surfaces'][-1]['sampling'] = surface_sampling(options)
     write_record(owner, record)
 
 

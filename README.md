@@ -417,6 +417,12 @@ objects outside the molecule, including multiple-bond bevel shapes. It keeps
 internal sharing, so identical atoms can still reuse a mesh. The action
 preserves placement, selection, and surface definitions.
 
+For a single-frame Molden field, the refresh button (**Recompute Surface**)
+changes its levels or grid spacing using the original file. The current
+surface stays visible or hidden as you set it, including during calculation.
+The replacement keeps its lobe colors and opacity. For surfaces saved by older
+versions, the dialog starts from their stored absolute isovalues.
+
 Choose **Restyle molecule…** in that sidebar to change atom size, bond thickness,
 palette, and surface opacity. Apply acts on the whole owning molecule and supports
 Blender Undo/Redo. Linked duplicates and recycled materials are isolated on edit;

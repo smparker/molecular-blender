@@ -8,9 +8,9 @@ from . import import_dialog
 from .importers import file_format
 from .molecule import Atom, Molecule
 from .options import validated_options
-from .plotter import process_options
+from .plotter import create_geometry, create_surface_mesh_data, field_weld_distance, process_options
 from .scene_edit import _set_color, _set_opacity, _surface_output
-from .scene_state import ID, owned_objects, read_record, resolve_owner, write_record
+from .scene_state import ID, new_id, surface_sampling, owned_objects, read_record, resolve_owner, write_record
 from .surface_jobs import SavedMoldenSource
 from .stylers import get_styler
 from .surface_operator import DENSITIES, MoldenSurfaceProperties, SurfaceJobOperator
@@ -47,7 +47,8 @@ def surface_groups(owner, record):
                 spin = entry.get('orbital_spin', settings['orbital_spin'])
                 if spin != 'all' and import_dialog.uses_frontier_spin(field):
                     label += ' (' + spin + ')'
-            groups[key] = dict(label=label, levels=set(), objects=[], phases={}, ids=set())
+            groups[key] = dict(label=label, field=field, spin=entry.get('orbital_spin', settings['orbital_spin']),
+                               sampling=entry.get('sampling'), levels=set(), objects=[], phases={}, ids=set())
         group = groups[key]
         group['ids'].add(entry['id'])
         if members:
@@ -177,6 +178,31 @@ class MB_OT_surface_visibility(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def remove_surface_objects(objects):
+    meshes = {obj.data for obj in objects if obj.type == 'MESH'}
+    materials = {slot.material for obj in objects for slot in obj.material_slots if slot.material}
+    materials.update(mat for mesh in meshes for mat in mesh.materials if mat)
+    actions = {obj.animation_data.action for obj in objects if obj.animation_data and obj.animation_data.action}
+    collections = {coll for obj in objects for coll in obj.users_collection}
+    hidden = {coll for coll in collections if VISIBILITY_HOME in coll}
+    collections.update(coll[VISIBILITY_HOME] for coll in hidden)
+    for obj in objects:
+        bpy.data.objects.remove(obj, do_unlink=True)
+    for mesh in meshes:
+        if not mesh.users:
+            bpy.data.meshes.remove(mesh)
+    for material in materials:
+        if not material.users and (material.get('mb_style_material') or material.get('mb_surface_material')):
+            bpy.data.materials.remove(material)
+    for action in actions:
+        if not action.users:
+            bpy.data.actions.remove(action)
+    homes = collections - hidden
+    for coll in [*hidden, *(c for c in homes if c.get('mb_surface_collection'))]:
+        if coll.users == 1 and not coll.objects and not coll.children:
+            bpy.data.collections.remove(coll)
+
+
 class MB_OT_remove_surface(bpy.types.Operator):
     bl_idname = 'molecular_blender.remove_surface'
     bl_label = 'Remove Surface'
@@ -197,28 +223,7 @@ class MB_OT_remove_surface(bpy.types.Operator):
         if context.object in objects:
             owner.select_set(True)
             context.view_layer.objects.active = owner
-        meshes = {obj.data for obj in objects if obj.type == 'MESH'}
-        materials = {slot.material for obj in objects for slot in obj.material_slots if slot.material}
-        materials.update(mat for mesh in meshes for mat in mesh.materials if mat)
-        actions = {obj.animation_data.action for obj in objects if obj.animation_data and obj.animation_data.action}
-        collections = {coll for obj in objects for coll in obj.users_collection}
-        hidden = {coll for coll in collections if VISIBILITY_HOME in coll}
-        collections.update(coll[VISIBILITY_HOME] for coll in hidden)
-        for obj in objects:
-            bpy.data.objects.remove(obj, do_unlink=True)
-        for mesh in meshes:
-            if not mesh.users:
-                bpy.data.meshes.remove(mesh)
-        for material in materials:
-            if not material.users and (material.get('mb_style_material') or material.get('mb_surface_material')):
-                bpy.data.materials.remove(material)
-        for action in actions:
-            if not action.users:
-                bpy.data.actions.remove(action)
-        homes = collections - hidden
-        for coll in [*hidden, *(c for c in homes if c.get('mb_surface_collection'))]:
-            if coll.users == 1 and not coll.objects and not coll.children:
-                bpy.data.collections.remove(coll)
+        remove_surface_objects(objects)
         record['surfaces'] = [entry for entry in record['surfaces'] if entry['id'] not in group['ids']]
         write_record(owner, record)
         return {'FINISHED'}
@@ -267,14 +272,162 @@ class MB_OT_add_surface(MoldenSurfaceProperties, SurfaceJobOperator, bpy.types.O
             if owner is None:
                 raise ValueError('Select a Molden molecule')
             record = read_record(owner)
-            settings = validated_options(dict(record['settings'],
-                **{name: getattr(self, name) for name in self._settings_names}))
-            if not settings['isovalues'].strip():
-                raise ValueError('Enter at least one surface level')
-            model = surface_model(owner, record)
-            styler = get_styler(settings)
-            options = process_options(settings)
-        except Exception as exc:
+            overrides = {name: getattr(self, name) for name in self._settings_names}
+            return start_molden_job(self, context, owner, record, overrides)
+        except (KeyError, ValueError) as exc:
             self.report({'ERROR'}, str(exc))
             return {'CANCELLED'}
-        return self.start_surface_job(context, model, styler, options, select_surfaces=False)
+
+
+def start_molden_job(op, context, owner, record, overrides):
+    settings = validated_options(dict(record['settings'], **overrides))
+    if not settings['isovalues'].strip():
+        raise ValueError('Enter at least one surface level')
+    return op.start_surface_job(context, surface_model(owner, record), get_styler(settings),
+                                process_options(settings), select_surfaces=False)
+
+
+def recompute_settings(record, group):
+    field = group['field']
+    # Older files saved the absolute mesh levels, even for fractional requests.
+    signed = field not in DENSITY_LABELS or field == 'spin'
+    sampling = group['sampling'] or dict(cumulative=False, isovalues=', '.join(
+        str(x) for x in sorted({abs(v) if signed else v for v in group['levels']})),
+        resolution=record['settings']['resolution'], orca_fix=record['settings']['orca_fix'])
+    return dict(sampling, volume=field if field in DENSITY_LABELS else 'orbital',
+                orbital=field if field not in DENSITY_LABELS else 'homo', orbital_spin=group['spin'])
+
+
+def replace_surface_geometry(context, owner, record, key, group, definitions, options, styler):
+    """Prepare the complete replacement before swapping any existing mesh."""
+    entries = {entry['id']: entry for entry in record['surfaces'] if entry['id'] in group['ids']}
+    old_objects = group['objects']
+    remaining = set(old_objects)
+    sampling = surface_sampling(options)
+    staged, clones, new_meshes, new_materials = [], [], [], []
+    replacements = []
+    try:
+        # Match unchanged levels first so named objects and external references survive.
+        def match_order(item):
+            level = item['isovalue']
+            return (level not in group['levels'], -abs(level))
+        for item in sorted(definitions, key=match_order):
+            level = item['isovalue']
+            phase = group['phases'].get(level >= 0, [])
+
+            def distance(obj):
+                return abs(entries[obj[ID]]['isovalue'] - level)
+
+            obj = min((o for o in phase if o in remaining), key=distance, default=None)
+            template = obj or min(phase, key=distance, default=old_objects[0])
+            mesh = create_surface_mesh_data(template.data.name, *create_geometry(item['triangles']),
+                                            weld_distance=field_weld_distance(options['resolution']))
+            new_meshes.append(mesh)
+            for mat in template.data.materials:
+                mesh.materials.append(mat)
+            if obj is None:
+                obj = template.copy()
+                clones.append(obj)
+                obj[ID] = new_id()
+                obj.name = '{}_{}_{}'.format(owner.name, group['field'], level)
+                for coll in template.users_collection:
+                    coll.objects.link(obj)
+            else:
+                remaining.remove(obj)
+            if not phase:
+                material = styler.outer_isosurface_material('orbital_mat_' + ('plus' if level >= 0 else 'negative'))
+                new_materials.append(material)
+                material['mb_surface_material'] = True
+                opacity = surface_opacity(template)
+                if opacity != 1.:
+                    _set_opacity(material, opacity)
+                if not mesh.materials:
+                    mesh.materials.append(material)
+                obj.data = mesh  # only a newly created sign can enter here
+                obj.material_slots[0].link = 'OBJECT'
+                obj.material_slots[0].material = material
+            staged.append((obj, obj.data, mesh))
+            replacements.append(dict(id=obj[ID], field=group['field'], group=key, orbital_spin=group['spin'],
+                                     isovalue=float(level), sampling=sampling))
+        for obj, old_mesh, mesh in staged:
+            obj.data = mesh
+        surfaces = record['surfaces']
+        first = next(i for i, entry in enumerate(surfaces) if entry['id'] in entries)
+        record['surfaces'] = (surfaces[:first] + replacements
+                              + [e for e in surfaces[first:] if e['id'] not in entries])
+        write_record(owner, record)
+    except Exception:
+        for obj, old_mesh, mesh in staged:
+            if obj not in clones:
+                obj.data = old_mesh
+        for obj in clones:
+            bpy.data.objects.remove(obj, do_unlink=True)
+        for mesh in new_meshes:
+            bpy.data.meshes.remove(mesh)
+        for material in new_materials:
+            bpy.data.materials.remove(material)
+        raise
+    for old_mesh in {old for _, old, _ in staged}:
+        if old_mesh.users == 0:
+            bpy.data.meshes.remove(old_mesh)
+    if context.view_layer.objects.active in remaining:
+        target = staged[0][0]
+        target.select_set(True)
+        context.view_layer.objects.active = target
+    remove_surface_objects(remaining)
+
+
+class MB_OT_recompute_surface(MoldenSurfaceProperties, SurfaceJobOperator, bpy.types.Operator):
+    bl_idname = 'molecular_blender.recompute_surface'
+    bl_label = 'Recompute Surface'
+    bl_description = 'Recalculate this field at new levels or spacing and keep its styling'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    group: StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
+
+    def _group_settings(self, owner):
+        if owner is None:
+            raise ValueError('Select a Molden molecule')
+        record = read_record(owner)
+        group = surface_groups(owner, record).get(self.group)
+        if group is None:
+            raise ValueError('The surface calculation no longer exists')
+        return record, group, recompute_settings(record, group)
+
+    def invoke(self, context, event):
+        self._target = resolve_owner(context.object)
+        try:
+            _, group, settings = self._group_settings(self._target)
+        except ValueError as exc:
+            self.report({'ERROR'}, str(exc))
+            return {'CANCELLED'}
+        self._label = group['label']
+        for name in ('cumulative', 'isovalues', 'resolution'):
+            setattr(self, name, settings[name])
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        self.layout.label(text=getattr(self, '_label', self.bl_label))
+        self.layout.prop(self, 'level_mode')
+        self.layout.prop(self, 'isovalues', text='Fractions' if self.cumulative else 'Isovalues')
+        self.layout.prop(self, 'resolution', text='Grid spacing (Å)')
+
+    def execute(self, context):
+        owner = self._target if hasattr(self, '_target') else resolve_owner(context.object)
+        try:
+            record, group, settings = self._group_settings(owner)
+            for name in ('cumulative', 'isovalues', 'resolution'):
+                if self.properties.is_property_set(name):
+                    settings[name] = getattr(self, name)
+            self._original_meshes = {o.data.as_pointer() for o in group['objects']}
+            return start_molden_job(self, context, owner, record, settings)
+        except (ValueError, KeyError) as exc:
+            self.report({'ERROR'}, str(exc))
+            return {'CANCELLED'}
+
+    def apply_surface_result(self, context, vertex_sets, trajectory_map):
+        record, group, _ = self._group_settings(self._owner)
+        if {o.data.as_pointer() for o in group['objects']} != self._original_meshes:
+            raise ValueError('The surface changed while it was being calculated')
+        replace_surface_geometry(context, self._owner, record, self.group, group,
+                                 vertex_sets, self._options, self._styler)

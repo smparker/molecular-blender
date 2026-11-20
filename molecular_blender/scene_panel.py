@@ -8,9 +8,9 @@ from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProp
 from .importers import file_format
 from .orbitals import frontier_index
 from .scene_state import ID, RECORD, ROLE, read_record, resolve_owner, owned_objects
-from .scene_surfaces import (MB_OT_add_surface, MB_OT_remove_surface, MB_OT_surface_visibility,
-                             set_surface_color, set_surface_opacity, surface_color, surface_groups,
-                             surface_opacity, surface_visible)
+from .scene_surfaces import (MB_OT_add_surface, MB_OT_recompute_surface,
+                             MB_OT_remove_surface, MB_OT_surface_visibility, set_surface_color,
+                             set_surface_opacity, surface_color, surface_groups, surface_opacity, surface_visible)
 from .scene_view import MB_OT_frame_molecule, MB_OT_view_face_on, draw_atom_indices
 from .surface_operator import DENSITIES, ORBITAL_SPINS
 
@@ -330,6 +330,10 @@ class MB_PT_molecule(bpy.types.Panel):
                 row = entry.row(align=True)
                 row.operator('molecular_blender.surface_visibility', text=group['label'],
                              icon='HIDE_OFF' if visible else 'HIDE_ON').group = key
+                if orbitals and molden:
+                    action = row.row(align=True)
+                    action.enabled = available
+                    action.operator('molecular_blender.recompute_surface', text='', icon='FILE_REFRESH').group = key
                 row.operator('molecular_blender.remove_surface', text='', icon='TRASH').group = key
                 colors = entry.row(align=True)
                 for sign, label in ((True, 'Positive'), (False, 'Negative')):
@@ -359,7 +363,7 @@ class MB_PT_molecule(bpy.types.Panel):
 
 
 _CLASSES = (MB_OT_select_atoms, MB_OT_select_atom_indices, MB_OT_surface_visibility,
-            MB_OT_add_surface, MB_OT_remove_surface,
+            MB_OT_add_surface, MB_OT_recompute_surface, MB_OT_remove_surface,
             MB_OT_jump_orbital, MB_OT_frame_molecule, MB_OT_view_face_on, MB_PT_molecule)
 
 
