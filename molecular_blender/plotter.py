@@ -42,6 +42,16 @@ from .util import stopwatch, Timer, unique_name
 from .importers import molecule_from_file
 
 
+def bind_bond_endpoints(bond, first, second):
+    """Bind both Bézier points and their handles in the evaluated rest pose."""
+    for index, atom in enumerate((first, second)):
+        hook = bond.modifiers.new('Bond endpoint', 'HOOK')
+        hook.object = atom
+        hook.vertex_indices_set(range(3 * index, 3 * index + 3))
+        hook.center = bond.data.splines[0].bezier_points[index].co
+        hook.matrix_inverse = atom.matrix_world.inverted() @ bond.matrix_world
+
+
 def _multiple_bond_profile(radius, order):
     """Strand radius, center spacing and total profile radius."""
     strand_radius = 0.7 * radius
@@ -448,9 +458,6 @@ def PlotMolecule(context, molecule, options):
         bond_collection = bpy.data.collections.new("{}-bonds".format(molecule.name))
         molecule_collection.children.link(bond_collection)
         for bond in molecule.bonds:  # make curves for bonds
-            # deselect all
-            bpy.ops.object.select_all(action='DESELECT')
-
             iatom = bond.iatom
             jatom = bond.jatom
 
@@ -542,26 +549,7 @@ def PlotMolecule(context, molecule, options):
 
     if options["hook_atoms"]:
         for iatom, jatom, bond in to_hook:
-            # Hook to atom1
-            bpy.ops.object.select_all(action='DESELECT')
-            bpy.data.objects[iatom].select_set(True)
-            bpy.data.objects[bond].select_set(True)
-            context.view_layer.objects.active = bpy.data.objects[bond]
-            bpy.ops.object.mode_set(mode='EDIT')
-            bpy.ops.curve.de_select_first()
-            bpy.ops.object.hook_add_selob()
-            bpy.ops.object.mode_set(mode='OBJECT')
-
-            # Hook to atom2
-            bpy.ops.object.select_all(action='DESELECT')
-            bpy.data.objects[jatom].select_set(True)
-            bpy.data.objects[bond].select_set(True)
-            context.view_layer.objects.active = bpy.data.objects[bond]
-            bpy.ops.object.mode_set(mode='EDIT')
-            bpy.ops.curve.de_select_first()
-            bpy.ops.curve.de_select_last()
-            bpy.ops.object.hook_add_selob()
-            bpy.ops.object.mode_set(mode='OBJECT')
+            bind_bond_endpoints(bpy.data.objects[bond], bpy.data.objects[iatom], bpy.data.objects[jatom])
 
         clock.tick_print("set hooks")
 

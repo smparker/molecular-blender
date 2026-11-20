@@ -6,6 +6,7 @@ from bpy.props import EnumProperty, FloatProperty
 
 from .bond_perception import perceive_bond_orders
 from .periodictable import elements
+from .plotter import bind_bond_endpoints
 from .scene_state import (read_record, write_record, resolve_owner, owned_objects,
                           new_id, tag, ID, ROLE, normalize_duplicate_ids)
 from .scene_edit import _private_curve, apply_bond_profile, update_junctions
@@ -126,11 +127,7 @@ def _new_curves(owner, record, bond, atoms):
             obj['mb_radius'] = radius
             obj['mb_nominal_radius'] = settings['bond_thickness']
             bpy.context.view_layer.update()
-            for atom, indices in ((first, (0, 1, 2)), (second, (3, 4, 5))):
-                hook = obj.modifiers.new('Bond endpoint', 'HOOK')
-                hook.object = atom
-                hook.vertex_indices_set(indices)
-                hook.matrix_inverse = atom.matrix_world.inverted() @ obj.matrix_world
+            bind_bond_endpoints(obj, first, second)
         return objects
     except Exception:
         for obj in objects:
