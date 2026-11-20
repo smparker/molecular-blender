@@ -152,7 +152,8 @@ There is already useful coverage for readers, numerical routines, geometry, bond
 - [ ] **Test source refresh.** Cover compatible and incompatible changes when reload is implemented.
 - [x] **Check transparency and transformed surface geometry in actual renders.** A fixed CPU Cycles scene checks the location, coverage and alpha of each exported surface in its PNG.
 - [x] **Check mapped scalar fields in a render.** A CPU Cycles regression checks the red and blue sides of a remeshed density surface colored by an analytic potential.
-- [ ] **Extend controlled render regressions.** Cover split-color multiple bonds and gradients.
+- [x] **Check split-color multiple bonds in a render.** A CPU Cycles regression checks two distinct carbonyl strands, the color change at the midpoint, and coverage to the projected atom positions. [Render test](test/test_surface_render.py)
+- [ ] **Extend controlled render regressions to gradients.**
 - [x] **Check shell bounds and fractional density across backends.** Tests compare Python and Cython bounds for s–g shells and check fractional electron counts and density values. CI exercises the installed compiled wheels and an isolated Python fallback. [Backend parity tests](test/test_compute_ao.py)
 - [x] **Check diffuse open-shell evaluator parity.** Compare point, plane and grid values and cumulative levels for a diffuse orbital and signed spin density across both backends.
 - [x] **Compare final Python/Cython mesh geometry.** Both evaluator/mesher pairs produce closed signed lobes with matching component and face counts and vertices within 0.00002 Å on diffuse orbital and open-shell spin-density fixtures. The check exposed an absolute interpolation tolerance that distorted weak fields. Both meshers now interpolate independently of field scale.
