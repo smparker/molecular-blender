@@ -407,6 +407,60 @@ class TestSidebarActions(unittest.TestCase):
         self.assertNotIn(SOLO_GROUP, owner)
         self.assertTrue(all(visibility_state(o) == states[o] for o in first['objects']))
 
+    def test_png_series_uses_camera_and_restores_settings_and_solo_after_failure(self):
+        from molecular_blender import surface_export
+        from molecular_blender.plotter import BlendMoleculeSetup, draw_surfaces
+        from molecular_blender.scene_state import read_record
+        from molecular_blender.scene_surfaces import SOLO_GROUP, surface_groups, visibility_state
+        model, styler, options = BlendMoleculeSetup(bpy.context, str(self.path), orbital='5,6',
+            isovalues='.05', cumulative=False, resolution=.35, remesh=0)
+        draw_surfaces(model, styler, bpy.context, options)
+        owner = model.scene_owner
+        self.select(owner)
+        scene = bpy.context.scene
+        camera = scene.camera
+        if camera is None:
+            camera = bpy.data.objects.new('Test camera', bpy.data.cameras.new('Test camera'))
+            scene.collection.objects.link(camera)
+            scene.camera = camera
+        groups = surface_groups(owner, read_record(owner))
+        keys = list(groups)
+        keys.reverse()
+        bpy.ops.molecular_blender.solo_surface(group=keys[1])
+        states = {o: visibility_state(o) for g in groups.values() for o in g['objects']}
+        directory = Path(self.tmp.name)
+        stem = bpy.path.clean_name(owner.name + '-' + groups[keys[0]]['label'], replace='-')
+        occupied = directory / (stem + '.png')
+        occupied.write_bytes(b'keep me')
+        render = scene.render
+        def settings():
+            return (render.filepath, render.film_transparent, render.use_multiview, render.use_sequencer,
+                    render.image_settings.file_format, render.image_settings.color_depth, render.image_settings.color_mode)
+        original_settings = settings()
+        calls = []
+        def simulated_render(**kwargs):
+            key = keys[len(calls)]
+            self.assertEqual(scene.camera, camera)
+            self.assertTrue(render.film_transparent)
+            self.assertEqual(render.image_settings.color_mode, 'RGBA')
+            for other, group in groups.items():
+                self.assertTrue(all(o.hide_render == (other != key) for o in group['objects']))
+            calls.append(Path(render.filepath))
+            calls[-1].write_bytes(b'png')
+            return {'FINISHED'} if len(calls) == 1 else {'CANCELLED'}
+        with patch.object(surface_export, 'bpy', wraps=bpy) as api:
+            api.path.clean_name = bpy.path.clean_name
+            api.ops.render.render.side_effect = simulated_render
+            with self.assertRaisesRegex(RuntimeError, 'did not finish'):
+                surface_export.export_surface_pngs(bpy.context, owner, groups, keys, directory)
+        self.assertEqual(occupied.read_bytes(), b'keep me')
+        self.assertEqual(calls[0].read_bytes(), b'png')
+        self.assertFalse(calls[1].exists())
+        self.assertEqual(settings(), original_settings)
+        self.assertEqual(owner[SOLO_GROUP], keys[1])
+        self.assertTrue(all(visibility_state(o) == state for o, state in states.items()))
+        self.assertEqual(bpy.context.selected_objects, [owner])
+
     def test_legacy_animated_groups_preserve_keyframes_and_save_visibility(self):
         from molecular_blender.scene_state import tag, read_record, write_record
         from molecular_blender.scene_surfaces import surface_groups, surface_visible, set_surface_visibility

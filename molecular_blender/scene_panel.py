@@ -11,6 +11,7 @@ from .scene_state import ID, RECORD, ROLE, read_record, resolve_owner, owned_obj
 from .scene_surfaces import (SOLO_GROUP, MB_OT_add_surface, MB_OT_locate_source, MB_OT_recompute_surface,
                              MB_OT_remove_surface, MB_OT_solo_surface, MB_OT_surface_visibility, set_surface_color,
                              set_surface_opacity, surface_color, surface_groups, surface_opacity, surface_visible)
+from .surface_export import MB_ExportSurface, MB_OT_export_surface_series, MB_OT_transparent_png, draw_png_preset
 from .scene_view import MB_OT_frame_molecule, MB_OT_view_face_on, draw_atom_indices
 from .surface_operator import DENSITIES, ORBITAL_SPINS
 
@@ -349,6 +350,7 @@ class MB_PT_molecule(bpy.types.Panel):
                 for i in range(0, len(levels), 3):
                     prefix = 'Isovalues  ' if i == 0 else ''
                     entry.label(text=prefix + ', '.join(levels[i:i+3]))
+            box.operator('molecular_blender.export_surface_series', text='Export Surface PNGs…', icon='RENDER_STILL')
         layout.operator('molecular_blender.make_independent', icon='DUPLICATE')
         if summary['object_type'] != 'wireframe':
             layout.operator('molecular_blender.restyle', text='Restyle molecule…')
@@ -367,7 +369,7 @@ class MB_PT_molecule(bpy.types.Panel):
 
 
 _CLASSES = (MB_OT_select_atoms, MB_OT_select_atom_indices, MB_OT_surface_visibility, MB_OT_solo_surface,
-            MB_OT_locate_source,
+            MB_ExportSurface, MB_OT_export_surface_series, MB_OT_transparent_png, MB_OT_locate_source,
             MB_OT_add_surface, MB_OT_recompute_surface, MB_OT_remove_surface,
             MB_OT_jump_orbital, MB_OT_frame_molecule, MB_OT_view_face_on, MB_PT_molecule)
 
@@ -388,6 +390,7 @@ def register():
                                                   get=_get_orbital_page, set=_set_orbital_page)
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
+    bpy.types.RENDER_PT_output.append(draw_png_preset)
     if not bpy.app.background:
         _label_handler = bpy.types.SpaceView3D.draw_handler_add(draw_atom_indices, (), 'WINDOW', 'POST_PIXEL')
 
@@ -397,6 +400,7 @@ def unregister():
     if _label_handler is not None:
         bpy.types.SpaceView3D.draw_handler_remove(_label_handler, 'WINDOW')
         _label_handler = None
+    bpy.types.RENDER_PT_output.remove(draw_png_preset)
     for cls in reversed(_CLASSES):
         bpy.utils.unregister_class(cls)
     del bpy.types.Object.mb_browser_spin

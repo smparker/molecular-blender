@@ -421,6 +421,15 @@ Click **Solo** to show just that calculation on its molecule. Click another
 row's **Solo** to switch, or click the active **Solo** again to restore the
 previous visibility of each lobe. Using a row's eye also exits Solo.
 
+Click **Export Surface PNGs…** to render the existing surface groups using the
+active scene camera at the current frame. Choose a destination folder and check
+the surfaces to export in the file browser's options sidebar (press **N** to
+show it). Each PNG has a transparent background and shows one chosen surface
+with the rest of your scene. The exporter restores visibility and render
+settings afterward and adds a numeric suffix if a filename already exists.
+For an ordinary still, **Output Properties → Output → Use Transparent PNG**
+sets transparent film and RGBA PNG output for the scene.
+
 **Make Molecule Independent** detaches geometry and materials shared with
 objects outside the molecule, including multiple-bond bevel shapes. It keeps
 internal sharing, so identical atoms can still reuse a mesh. The action
@@ -461,6 +470,14 @@ Manual atom moves change the displayed geometry; they do not recalculate orbital
 or density surfaces. Bond perception itself remains an explicit, opt-in action.
 
 ### Figure and animation examples
+
+To color an atom selection and render the water HOMO and LUMO with the startup
+camera, run the included example from the repository root. The output folder
+will contain one transparent PNG per orbital.
+
+```sh
+blender --background --factory-startup --python-exit-code 1 --python examples/edit_orbitals.py -- /tmp/water-orbitals
+```
 
 To try a trajectory, import `examples/water_bend.json` with **Ignore Hydrogens**
 off and scrub frames 1, 5 and 9. The manifest selects two illustrative poses
