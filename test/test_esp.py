@@ -129,6 +129,22 @@ class TestMappedDensity(unittest.TestCase):
                     self.assertEqual(len(colors.elements), stops)
                     white = colors.evaluate(0. if kind == 'unsigned' else -low / (high-low))
                     np.testing.assert_allclose(white[:3], [1., 1., 1.], atol=1e-5)
+                    # Edit the actual shader ramp. Check its compositing legend, including
+                    # asymmetric zero placement and XML-sensitive characters in the title.
+                    import xml.etree.ElementTree as ET
+                    surf.active_material['mb_field_label'] = 'Field A & B'
+                    colors.elements[0].color = (.21404114, 0., 0., 1.)
+                    path = root / f'{kind}.svg'
+                    self.assertEqual(bpy.ops.molecular_blender.export_field_legend(group=key, filepath=str(path)),
+                                     {'FINISHED'})
+                    svg = ET.parse(path)
+                    self.assertEqual(svg.find('.//{*}title').text, 'Field A & B (e/bohr^3)')
+                    self.assertEqual(svg.find('.//{*}stop').get('stop-color'), '#800000')
+                    ticks = {el.text: float(el.get('x')) for el in svg.findall('.//{*}text')}
+                    if kind == 'signed':
+                        self.assertAlmostEqual((ticks['0']-ticks['-2']) / (ticks['1']-ticks['-2']), 2/3, places=4)
+                    else:
+                        self.assertNotIn('0', ticks)
                     old_data = surf.data
                     with self.assertRaisesRegex(RuntimeError, 'units'):
                         bpy.ops.molecular_blender.map_esp(**dict(args, field_units=''))

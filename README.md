@@ -590,3 +590,9 @@ them as a point attribute (`mb_esp` for ESP or `mb_field` for a custom field).
 The material's Color Ramp is editable in the Shader Editor.
 **Change Field Map…** reopens the file, field and range settings.
 **Remove Map** restores the original geometry, material, and Remesh settings.
+
+**Export Legend…** saves an SVG for compositing with an editable field name,
+units and numeric labels. It reads the connected material's Color Ramp and
+Map Range, including edited colors and limits. A signed scale marks zero at
+its position between the two limits. The SVG uses sRGB swatches for the
+material colors before scene lighting and the render view transform.
