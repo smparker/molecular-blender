@@ -133,7 +133,6 @@ Entry points: [molecule.py](molecular_blender/molecule.py), [compute_ao_cy.pyx](
 - [x] **Bind imported bonds directly to their atoms.** Geometry imports and sidebar bond edits share direct endpoint hooks for full and split curves. Importing all 52 atoms of `examples/zine.molden` as sticks in Blender 4.3.2 took 0.66 s versus 1.44 s previously (median of three runs each). All 93 curves met their expected endpoints at peak displacement of mode 7.
 - [ ] **Reduce operator/context overhead during geometry construction.** Use the Blender data API for predictable construction and parenting where possible; batch linking, material assignment, and dependency-graph updates.
 - [ ] **Build indexed surface meshes directly.** Reduce triangle-soup duplication and repeated welding; make weld tolerance and remeshing resolution-aware. Validate seams, normals, disconnected components, surface area, and field-attribute transfer.
-- [ ] **Share numerical preparation and cache work.** Reuse grids/AO blocks across compatible orbital/density requests, use memory-bounded batches, and invalidate caches by source/basis/geometry/settings rather than names alone.
 - [ ] **Audit Cython memory and floating-point policy.** Check allocation failures, pointer lifetime, array layout/dtype assumptions, and Python/Cython screening differences. Measure a float64 validation mode and the accuracy impact of `-ffast-math` before changing production flags.
 
 ## 10. Tests and scientific validation
