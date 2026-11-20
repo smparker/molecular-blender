@@ -175,7 +175,8 @@ Entry points: [pyproject.toml](pyproject.toml), [setup.py](setup.py), [blender_s
 - [ ] **Extend the headless CLI.** Build on `BlendMoleculeSetup` with commands for input-file inspection, validation, import and other exports, and support a settings file and repeatable batch runs with useful exit codes. Carry forward the existing command-line simplification idea from [improvement_ideas.md](improvement_ideas.md).
 - [x] **Adapt import controls to the selected file and field.** The highlighted file determines the available controls. Cube files expose the appropriate dataset picker, Molden densities hide orbital controls, and JSON manifests preview the first frame. Import Details reports the active numerical backends. [Dialog tests](test/test_import_dialog.py)
 - [x] **Add post-import and trajectory examples.** [Edit and export water orbitals](examples/edit_orbitals.py) and [animate an SDF record sequence](examples/water_bend.json).
-- [ ] **Add workflow examples for ESP and common quantum-chemistry writers.**
+- [x] **Add a runnable ESP figure workflow.** The [water example](examples/render_water_esp.py) maps a supplied PySCF potential cube onto its Molden density surface and exports a transparent PNG and matching SVG legend.
+- [ ] **Add workflow examples for additional quantum-chemistry writers.**
 
 ## Bugs found during implementation
 

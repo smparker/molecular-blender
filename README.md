@@ -640,6 +640,21 @@ Map Range, including edited colors and limits. A signed scale marks zero at
 its position between the two limits. The SVG uses sRGB swatches for the
 material colors before scene lighting and the render view transform.
 
+### Render a water ESP figure
+
+Run this command from the checkout to create a transparent PNG and a matching
+SVG legend. Blender reads the supplied Molden file and ESP cube directly.
+
+```sh
+blender -b --factory-startup --python-exit-code 1 --python examples/render_water_esp.py -- water-figure
+```
+
+The example uses an RHF water calculation from PySCF. It plots total density
+at 0.001 e/Bohr³ and colors it by electrostatic potential from −0.035 to
++0.035 Hartree/e. Red marks negative potential. Blue marks positive potential.
+To use your own calculation, change the two input paths, color limits and camera
+framing in the [figure script](examples/render_water_esp.py).
+
 ### Molden normalization by writer
 
 For Molden files written by ORCA 6.1.1 `orca_2mkl`, enable **Orca molden fix**
