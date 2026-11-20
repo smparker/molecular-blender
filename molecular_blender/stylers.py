@@ -26,6 +26,7 @@
 import bpy
 import mathutils
 
+from .geometry_import import track_new
 from .nodes import arrange_nodes
 from .util import darken_color
 
@@ -47,7 +48,7 @@ class PaletteElementStyler(object):
             IOR=1.45, transmission=0.0, transmission_roughness=0.0,
             emission_color=None, emission_strength=0.1):
 
-        mat = bpy.data.materials.new(name)
+        mat = track_new(bpy.data.materials.new(name))
         mat.use_nodes = True
         mat.diffuse_color = base_color
 
@@ -94,7 +95,7 @@ class PaletteElementStyler(object):
         return mat
 
     def make_diffuse_material(self, name, color, roughness=0.3):
-        mat = bpy.data.materials.new(name)
+        mat = track_new(bpy.data.materials.new(name))
         mat.use_nodes = True
         mat.diffuse_color = color
         nodes = mat.node_tree.nodes

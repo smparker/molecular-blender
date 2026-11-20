@@ -2,6 +2,7 @@
 import bpy
 from bpy.props import BoolProperty, FloatProperty, FloatVectorProperty, EnumProperty
 
+from .geometry_import import track_new
 from .options import validated_options
 from .periodictable import elements
 from .scene_state import (read_record, write_record, resolve_owner, owned_objects,
@@ -18,7 +19,7 @@ def _atom_radius(element, settings):
 
 def _private_curve(obj):
     if obj.data.users > 1:
-        obj.data = obj.data.copy()
+        obj.data = track_new(obj.data.copy())
 
 
 def apply_bond_profile(obj, bond, order):
@@ -163,7 +164,7 @@ def restyle_molecule(owner, *, atom_scale=None, bond_thickness=None,
                     continue
                 key = (material.as_pointer(), symbol, is_surface)
                 if key not in copies:
-                    copy = material.copy()
+                    copy = track_new(material.copy())
                     copies[key] = copy
                     copy['mb_style_material'] = True
                     if is_surface:

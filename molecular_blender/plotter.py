@@ -33,6 +33,7 @@ import mathutils
 import bmesh
 import numpy as np
 
+from .geometry_import import geometry_import, track_new
 from .molecule import Molecule
 from .periodictable import elements
 from .stylers import get_styler
@@ -99,7 +100,7 @@ def set_bond_order(obj, order, direction=None):
         curve.bevel_object = None
     else:
         radius = curve.bevel_depth
-        profile = bpy.data.curves.new(obj.name + "_profile", type='CURVE')
+        profile = track_new(bpy.data.curves.new(obj.name + "_profile", type='CURVE'))
         profile.dimensions = '2D'
         profile.resolution_u = 12
         # Disconnected circles in one bevel object make disconnected tubes, while
@@ -115,7 +116,7 @@ def set_bond_order(obj, order, direction=None):
                                  ((1, 0), (0, 1), (-1, 0), (0, -1))):
                 p.co = (offset + strand_radius * x, strand_radius * y, 0)
                 p.handle_left_type = p.handle_right_type = 'AUTO'
-        profile_obj = bpy.data.objects.new(obj.name + "_profile", profile)
+        profile_obj = track_new(bpy.data.objects.new(obj.name + "_profile", profile))
         # Referenced by the bond, but deliberately not linked into the scene:
         # the bevel source itself should never appear as visible geometry.
         # Blender does not count bevel references as object users on save.
@@ -299,14 +300,14 @@ def PlotMolecule(context, molecule, options):
     molecule.name = unique_name(molecule.name, bpy.data.objects.keys())
 
     top_collection = context.view_layer.active_layer_collection.collection
-    molecule_collection = bpy.data.collections.new(molecule.name)
-    atom_collection = bpy.data.collections.new("{}-atoms".format(molecule.name))
+    molecule_collection = track_new(bpy.data.collections.new(molecule.name))
+    atom_collection = track_new(bpy.data.collections.new("{}-atoms".format(molecule.name)))
     top_collection.children.link(molecule_collection)
     molecule_collection.children.link(atom_collection)
 
     # Creates empty to collect all the new objects
     bpy.ops.object.empty_add(type='PLAIN_AXES', location=center_of_mass)
-    molecule_obj = context.object
+    molecule_obj = track_new(context.object)
     top_collection.objects.unlink(molecule_obj)
     molecule_collection.objects.link(molecule_obj)
 
@@ -353,6 +354,7 @@ def PlotMolecule(context, molecule, options):
 
     clock.tick_print("preamble")
 
+    element_objects = {}
     # Check to see if original atom already exists.
     # if yes, create translated linked duplicate, if no, create new object
     for atom in molecule.atoms:
@@ -361,16 +363,9 @@ def PlotMolecule(context, molecule, options):
         # Unselect Everything
         bpy.ops.object.select_all(action='DESELECT')
         base_atom = molecule.name + "_" + atom.element.symbol
-        ref_atom = base_atom + "0"
-        atom_obj = ""
-        if ref_atom in obj_keys:  # duplicate existing atom
-            # name new object
-            atom.name = unique_name(base_atom, obj_keys, 0)
-
-            # Create the linked duplicate object
-            atom_obj = bpy.data.objects[ref_atom]
-
-            atom_copy = atom_obj.copy()
+        atom.name = unique_name(base_atom, obj_keys, 0)
+        if atom.element.symbol in element_objects:
+            atom_copy = track_new(element_objects[atom.element.symbol].copy())
             atom_copy.location = atom.position
             atom_copy.name = atom.name
 
@@ -384,9 +379,6 @@ def PlotMolecule(context, molecule, options):
             # hold onto reference
             atom_obj = atom_copy
         else:  # Create the base atom from which all other of same element will be copied
-            atom.name = ref_atom
-            bpy.ops.object.select_all(action='DESELECT')
-
             radius = plot_style.atom_scaling * \
                 atom.element.vdw if (plot_style.atom_size !=
                                      "bond") else bond_thickness
@@ -401,15 +393,16 @@ def PlotMolecule(context, molecule, options):
                 bpy.ops.mesh.primitive_uv_sphere_add(
                     location=atom.position, radius=radius)
 
+            atom_obj = track_new(context.object)
+            track_new(atom_obj.data)
             bpy.ops.object.shade_smooth()
 
-            atom_obj = context.object
-
-            atom_obj.name = ref_atom
-            atom_obj.data.name = ref_atom
+            atom_obj.name = atom.name
+            atom_obj.data.name = atom.name
+            element_objects[atom.element.symbol] = atom_obj
             top_collection.objects.unlink(atom_obj)
 
-            obj_keys.append(ref_atom)
+            obj_keys.append(atom.name)
 
             atom_obj.data.materials.append(
                 bpy.data.materials[molecule.materials[atom.element.symbol]])
@@ -423,18 +416,18 @@ def PlotMolecule(context, molecule, options):
             atom_obj.scale = (junction_scales.get(atom.index, 1.0),) * 3
 
         if draw_charges:  # set a sphere on top of atom that will show charge
-            charges_collection = bpy.data.collections.new("{}-charges".format(molecule.name))
+            charges_collection = track_new(bpy.data.collections.new("{}-charges".format(molecule.name)))
             molecule_collection.children.link(charges_collection)
 
-            plus_obj = atom_obj.copy()
-            plus_obj.data = plus_obj.data.copy()
+            plus_obj = track_new(atom_obj.copy())
+            plus_obj.data = track_new(plus_obj.data.copy())
             plus_obj.data.materials[0] = bpy.data.materials[molecule.pluscharge_mat]
             plus_obj.name = atom.name + "_plus"
             atom.plus_charge = plus_obj.name
             link_to.append((plus_obj, charges_collection))
 
-            neg_obj = atom_obj.copy()
-            neg_obj.data = neg_obj.data.copy()
+            neg_obj = track_new(atom_obj.copy())
+            neg_obj.data = track_new(neg_obj.data.copy())
             neg_obj.data.materials[0] = bpy.data.materials[molecule.negcharge_mat]
             neg_obj.name = atom.name + "_neg"
             atom.neg_charge = neg_obj.name
@@ -455,7 +448,7 @@ def PlotMolecule(context, molecule, options):
     clock.tick_print("atom creation")
 
     if draw_bonds:  # Add the bonds
-        bond_collection = bpy.data.collections.new("{}-bonds".format(molecule.name))
+        bond_collection = track_new(bpy.data.collections.new("{}-bonds".format(molecule.name)))
         molecule_collection.children.link(bond_collection)
         for bond in molecule.bonds:  # make curves for bonds
             iatom = bond.iatom
@@ -475,8 +468,7 @@ def PlotMolecule(context, molecule, options):
             if to_split:
                 coords = [iatom.position, jatom.position]
 
-                curves = [bpy.data.curves.new(
-                    bname, type='CURVE') for bname in bond.name]
+                curves = [track_new(bpy.data.curves.new(bname, type='CURVE')) for bname in bond.name]
                 for a, c in zip([iatom, jatom], curves):
                     c.materials.append(
                         bpy.data.materials[molecule.materials[a.element.symbol]])
@@ -493,7 +485,7 @@ def PlotMolecule(context, molecule, options):
                         p.co = pnt - molecule_obj.location
                         p.handle_right_type = p.handle_left_type = 'AUTO'
 
-                    c_obj = bpy.data.objects.new(cname, c)
+                    c_obj = track_new(bpy.data.objects.new(cname, c))
                     c_obj.data.bevel_depth = rad
                     c_obj.data.use_fill_caps = True
                     c_obj.data.bevel_factor_start, c_obj.data.bevel_factor_end = bounds
@@ -509,7 +501,7 @@ def PlotMolecule(context, molecule, options):
                 bondname = bond.name[0]
                 # create curve object
                 coords = [iatom.position, jatom.position]
-                curve = bpy.data.curves.new(bondname, type='CURVE')
+                curve = track_new(bpy.data.curves.new(bondname, type='CURVE'))
                 bond_mat = bpy.data.materials[molecule.materials[iatom.element.symbol]] \
                     if plot_style.split_bond else \
                     bpy.data.materials[molecule.bond_materials[bond.style]]
@@ -523,7 +515,7 @@ def PlotMolecule(context, molecule, options):
                     p = bondline.bezier_points[i]
                     p.co = pnt - molecule_obj.location
                     p.handle_right_type = p.handle_left_type = 'AUTO'
-                curveOB = bpy.data.objects.new(bondname, curve)
+                curveOB = track_new(bpy.data.objects.new(bondname, curve))
                 curveOB.data.bevel_depth = rad
                 curveOB.data.use_fill_caps = True
                 if options["draw_bond_orders"] and bond.order != 1:
@@ -567,8 +559,7 @@ def PlotMolecule(context, molecule, options):
                 continue
             if atom.gradient.length > 1.0e-30:
                 bpy.ops.object.select_all(action='DESELECT')
-                curve = bpy.data.curves.new(
-                    atom.name + "_gradient", type='CURVE')
+                curve = track_new(bpy.data.curves.new(atom.name + "_gradient", type='CURVE'))
                 curve.dimensions = '3D'
                 curve.resolution_u = 2
                 gradline = curve.splines.new('BEZIER')
@@ -577,7 +568,7 @@ def PlotMolecule(context, molecule, options):
                 gradline.bezier_points[1].co = atom.position + atom.gradient
                 for p in gradline.bezier_points:
                     p.handle_right_type = p.handle_left_type = 'AUTO'
-                curveOB = bpy.data.objects.new(atom.name + "_gradient", curve)
+                curveOB = track_new(bpy.data.objects.new(atom.name + "_gradient", curve))
 
                 curveOB.data.use_fill_caps = True
                 context.collection.objects.link(curveOB)
@@ -598,15 +589,17 @@ def PlotWireFrame(context, molecule, _options):
     indices = {atom.index: i for i, atom in enumerate(molecule.atoms)}
     bonds = [(indices[b.iatom.index], indices[b.jatom.index]) for b in molecule.bonds]
 
-    molec_mesh = bpy.data.meshes.new(molecule.name)
+    molec_mesh = track_new(bpy.data.meshes.new(molecule.name))
     molec_mesh.from_pydata(verts, bonds, [])
     molec_mesh.update()
-    molec_obj = bpy.data.objects.new(molecule.name, molec_mesh)
+    molec_obj = track_new(bpy.data.objects.new(molecule.name, molec_mesh))
     molec_obj.data = molec_mesh
     context.collection.objects.link(molec_obj)
     molec_obj.select_set(True)
-    context.view_layer.objects.active = bpy.data.objects[molecule.name]
+    context.view_layer.objects.active = molec_obj
     bpy.ops.object.convert(target='CURVE')
+    track_new(context.object)
+    track_new(context.object.data)
     context.object.data.fill_mode = 'FULL'
     context.object.data.render_resolution_u = 12
     context.object.data.bevel_depth = 0.1
@@ -614,7 +607,7 @@ def PlotWireFrame(context, molecule, _options):
     bpy.ops.object.shade_smooth()
     molecule.name = context.object.name
     molecule.scene_owner = context.object
-    collection = bpy.data.collections.new(molecule.name)
+    collection = track_new(bpy.data.collections.new(molecule.name))
     context.collection.children.link(collection)
     collection.objects.link(context.object)
     context.collection.objects.unlink(context.object)
@@ -934,21 +927,21 @@ def plot_rings(context, molecule, options):
     planarCycles = molecule.rings
 
     ringmat = bpy.data.materials[molecule.materials["ring"]]
-    ring_collection = bpy.data.collections.new('{}-rings'.format(molecule.name))
-    bpy.data.collections[molecule.name].children.link(ring_collection)
+    ring_collection = track_new(bpy.data.collections.new('{}-rings'.format(molecule.name)))
+    molecule.scene_collection.children.link(ring_collection)
 
     to_parent = []
     for cycle in planarCycles:
         objname = unique_name(molecule.name + "_ring", bpy.data.objects.keys())
         meshname = objname + "_mesh"
-        ringMesh = bpy.data.meshes.new(meshname)
+        ringMesh = track_new(bpy.data.meshes.new(meshname))
         verts = [molecule.atoms[iatom].position for iatom in cycle]
         bonds = [[imesh, (imesh + 1) % len(cycle)]
                  for imesh in range(len(cycle))]
 
         ringMesh.from_pydata(verts, bonds, [range(len(cycle))])
         ringMesh.update()
-        ringObj = bpy.data.objects.new(objname, ringMesh)
+        ringObj = track_new(bpy.data.objects.new(objname, ringMesh))
         ringObj.data.materials.append(ringmat)
         ringObj.data = ringMesh
         ring_collection.objects.link(ringObj)
@@ -1023,37 +1016,38 @@ def BlendMoleculeSetup(context, filename, **options):
     styler = get_styler(options)
     molecule.settings = dict(options)
 
-    make_materials(molecule, styler, options)
-    modes = input_data.get('vibrations')
-    if options['object_type'] == 'wireframe' or input_data.get('frame_numbers'):
-        modes = None
-    if modes and options['hook_atoms'] == 'auto':
-        options['hook_atoms'] = 'on'
-    plot_prep(molecule, options)
+    with geometry_import(context):
+        make_materials(molecule, styler, options)
+        modes = input_data.get('vibrations')
+        if options['object_type'] == 'wireframe' or input_data.get('frame_numbers'):
+            modes = None
+        if modes and options['hook_atoms'] == 'auto':
+            options['hook_atoms'] = 'on'
+        plot_prep(molecule, options)
 
-    if options["object_type"] == "wireframe":
-        PlotWireFrame(context, molecule, options)
-        if options["plot_type"] == "animate":
-            print("animation of wireframes not currently supported!")
-    else:
-        PlotMolecule(context, molecule, options)
-        if options["plot_type"] == "animate":
-            AnimateMolecule(context, molecule, options)
+        if options["object_type"] == "wireframe":
+            PlotWireFrame(context, molecule, options)
+            if options["plot_type"] == "animate":
+                print("animation of wireframes not currently supported!")
+        else:
+            PlotMolecule(context, molecule, options)
+            if options["plot_type"] == "animate":
+                AnimateMolecule(context, molecule, options)
 
-    if options["find_aromatic"]:
-        plot_rings(context, molecule, options)
+        if options["find_aromatic"]:
+            plot_rings(context, molecule, options)
 
-    from .scene_state import persist_molecule
-    persist_molecule(molecule, filename, molecule.settings)
-    if modes:
-        from .vibrations import store_modes
-        store_modes(molecule.scene_owner, modes)
-    if molecule.settings.get('atom_scale', 1.0) != 1.0:
-        from .scene_edit import restyle_molecule
-        restyle_molecule(molecule.scene_owner, atom_scale=molecule.settings['atom_scale'],
-                         bond_thickness=molecule.settings['bond_thickness'],
-                         colors=molecule.settings['colors'],
-                         surface_opacity=molecule.settings.get('surface_opacity', 1.0))
+        from .scene_state import persist_molecule
+        persist_molecule(molecule, filename, molecule.settings)
+        if modes:
+            from .vibrations import store_modes
+            store_modes(molecule.scene_owner, modes)
+        if molecule.settings.get('atom_scale', 1.0) != 1.0:
+            from .scene_edit import restyle_molecule
+            restyle_molecule(molecule.scene_owner, atom_scale=molecule.settings['atom_scale'],
+                             bond_thickness=molecule.settings['bond_thickness'],
+                             colors=molecule.settings['colors'],
+                             surface_opacity=molecule.settings.get('surface_opacity', 1.0))
     return molecule, styler, options
 
 

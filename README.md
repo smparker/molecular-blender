@@ -280,6 +280,8 @@ The import dialog adapts to the highlighted filename. XYZ and SDF/MOL show
 structure controls. Molden and cube files also show **Surfaces**. For JSON
 trajectories the first referenced frame determines the surface controls.
 The filename selects the reader, so give the file an extension matching its contents.
+If building the molecular geometry fails, Blender removes the partial import and
+restores your active object, selection and editing mode. You can retry in the same scene.
 
 Cube imports retain every dataset and its file label. **Dataset** appears for
 multi-dataset cubes and shows file IDs when available. Very large sets use a

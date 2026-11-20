@@ -8,7 +8,6 @@ Keep the current curve-extrusion approach for bonds as the baseline. Keep bond-o
 
 - **Extend post-import editing.** The sidebar already supports restyling, bond edits and surface management. Reloading coordinates and orbitals from a changed source is open.
 - **Extend field maps.** External scalar cubes can color density surfaces. The sidebar exports field legends for compositing. Direct wavefunction ESP evaluation remains open.
-- **Improve import recovery.** Surface workers support cancellation. Rolling back a partially built scene remains open.
 - **Extend bond perception.** Diagnostics and manual overrides are available. Solver scaling and trajectory orientation remain open.
 
 ## 1. Post-import editing and scene interaction
@@ -122,7 +121,7 @@ These are concrete targets spotted in the current code, not a claim that every p
 - [x] **Implement real cancellation and worker cleanup.** Escape, a deleted owner, loading another file, and disabling the add-on cancel pending work. Workers are reaped, temporary files removed, and cancelled results discarded. Progress includes orbital trajectory frames. [Worker tests](test/test_surface_jobs.py)
 - [x] **Move surface calculations into a cancellable subprocess.** Import and sidebar actions launch a separate Blender process. The main thread handles progress and creates meshes. Commit `f306fb7`. [Worker implementation](molecular_blender/surface_jobs.py)
 - [x] **Benchmark interactive responsiveness.** A [repeatable Blender benchmark](benchmarks/surface_responsiveness.py) requests six phenanthroline orbitals at 0.025 Å and counts actual viewport redraw callbacks while the worker computes. In three local Blender 4.3.2 trials per backend, the 95th-percentile redraw interval was 10.3 ms for both with redraws requested every 10 ms. From simulated Escape to observed worker cleanup took 10–12 ms in all six trials.
-- [ ] **Make scene generation transactional.** Roll back partial imports and restore selection, active object, and mode after failures. Sidebar surface additions already preserve selection under transformed parents. New bond hooks follow moved atoms. Broader import and gradient transform coverage remains open.
+- [x] **Roll back failed geometry imports.** Discard geometry, collections, materials and animation data allocated by the failed import and restore selection, active object and mode. [Rollback tests](test/test_geometry_import.py)
 
 ## 9. Performance and numerical implementation
 
@@ -142,7 +141,7 @@ Entry points: [molecule.py](molecular_blender/molecule.py), [compute_ao_cy.pyx](
 There is already useful coverage for readers, numerical routines, geometry, bond orders, and an optional RDKit comparison. Extend those foundations rather than adding tests that only mirror implementation details.
 
 - [x] **Test persisted scene edits and worker cancellation.** Tests cover save/reopen, undo/redo, renames, duplicated molecules, shared materials, scoped bond and surface deletion, and discarded worker results. [Bond lifecycle](test/test_bond_edit.py), [surface lifecycle](test/test_scene_surfaces.py) and [worker lifecycle](test/test_surface_jobs.py)
-- [ ] **Test source refresh and partial-import rollback.** Cover these operations as they are implemented.
+- [ ] **Test source refresh.** Cover compatible and incompatible changes when reload is implemented.
 - [x] **Check transparency and transformed surface geometry in actual renders.** A fixed CPU Cycles scene checks the location, coverage and alpha of each exported surface in its PNG.
 - [x] **Check mapped scalar fields in a render.** A CPU Cycles regression checks the red and blue sides of a remeshed density surface colored by an analytic potential.
 - [ ] **Extend controlled render regressions.** Cover split-color multiple bonds and gradients.
