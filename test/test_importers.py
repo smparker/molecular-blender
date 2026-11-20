@@ -139,6 +139,17 @@ class TestXYZRead(unittest.TestCase):
         assert len(geo["atoms"]) == 60
         assert geo["atoms"][0]["symbol"] == "c"
 
+    def test_xyz_frame_atom_coordinate_and_physical_line(self):
+        for row, message in [('H 0 bad 0\n', "y value, found 'bad'"),
+                             ('H 0 0 nan\n', "z value, found 'nan'"),
+                             ('', 'Unexpected end of file')]:
+            with self.subTest(row=row):
+                path = self._write('bad.xyz', '1\nfirst\nH 0 0 0\n1\nsecond\n' + row)
+                with self.assertRaises(ValueError) as error:
+                    molecule_from_xyz(path, dict(plot_type='animate'))
+                self.assertIn(f'{path}:6: XYZ frame 1, atom 0:', str(error.exception))
+                self.assertIn(message, str(error.exception))
+
     def test_read_with_charges(self):
         geo = molecule_from_xyz(
             os.path.join(EXAMPLES, "tio2_excited_state.xyz"),

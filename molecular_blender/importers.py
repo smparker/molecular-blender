@@ -24,6 +24,8 @@
 """Methods to import XYZ, SDF/MOL, Molden, and cube files."""
 
 import re
+import math
+from itertools import islice
 import numpy as np
 import json
 import os
@@ -32,7 +34,7 @@ import sys
 from .options import trajectory_range
 from .esp import add_resampled_cube
 from .util import stopwatch
-from .periodictable import symbols
+from .periodictable import elements, symbols
 from .constants import bohr2ang
 from .transform import transform_sph_to_cart
 from .turbomole_reader import read_turbomole_polarizability
@@ -46,6 +48,7 @@ class Reader(object):
         self.f = None
         self.marks = {}
         self.line_number = 0
+        self.section = None
 
     def readline(self):
         """Read the next physical line, counting the expected line at EOF."""
@@ -81,6 +84,8 @@ class Reader(object):
         """Call upon exit from a with-as clause"""
         self.f.__exit__(exc_type, exc_val, exc_tb)
         self.f = None
+        if self.section and isinstance(exc_val, (ValueError, EOFError)):
+            raise self.error(self.section, str(exc_val) or "Unexpected end of file") from exc_val
 
 
 FORMAT_SUFFIXES = {
@@ -232,27 +237,37 @@ def molecule_from_xyz(filename, options):
     with Reader(filename) as reader:
         index = 0
         while end < 0 or index <= end:
-            line = reader.f.readline()
-            if not line:
+            reader.section = f"XYZ frame {index}, atom count"
+            try:
+                line = reader.readline()
+            except EOFError:
                 break
-            natoms = int(line.split()[0])
+            fields = line.split()
+            if not fields:
+                raise ValueError("Missing atom count")
+            natoms = int(fields[0])
             if count is None:
                 count = natoms
             if natoms != count or natoms < 1:
                 raise ValueError("All frames in trajectory must have the same number of atoms")
+            reader.section = f"XYZ frame {index}, comment"
             reader.readline()
             keep = index >= start and (index - start) % step == 0
             for i in range(natoms):
+                reader.section = f"XYZ frame {index}, atom {i}"
                 line = reader.readline()
                 if not keep:
                     continue
                 fields = line.split()
                 if len(fields) < 4:
-                    raise ValueError(f"XYZ frame {index}, atom {i} needs an element and three coordinates")
+                    raise ValueError("Expected an element and three coordinates")
                 symbol = fields[0].lower()
-                position = list(map(float, fields[1:4]))
-                charge = float(fields[4]) if len(fields) >= 5 else 0.
-                gradient = list(map(float, fields[5:8])) if len(fields) >= 8 else [0.] * 3
+                if symbol not in elements:
+                    raise ValueError(f"Unknown element {fields[0]!r}")
+                position = [_finite_float(token, axis) for token, axis in zip(fields[1:4], 'xyz')]
+                charge = _finite_float(fields[4], 'charge') if len(fields) >= 5 else 0.
+                gradient = ([_finite_float(token, 'gradient ' + axis) for token, axis in zip(fields[5:8], 'xyz')]
+                            if len(fields) >= 8 else [0.] * 3)
                 if not frames:
                     atoms.append(make_atom_dict(symbol, position, i, charge, gradient,
                                                 options.get("ignore_hydrogen", False) and symbol == "h"))
@@ -266,10 +281,20 @@ def molecule_from_xyz(filename, options):
                     break
             index += 1
     if not frames:
-        raise ValueError("Frame range selects no XYZ snapshots")
+        raise ValueError(f"{filename}: Frame range selects no XYZ snapshots")
     if animate and len(frames) > 1:
         options["plot_type"] = "animate"
     return {"atoms": atoms, "frame_numbers": frames}
+
+
+def _finite_float(token, field):
+    try:
+        value = float(token)
+    except ValueError:
+        value = math.nan
+    if not math.isfinite(value):
+        raise ValueError(f"Expected a finite {field} value, found {token!r}")
+    return value
 
 
 MOLDEN_RE = re.compile(r"\[\s*molden\s+format\s*\]", flags=re.IGNORECASE)
@@ -604,6 +629,7 @@ def molecule_from_molden(filename, _options):
 
 
 def _cube_origin_header(f):
+    f.section = "Cube atom count and origin"
     header = f.readline().split()
     if len(header) not in (4, 5):
         raise ValueError('Cube atom/origin header requires four or five values')
@@ -612,10 +638,11 @@ def _cube_origin_header(f):
         raise ValueError('Cube dataset count must be positive')
     if nvalues > sys.maxsize:
         raise ValueError('Cube dataset count exceeds the supported range')
-    return int(header[0]), header[1:4], nvalues
+    return int(header[0]), [_finite_float(t, a) for t, a in zip(header[1:4], 'xyz')], nvalues
 
 
 def _cube_labels(f, natoms, nvalues):
+    f.section = "Cube dataset IDs"
     if natoms >= 0:
         return range(nvalues)
     tokens = f.readline().split()
@@ -635,13 +662,49 @@ def _cube_labels(f, natoms, nvalues):
 def cube_dataset_labels(filename):
     """Read dataset identifiers without loading or allocating the voxel grid."""
     with Reader(filename) as f:
+        f.section = "Cube comments"
         f.readline()
         f.readline()
         natoms, _, nvalues = _cube_origin_header(f)
         if natoms < 0:
+            f.section = "Cube axes and atoms"
             for _ in range(3 + abs(natoms)):
                 f.readline()
         return _cube_labels(f, natoms, nvalues)
+
+
+def _cube_values(f, size):
+    """Convert in batches, locating individual bad tokens only on the error path."""
+    data = np.empty(size, dtype=np.float32)
+    used = 0
+    f.section = "Cube field values"
+    while lines := list(islice(f.f, 256)):
+        tokens = ' '.join(lines).split()
+        end = used + len(tokens)
+        try:
+            if end > size:
+                raise ValueError
+            with np.errstate(over='ignore'):
+                data[used:end] = tokens
+            if not np.isfinite(data[used:end]).all():
+                raise ValueError
+        except ValueError:
+            for line in lines:
+                f.line_number += 1
+                for token in line.split():
+                    used += 1
+                    if used > size:
+                        raise ValueError(f"Cube expected {size} field values, found extra value {token!r}")
+                    value = _finite_float(token, f"field #{used}")
+                    if abs(value) > float(np.finfo(np.float32).max):
+                        raise ValueError(f"Field value #{used} exceeds float32 range: {token!r}")
+            raise
+        used = end
+        f.line_number += len(lines)
+    if used != size:
+        f.line_number += 1
+        raise ValueError(f"Cube expected {size} field values, found {used} ({size-used} missing)")
+    return data
 
 
 @stopwatch("read cube")
@@ -653,6 +716,7 @@ def molecule_from_cube(filename, options):
     animate = options.get("plot_type", "") in [ "animate", "auto" ]
 
     with Reader(filename) as f:
+        f.section = "Cube comments"
         out["volume"]["comments"] = [f.readline().rstrip("\r\n"), f.readline().rstrip("\r\n")]
 
         # 3rd line is <natoms> <origin_x> <origin_y> <origin_z>
@@ -664,15 +728,18 @@ def molecule_from_cube(filename, options):
 
         # 4th, 5th, 6th lines describe the axes: <npoints> <axis_x> <axis_y> <axis_z>
         for i in range(3):
+            f.section = f"Cube grid axis {i+1}"
             res, vx, vy, vz = f.readline().split()
             nres[i] = int(res)
             axes[i, :] = np.array([vx, vy, vz], dtype=np.float32)
+            if not (np.isfinite(axes[i]).all() and axes[i].any()):
+                raise ValueError("Cube grid axes must be finite and nonzero")
+            if nres[i] == 0 or (nres[i] > 0) != (nres[0] > 0):
+                raise ValueError("Cube voxel counts must be nonzero and have the same sign")
         if all(n > 0 for n in nres):
             length_unit = bohr2ang
-        elif all(n < 0 for n in nres):
-            length_unit = 1.0
         else:
-            raise ValueError("Cube voxel counts must be nonzero and have the same sign")
+            length_unit = 1.0
         nres = [abs(n) for n in nres]
         axes *= length_unit
         out["volume"]["origin"] = np.array(origin, dtype=np.float32) * length_unit
@@ -692,9 +759,13 @@ def molecule_from_cube(filename, options):
         # next natoms lines define the molecule
         # <atomic number> <charge> <x> <y> <z>
         for i in range(abs(natoms)):
+            f.section = f"Cube atom {i}"
             ato, chg, x, y, z = f.readline().split()
             iatom = int(ato)
-            position = [length_unit * float(xx) for xx in [x, y, z]]
+            if not 0 <= iatom < len(symbols):
+                raise ValueError(f"Unknown atomic number {ato!r}")
+            position = [length_unit * _finite_float(t, a) for t, a in zip((x, y, z), 'xyz')]
+            chg = _finite_float(chg, "charge")
             hidden = ignore_h and symbols[iatom] == "h"
             new_atom = make_atom_dict(symbols[iatom], position, i, chg,
                     [0.0, 0.0, 0.0], hidden)
@@ -710,25 +781,12 @@ def molecule_from_cube(filename, options):
         # and finally the volumetric data comes, 6 elements per line in z, y, x order
         nvol = len(volume_labels)
         data_layout = nres + [ nvol ]
-        ndata = np.prod(data_layout)
-        data = np.empty(ndata, dtype=np.float32)
-        count = 0
-        for line in f.f:
-            tokens = line.split()
-            end = count + len(tokens)
-            if end > ndata:
-                raise ValueError('Cube expected {} field values, found at least {}'.format(ndata, end))
-            data[count:end] = tokens
-            count = end
-        if count != ndata:
-            raise ValueError('Cube expected {} field values, found {}'.format(ndata, count))
-        if not np.all(np.isfinite(data)):
-            raise ValueError('Cube field values must be finite')
+        data = _cube_values(f, math.prod(data_layout))
 
     datasets = data.reshape(data_layout)
     selected = options.get('cube_dataset', 0)
     if isinstance(selected, bool) or not isinstance(selected, int) or not 0 <= selected < nvol:
-        raise ValueError('cube_dataset must be a zero-based index in [0, {})'.format(nvol))
+        raise ValueError(f'{filename}: cube_dataset must be a zero-based index in [0, {nvol})')
     out['volume']['datasets'] = datasets
     out['volume']['labels'] = volume_labels
     out['volume']['dataset_index'] = selected

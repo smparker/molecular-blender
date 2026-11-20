@@ -95,6 +95,25 @@ class TestCubeDatasets(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'field values'):
                 molecule_from_cube(str(self.path), {})
 
+    def test_missing_and_invalid_values_in_manifest_term(self):
+        import json
+        from molecular_blender.importers import molecule_from_json
+        manifest = self.path.with_suffix('.json')
+        manifest.write_text(json.dumps({'molecules': [{'units': 'V', 'linear_combination': [
+            {'filename': self.path.name, 'coefficient': 1}]}]}))
+        header = cube_text().splitlines()[:-1]
+        for rows, line, message in [(['0 1 2'], 11, 'found 3 (13 missing)'),
+                                    (['0 1 2', '3 4 bogus'], 11, "'bogus'"),
+                                    (['0 1 2', '3 4 inf'], 11, "'inf'")]:
+            with self.subTest(rows=rows):
+                self.path.write_text('\n'.join(header + rows) + '\n')
+                with self.assertRaises(ValueError) as error:
+                    molecule_from_json(manifest, {})
+                self.assertIn(str(manifest), str(error.exception))
+                self.assertIn('Term 1', str(error.exception))
+                self.assertIn(f'{self.path}:{line}: Cube field values', str(error.exception))
+                self.assertIn(message, str(error.exception))
+
     def test_scene_model_and_surface_selection(self):
         try:
             import bpy
