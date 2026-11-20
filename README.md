@@ -639,5 +639,9 @@ material colors before scene lighting and the render view transform.
 For Molden files written by ORCA 6.1.1 `orca_2mkl`, enable **Orca molden fix**
 in the import options (`orca_fix=True` in Python). This reads the normalization
 already present in the contraction coefficients, including the spherical d-shell
-factor. The [ethene reference calculation](test/fixtures/orca_ethene/ethene.inp)
-checks a π orbital against ORCA's own cube values on both lobes and near the node.
+factor. For spherical f and g shells it also converts ORCA's radial factors and
+the phases of the components with |m| ≥ 3. The
+[ethene calculation](test/fixtures/orca_ethene/ethene.inp) checks a π orbital
+on both lobes and near the node. A [water calculation with f and g polarization
+functions](test/fixtures/orca_water_fg/README.md) checks signed amplitudes
+against ORCA's cubes for all 23 orbitals.

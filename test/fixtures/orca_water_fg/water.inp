@@ -1,0 +1,49 @@
+! RHF STO-3G TightSCF NoAutoStart NoRI
+%basis
+ AddGTO O
+   F 1
+     1 0.75 1.0
+   G 1
+     1 0.55 1.0
+ end
+end
+%plots
+ Format Cube
+ dim1 13
+ dim2 13
+ dim3 13
+ min1 -3
+ max1 3
+ min2 -3
+ max2 3
+ min3 -3
+ max3 3
+ MO("mo0.cube",0,0);
+ MO("mo1.cube",1,0);
+ MO("mo2.cube",2,0);
+ MO("mo3.cube",3,0);
+ MO("mo4.cube",4,0);
+ MO("mo5.cube",5,0);
+ MO("mo6.cube",6,0);
+ MO("mo7.cube",7,0);
+ MO("mo8.cube",8,0);
+ MO("mo9.cube",9,0);
+ MO("mo10.cube",10,0);
+ MO("mo11.cube",11,0);
+ MO("mo12.cube",12,0);
+ MO("mo13.cube",13,0);
+ MO("mo14.cube",14,0);
+ MO("mo15.cube",15,0);
+ MO("mo16.cube",16,0);
+ MO("mo17.cube",17,0);
+ MO("mo18.cube",18,0);
+ MO("mo19.cube",19,0);
+ MO("mo20.cube",20,0);
+ MO("mo21.cube",21,0);
+ MO("mo22.cube",22,0);
+end
+* xyz 0 1
+O  0.000  0.000  0.000
+H  0.209  0.818  0.467
+H -0.754 -0.402  0.475
+*

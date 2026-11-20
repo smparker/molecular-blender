@@ -81,7 +81,7 @@ def real_sph_to_cart(l,m,x1,y1,z1):
     return out
 
 def gen_cart_to_real_sph_transform(l, sphorder, cartorder):
-    """Outputs the matrix transform from cartesian AOs to real spherical harmonics"""
+    """Return A with Y = A X, for spherical and Cartesian basis functions."""
     xyzs = [ (xyz.count("x"), xyz.count("y"), xyz.count("z")) for xyz in cartorder ]
 
     transform = []
@@ -91,7 +91,7 @@ def gen_cart_to_real_sph_transform(l, sphorder, cartorder):
     return transform
 
 def gen_real_sph_to_cart_transform(l, sphorder, cartorder):
-    """Outputs the matrix transform from real spherical harmonics to cartesian AOs"""
+    """Return overlaps <X_i|Y_m>, the projection of each Cartesian AO onto Y."""
     transform = []
     for i, xyz in enumerate(cartorder):
         x = xyz.count("x")
@@ -129,11 +129,21 @@ def main():
             "i.e., have no precision loss"
             )
 
-    parser.add_argument("--cao2sao", action="store_true", help="print CAO-to-SAO matrix")
-    parser.add_argument("--sao2cao", action="store_true", help="print SAO-to-CAO matrix")
+    parser.add_argument("--cao2sao", action="store_true", help="express spherical basis functions in Cartesian functions")
+    parser.add_argument("--sao2cao", action="store_true", help="project Cartesian functions onto spherical functions")
+    parser.add_argument("--mo-sph-to-cart", action="store_true",
+                        help="generate the Molden importer's d/f/g molecular-orbital coefficient tables")
     parser.add_argument("--latex", action="store_true", help="print pretty latex transforms")
 
     args = parser.parse_args()
+
+    if args.mo_sph_to_cart:
+        for l in range(2, MAX_L+1):
+            # If Y = A X for basis functions, a_sph.T Y = (A.T a_sph).T X.
+            # The overlap projection S A.T is a different matrix.
+            rows = gen_cart_to_real_sph_transform(l, molden_sph_order[l], molden_cart_order[l])
+            print(f"shell: {ANG_LABELS[l]}")
+            print(pycode(Matrix(rows).T.tolist()).replace("math.sqrt", "sqrt"))
 
     if args.latex:
         print("Cartesian to spherical transformations")
@@ -155,7 +165,7 @@ def main():
                 print("v({0},{1}) = {2}".format(l, m, latex(term)))
             print()
 
-        print("Spherical to Cartesian transformations")
+        print("Cartesian functions projected onto the spherical subspace")
         for l in range(MAX_L+1):
             for cart in molden_cart_order[l]:
                 # looking for coefficients for v(x,y,z)
@@ -172,11 +182,11 @@ def main():
                             term = cc * g(S(l), S(m))
                         else:
                             term += cc * g(S(l), S(m))
-                print("v({0},{1},{2}) = {3}".format(x, y, z, latex(term)))
+                print("P_l v({0},{1},{2}) = {3}".format(x, y, z, latex(term)))
             print()
 
     if args.cao2sao:
-        print("Printing cartesian AO to spherical harmonic transformations:")
+        print("Spherical basis functions expanded in Cartesian basis functions (rows are spherical):")
 
         for l in range(MAX_L+1):
             print("shell: {0}".format(ANG_LABELS[l]))
@@ -185,7 +195,7 @@ def main():
 
 
     if args.sao2cao:
-        print("Printing real spherical harmonic to cartesian AO transformations:")
+        print("Cartesian/spherical overlap projections (rows are Cartesian):")
 
         for l in range(MAX_L+1):
             print("shell: {0}".format(ANG_LABELS[l]))

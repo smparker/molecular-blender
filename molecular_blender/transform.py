@@ -30,7 +30,8 @@ from math import sqrt
 cartdegen = {"s": 1, "sp": 4, "p": 3, "d": 6, "f": 10, "g": 15}
 sphdegen = {"s": 1, "sp": 4, "p": 3, "d": 5, "f": 7, "g": 9}
 
-def transform_sph_to_cart(orbitals, spherical, basis):
+def transform_sph_to_cart(orbitals, spherical, basis, *, orca=False):
+    """Convert MO coefficients, honoring orca_2mkl phases when requested."""
     nao = len(orbitals[0]["coeff"])
     ncao = sum([sum([cartdegen[x["shell"]] for x in atom])
                        for atom in basis])
@@ -51,8 +52,11 @@ def transform_sph_to_cart(orbitals, spherical, basis):
             ndeg = sphdegen[sh] if sh in spherical else cartdegen[sh]
             ncartdeg = cartdegen[sh]
             if sh in spherical:
-                # do transform
                 sph_to_cart = get_sph_to_cart(sh)
+                if orca and sh in ("f", "g"):
+                    # In orca_2mkl, both components of |m| = 3, 4 have
+                    # the opposite phase to the standard real harmonics.
+                    sph_to_cart[:, 5:] *= -1
                 cart[:,icao:icao+ncartdeg] = np.einsum("cs,ps->pc", sph_to_cart, sph[:,iao:iao+ndeg])
             else:
                 cart[:,icao:icao+ndeg] = sph[:,iao:iao+ndeg]
@@ -66,10 +70,10 @@ def transform_sph_to_cart(orbitals, spherical, basis):
     return orbitals
 
 def get_sph_to_cart(sh):
-    """Returns real spherical to cartesian GTO transformation
+    """Expand normalized real harmonics in normalized Cartesian Gaussians.
 
-    The d columns expand each normalized spherical harmonic as a Cartesian
-    polynomial. The higher-shell tables are from util/sph_to_cart.py.
+    Rows follow Molden Cartesian order. Columns follow m = 0, +1, -1, ...
+    Regenerate with util/sph_to_cart.py --mo-sph-to-cart.
     """
     if sh=="s":
         return np.eye(1)
@@ -87,33 +91,33 @@ def get_sph_to_cart(sh):
                  [0, 0, 1, 0, 0]]
                 )
     elif sh=="f":
-        return np.array(
-                [[0, -1/10*sqrt(6), 0, 0, 0, (1/10)*sqrt(10), 0],
-                 [0, 0, -1/10*sqrt(6), 0, 0, 0, -1/10*sqrt(10)],
-                 [2/5, 0, 0, 0, 0, 0, 0],
-                 [0, -1/30*sqrt(30), 0, 0, 0, -1/2*sqrt(2), 0],
-                 [0, 0, -1/30*sqrt(30), 0, 0, 0, (1/2)*sqrt(2)],
-                 [-1/5*sqrt(5), 0, 0, (1/3)*sqrt(3), 0, 0, 0],
-                 [0, (2/15)*sqrt(30), 0, 0, 0, 0, 0],
-                 [0, 0, (2/15)*sqrt(30), 0, 0, 0, 0],
-                 [-1/5*sqrt(5), 0, 0, -1/3*sqrt(3), 0, 0, 0],
-                 [0, 0, 0, 0, 1, 0, 0]]
-                )
+        return np.array([
+            [0, -sqrt(6)/4, 0, 0, 0, sqrt(10)/4, 0],
+            [0, 0, -sqrt(6)/4, 0, 0, 0, -sqrt(10)/4],
+            [1, 0, 0, 0, 0, 0, 0],
+            [0, -sqrt(30)/20, 0, 0, 0, -3*sqrt(2)/4, 0],
+            [0, 0, -sqrt(30)/20, 0, 0, 0, 3*sqrt(2)/4],
+            [-3*sqrt(5)/10, 0, 0, sqrt(3)/2, 0, 0, 0],
+            [0, sqrt(30)/5, 0, 0, 0, 0, 0],
+            [0, 0, sqrt(30)/5, 0, 0, 0, 0],
+            [-3*sqrt(5)/10, 0, 0, -sqrt(3)/2, 0, 0, 0],
+            [0, 0, 0, 0, 1, 0, 0],
+        ])
     elif sh=="g":
-        return np.array(
-                [[3/35, 0, 0, -2/35*sqrt(5), 0, 0, 0, (1/35)*sqrt(35), 0],
-                 [3/35, 0, 0, (2/35)*sqrt(5), 0, 0, 0, (1/35)*sqrt(35), 0],
-                 [8/35, 0, 0, 0, 0, 0, 0, 0, 0],
-                 [0, 0, 0, 0, -1/35*sqrt(35), 0, 0, 0, (1/5)*sqrt(5)],
-                 [0, -3/70*sqrt(70), 0, 0, 0, (1/10)*sqrt(10), 0, 0, 0],
-                 [0, 0, 0, 0, -1/35*sqrt(35), 0, 0, 0, -1/5*sqrt(5)],
-                 [0, 0, -3/70*sqrt(70), 0, 0, 0, -1/10*sqrt(10), 0, 0],
-                 [0, (2/35)*sqrt(70), 0, 0, 0, 0, 0, 0, 0],
-                 [0, 0, (2/35)*sqrt(70), 0, 0, 0, 0, 0, 0],
-                 [(1/105)*sqrt(105), 0, 0, 0, 0, 0, 0, -1/3*sqrt(3), 0],
-                 [-4/105*sqrt(105), 0, 0, (2/21)*sqrt(21), 0, 0, 0, 0, 0],
-                 [-4/105*sqrt(105), 0, 0, -2/21*sqrt(21), 0, 0, 0, 0, 0],
-                 [0, 0, -1/14*sqrt(14), 0, 0, 0, (1/2)*sqrt(2), 0, 0],
-                 [0, -1/14*sqrt(14), 0, 0, 0, -1/2*sqrt(2), 0, 0, 0],
-                 [0, 0, 0, 0, (2/7)*sqrt(7), 0, 0, 0, 0]]
-                )
+        return np.array([
+            [3/8, 0, 0, -sqrt(5)/4, 0, 0, 0, sqrt(35)/8, 0],
+            [3/8, 0, 0, sqrt(5)/4, 0, 0, 0, sqrt(35)/8, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, -sqrt(35)/14, 0, 0, 0, sqrt(5)/2],
+            [0, -3*sqrt(70)/28, 0, 0, 0, sqrt(10)/4, 0, 0, 0],
+            [0, 0, 0, 0, -sqrt(35)/14, 0, 0, 0, -sqrt(5)/2],
+            [0, 0, -3*sqrt(70)/28, 0, 0, 0, -sqrt(10)/4, 0, 0],
+            [0, sqrt(70)/7, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, sqrt(70)/7, 0, 0, 0, 0, 0, 0],
+            [3*sqrt(105)/140, 0, 0, 0, 0, 0, 0, -3*sqrt(3)/4, 0],
+            [-3*sqrt(105)/35, 0, 0, 3*sqrt(21)/14, 0, 0, 0, 0, 0],
+            [-3*sqrt(105)/35, 0, 0, -3*sqrt(21)/14, 0, 0, 0, 0, 0],
+            [0, 0, -3*sqrt(14)/28, 0, 0, 0, 3*sqrt(2)/4, 0, 0],
+            [0, -3*sqrt(14)/28, 0, 0, 0, -3*sqrt(2)/4, 0, 0, 0],
+            [0, 0, 0, 0, 3*sqrt(7)/7, 0, 0, 0, 0],
+        ])
