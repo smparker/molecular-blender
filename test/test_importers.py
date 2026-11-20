@@ -304,6 +304,19 @@ class TestMoldenRead(unittest.TestCase):
             with self.subTest(coefficients=coefficients), self.assertRaises(ValueError):
                 molecule_from_molden(self._write('bad.molden', header + basis + coefficients), {})
 
+    def test_gto_and_mo_errors_locate_the_failing_line(self):
+        header = '[Molden Format]\n[Atoms] Angs\nH 1 1 0 0 0\n[GTO]\n1 0\n'
+        for tail, line, section in [
+            ('s 2\n1 1\n', 8, '[GTO] atom 1'),
+            ('s 1\n1 1\n[MO]\nOccup= 1\n1 1\nOccup= 0\n1 garbage\n', 12, '[MO] orbital 2'),
+            ('p 1\n1 1\n[MO]\nOccup= 1\n1 1\n[FREQ]\n', 11, '[MO] orbital 1'),
+        ]:
+            with self.subTest(section=section):
+                path = self._write('broken.molden', header + tail)
+                with self.assertRaises(ValueError) as err:
+                    molecule_from_molden(path, {})
+                self.assertIn(f'{path}:{line}: {section}', str(err.exception))
+
 
 # -- JSON reading --
 

@@ -45,21 +45,26 @@ class Reader(object):
         self.filename = filename
         self.f = None
         self.marks = {}
+        self.line_number = 0
 
     def readline(self):
-        """Ignores blanks"""
+        """Read the next physical line, counting the expected line at EOF."""
         out = self.f.readline()
+        self.line_number += 1
         if out == "":
             raise EOFError
         return out
 
+    def error(self, section, message):
+        return ValueError(f"{self.filename}:{self.line_number}: {section}: {message}")
+
     def set_mark(self, label, line):
         """Sets a mark of where label was found"""
-        self.marks[label] = (self.f.tell(), line)
+        self.marks[label] = (self.f.tell(), line, self.line_number)
 
     def restore_mark(self, label):
         """Restores file to where mark was found"""
-        mark, line = self.marks[label]
+        mark, line, self.line_number = self.marks[label]
         self.f.seek(mark)
         return line
 
@@ -326,6 +331,7 @@ def molden_read_gto(f, atom_ids=None):
     f.restore_mark("gto")
     blocks = {}
     current = None
+    reference = None
     while True:
         try:
             line = f.readline()
@@ -339,22 +345,23 @@ def molden_read_gto(f, atom_ids=None):
         if fields[0].isdigit():
             reference = int(fields[0])
             if reference < 1 or reference in blocks:
-                raise ValueError("Invalid or duplicate GTO atom reference: {}".format(reference))
+                raise f.error(f"[GTO] atom {reference}", "Invalid or duplicate GTO atom reference")
             if atom_ids is not None and reference not in atom_ids:
-                raise ValueError("Unknown GTO atom reference: {}".format(reference))
+                raise f.error(f"[GTO] atom {reference}", "Unknown GTO atom reference")
             current = blocks[reference] = []
             continue
+        section = "[GTO]" if reference is None else f"[GTO] atom {reference}"
         shell = fields[0].lower()
         if current is None or shell not in ("s", "sp", "p", "d", "f", "g"):
-            raise ValueError("Invalid GTO shell header: {}".format(line.strip()))
+            raise f.error(section, "Invalid GTO shell header: {}".format(line.strip()))
         try:
             nprim = int(fields[1])
             if nprim < 1:
                 raise ValueError("Primitive count must be positive")
         except (IndexError, ValueError) as exc:
-            raise ValueError("Invalid GTO primitive count: {}".format(line.strip())) from exc
+            raise f.error(section, "Invalid GTO primitive count: {}".format(line.strip())) from exc
         exponents, coefficients, pcoefficients = [], [], []
-        for _ in range(nprim):
+        for primitive in range(1, nprim + 1):
             try:
                 row = f.readline().split()
                 if len(row) != (3 if shell == "sp" else 2):
@@ -363,7 +370,7 @@ def molden_read_gto(f, atom_ids=None):
                 if numbers[0] <= 0:
                     raise ValueError("Primitive exponents must be positive")
             except (EOFError, ValueError) as exc:
-                raise ValueError("Invalid or truncated GTO {} primitive block".format(shell)) from exc
+                raise f.error(section, f"Invalid or truncated GTO {shell} primitive {primitive} of {nprim}") from exc
             exponents.append(numbers[0])
             coefficients.append(numbers[1])
             if shell == "sp":
@@ -379,16 +386,19 @@ def molden_read_gto(f, atom_ids=None):
 
 def molden_read_mo(f, nao):
     """Read complete indexed MO coefficient blocks without crossing sections."""
-    if nao < 1:
-        raise ValueError('Molden MO section requires at least one basis function')
     f.restore_mark("mo")
+    if nao < 1:
+        raise f.error("[MO]", "Molden MO section requires at least one basis function")
     metadata = re.compile(r"\s*(Sym|Ene|Spin|Occup)\s*=\s*(\S+)", re.IGNORECASE)
     out, modata, coefficients = [], {}, []
+
+    def error(message):
+        return f.error(f"[MO] orbital {len(out) + 1}", message)
 
     def finish():
         if modata or coefficients:
             if len(coefficients) != nao:
-                raise ValueError("Molden MO expected {} coefficients, found {}".format(
+                raise error("Molden MO expected {} coefficients, found {}".format(
                     nao, len(coefficients)))
             out.append(dict(modata, coeff=coefficients.copy()))
 
@@ -408,18 +418,21 @@ def molden_read_mo(f, nao):
                 finish()
                 modata, coefficients = {}, []
             if key in ('ene', 'occup'):
-                value = str(molden_float(value))
+                try:
+                    value = str(molden_float(value))
+                except ValueError as exc:
+                    raise error(f"Invalid {key} value: {value}") from exc
             modata[key] = value
         else:
             fields = line.split()
             try:
                 if len(fields) != 2 or int(fields[0]) != len(coefficients) + 1:
-                    raise ValueError("Unexpected coefficient index")
+                    raise ValueError(f"Expected index {len(coefficients) + 1} and one coefficient")
                 if len(coefficients) >= nao:
                     raise ValueError("Too many coefficients")
                 coefficients.append(molden_float(fields[1]))
             except ValueError as exc:
-                raise ValueError("Invalid Molden MO coefficient line: {}".format(line.strip())) from exc
+                raise error(f"Invalid Molden MO coefficient line {line.strip()!r}: {exc}") from exc
     finish()
     return out
 
@@ -472,7 +485,10 @@ def molecule_from_molden(filename, _options):
             out["basis"] = molden_read_gto(f, [atom["index"] for atom in out["atoms"]])
 
         # read through MO section to build coefs
-        if f.is_marked("mo") and "basis" in out:
+        if f.is_marked("mo") and "basis" not in out:
+            f.restore_mark("mo")
+            raise f.error("[MO]", "Missing [GTO] basis for orbital coefficients")
+        if f.is_marked("mo"):
             spherical = []
             if f.is_marked("5d") or f.is_marked("5d7f"):
                 spherical.extend(["d", "f"])
