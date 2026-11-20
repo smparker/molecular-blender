@@ -607,7 +607,8 @@ def PlotWireFrame(context, molecule, _options):
         item.select_set(False)
 
     verts = [atom.position for atom in molecule.atoms]
-    bonds = [(b.iatom.index, b.jatom.index) for b in molecule.bonds]
+    indices = {atom.index: i for i, atom in enumerate(molecule.atoms)}
+    bonds = [(indices[b.iatom.index], indices[b.jatom.index]) for b in molecule.bonds]
 
     molec_mesh = bpy.data.meshes.new(molecule.name)
     molec_mesh.from_pydata(verts, bonds, [])
@@ -1035,6 +1036,11 @@ def BlendMoleculeSetup(context, filename, **options):
     molecule.settings = dict(options)
 
     make_materials(molecule, styler, options)
+    modes = input_data.get('vibrations')
+    if options['object_type'] == 'wireframe' or input_data.get('frame_numbers'):
+        modes = None
+    if modes and options['hook_atoms'] == 'auto':
+        options['hook_atoms'] = 'on'
     plot_prep(molecule, options)
 
     if options["object_type"] == "wireframe":
@@ -1051,6 +1057,9 @@ def BlendMoleculeSetup(context, filename, **options):
 
     from .scene_state import persist_molecule
     persist_molecule(molecule, filename, molecule.settings)
+    if modes:
+        from .vibrations import store_modes
+        store_modes(molecule.scene_owner, modes)
     if molecule.settings.get('atom_scale', 1.0) != 1.0:
         from .scene_edit import restyle_molecule
         restyle_molecule(molecule.scene_owner, atom_scale=molecule.settings['atom_scale'],

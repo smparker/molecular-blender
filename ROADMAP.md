@@ -54,7 +54,7 @@ Entry points: [orbitals.py](molecular_blender/orbitals.py), [compute_ao_py.py](m
 - [x] **Show orbital metadata and support spin-specific frontier orbitals.** Retain energies and symmetry labels in `MOData`; select HOMO/LUMO separately for alpha/beta sets and handle fractional occupations and unsorted orbitals deliberately. Completed with commit `0a287ce` and visualization defaults approved 2026-11-16.
 - [x] **Combine fields on matching grids.** JSON manifest entries support weighted sums of cube datasets with declared common scalar units. Signed surfaces share an absolute threshold.
 - [x] **Resample field combinations across different grids.** JSON entries can request trilinear resampling onto the first term's grid. Each term must cover that grid in the supplied molecular coordinate frame.
-- [ ] **Import and animate normal modes.** Read Molden frequency/displacement sections and expose mode, amplitude, phase, and playback controls; keep the equilibrium structure intact. The [format already defines these sections](https://www.theochem.ru.nl/molden/molden_format.html), but the reader currently does not consume them.
+- [x] **Import and animate normal modes.** The Molecule sidebar previews a saved Molden mode by frequency, peak displacement, phase and cycle length. Restore Geometry removes the preview. [Playback tests](test/test_vibrations.py)
 - [x] **Frame the visible molecule in the viewport.** Frame Molecule fits the current geometry and visible surfaces while preserving the active selection and render camera.
 - [x] **View a selected plane face-on.** Three atoms define the viewing direction for the framed molecule.
 - [x] **Export a surface series.** Render selected surface groups to individual transparent PNGs with the active scene camera.

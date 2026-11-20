@@ -317,6 +317,24 @@ class TestMoldenRead(unittest.TestCase):
                     molecule_from_molden(path, {})
                 self.assertIn(f'{path}:{line}: {section}', str(err.exception))
 
+    def test_frequency_only_molden_and_invalid_displacements(self):
+        from molecular_blender.constants import bohr2ang
+        text = ('[Molden Format]\n[FREQ]\n-50\n2000\n[FR-COORD]\nH 0 0 -1\nH 0 0 1\n'
+                '[FR-NORM-COORD]\nvibration 2\n0 0 -1\n0 0 1\nvibration 1\n1D+00 0 0\n0 1 0\n')
+        path = self._write('stretch.molden', text)
+        data = molecule_from_molden(path, {'ignore_hydrogen': True})
+        self.assertEqual([a['index'] for a in data['atoms']], [1, 2])
+        self.assertTrue(all(a['hidden'] for a in data['atoms']))
+        mode = data['vibrations']
+        self.assertEqual(mode['frequencies'], [-50., 2000.])
+        self.assertAlmostEqual(mode['equilibrium'][0][2], -bohr2ang)
+        self.assertAlmostEqual(mode['displacements'][0][0][0], bohr2ang)
+        self.assertAlmostEqual(mode['displacements'][1][0][2], -bohr2ang)
+        for bad in (text.rsplit('0 1 0', 1)[0], text.replace('vibration 1', 'vibration 2'),
+                    text.replace('0 1 0', '0 inf 0'), text.replace('[FREQ]', '[INT]')):
+            with self.subTest(bad=bad), self.assertRaisesRegex(ValueError, 'FR-NORM-COORD'):
+                molecule_from_molden(self._write('bad.molden', bad), {})
+
 
 # -- JSON reading --
 

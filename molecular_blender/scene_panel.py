@@ -5,6 +5,7 @@ import re
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, IntProperty, StringProperty
 
+from . import vibrations
 from .importers import file_format
 from .orbitals import frontier_index
 from .scene_state import ID, RECORD, ROLE, read_record, resolve_owner, owned_objects
@@ -326,6 +327,8 @@ class MB_PT_molecule(bpy.types.Panel):
                 box.label(text='Field units: ' + fields['units'])
         if not orbitals and fields is None:
             box.label(text='No orbital or grid data')
+        if vibrations.DATA in owner:
+            vibrations.draw_modes(layout, owner, context)
         if summary['groups']:
             box = layout.box()
             box.label(text='Surfaces')
@@ -388,11 +391,13 @@ class MB_PT_molecule(bpy.types.Panel):
 _CLASSES = (MB_OT_select_atoms, MB_OT_select_atom_indices, MB_OT_surface_visibility, MB_OT_solo_surface,
             MB_ExportSurface, MB_OT_export_surface_series, MB_OT_transparent_png, MB_OT_locate_source,
             MB_OT_map_esp, MB_OT_clear_esp, MB_OT_add_surface, MB_OT_recompute_surface, MB_OT_remove_surface,
+            vibrations.MB_OT_preview_mode, vibrations.MB_OT_clear_mode,
             MB_OT_jump_orbital, MB_OT_frame_molecule, MB_OT_view_face_on, MB_OT_view_principal_axes, MB_PT_molecule)
 
 
 def register():
     global _label_handler
+    vibrations.register_properties()
     bpy.types.Object.mb_show_atom_indices = BoolProperty(name='Show Atom Indices', default=False,
         description='Label visible atoms of the active molecule in the viewport')
     bpy.types.Object.mb_surface_color = FloatVectorProperty(name='Surface color', subtype='COLOR',
@@ -420,6 +425,7 @@ def unregister():
     bpy.types.RENDER_PT_output.remove(draw_png_preset)
     for cls in reversed(_CLASSES):
         bpy.utils.unregister_class(cls)
+    vibrations.unregister_properties()
     del bpy.types.Object.mb_browser_spin
     del bpy.types.Object.mb_surface_color
     del bpy.types.Object.mb_surface_opacity

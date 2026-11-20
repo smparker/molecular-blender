@@ -526,6 +526,29 @@ must match. Supply values in those units before import. Cube comments are
 free text. **Include both signs** draws accumulation and depletion at equal
 absolute levels. A combination can also be one frame of a JSON trajectory.
 
+### Preview a Molden vibrational mode
+
+Import a Molden file with normal coordinates, select one of its atoms, and open
+**N sidebar → Molecule → Vibrational modes**. Choose a frequency in cm⁻¹, set
+**Peak displacement (Å)**, and click **Preview Mode**. Press **Play** or scrub
+the timeline. **Frames per cycle** controls the viewing speed. **Starting
+phase** sets the position within the cycle at frame 1. Click **Update Preview**
+after changing these settings or selecting another mode. **Restore Geometry**
+removes the oscillation and restores the previous atom offsets.
+
+Molecular Blender reads files containing only the vibration sections as well
+as files with orbitals. It converts the [Molden equilibrium coordinates and
+displacements](https://www.theochem.ru.nl/molden/molden_format.html) from Bohr.
+Peak displacement sets the largest atomic motion in the mode and preserves the
+relative lengths and directions of the other vectors. The preview and its mode
+data are saved with the scene. For example, import `examples/zine.molden` and
+select mode 7 (14.55 cm⁻¹).
+
+The preview uses the atom objects of a single geometry. Mesh, NURBS and metaball
+atoms support it. Leave **Hook bonds** on **Automatic** to let bonds follow the
+motion. Turn off **Ignore Hydrogens** at import to see their displacements.
+Electronic surfaces describe the source geometry and stay fixed during playback.
+
 ### Sample trajectory frames
 
 For XYZ and JSON imports, **First input frame** and **Last input frame** are

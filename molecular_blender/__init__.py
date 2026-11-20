@@ -221,7 +221,7 @@ if _HAS_BPY:
         hook_atoms: EnumProperty(
             name="Hook bonds",
             description="Hook bonds to atoms to make bonds follow manual manipulation of the atoms",
-            items=(('auto', "Automatic", "Off for single frames, on for animations"),
+            items=(('auto', "Automatic", "Hook bonds for animated trajectories and Molden vibrational modes"),
                    ('on', "On", "Hook bonds (slow for molecules with hundreds or more atoms)"),
                    ('off', "Off", "Do not hook bonds to atoms (faster, but manipulating atoms in" +
                     " blender will not move the bonds alongside)")),

@@ -272,7 +272,6 @@ def molecule_from_xyz(filename, options):
     return {"atoms": atoms, "frame_numbers": frames}
 
 
-ANY_RE = re.compile(r"\[[a-zA-Z0-9 ]*\]")
 MOLDEN_RE = re.compile(r"\[\s*molden\s+format\s*\]", flags=re.IGNORECASE)
 ATOMS_RE = re.compile(r"\[\s*atoms\s*\]\s*(?:\(?(angs|au)\)?)?", flags=re.IGNORECASE)
 GTO_RE = re.compile(r"\[\s*gto\s*\]", flags=re.IGNORECASE)
@@ -437,6 +436,86 @@ def molden_read_mo(f, nao):
     return out
 
 
+def _molden_section(f, name):
+    f.restore_mark(name)
+    while True:
+        try:
+            line = f.readline()
+        except EOFError:
+            return
+        if NEWSECTION_RE.match(line):
+            return
+        if line.strip():
+            yield line.split()
+
+
+def _bohr_vector(f, section, fields):
+    try:
+        if len(fields) != 3:
+            raise ValueError()
+        return [bohr2ang * molden_float(v) for v in fields]
+    except ValueError as exc:
+        raise f.error(section, 'Expected three finite Cartesian components') from exc
+
+
+def molden_read_vibrations(f, out, ignore_h, animate):
+    atoms = out['atoms']
+    equilibrium = []
+    if f.is_marked('fr-coord'):
+        has_atoms = bool(atoms)
+        for i, fields in enumerate(_molden_section(f, 'fr-coord')):
+            symbol = fields[0].lower()
+            position = _bohr_vector(f, '[FR-COORD]', fields[1:])
+            if symbol not in symbols or (has_atoms and (i >= len(atoms) or atoms[i]['symbol'] != symbol)):
+                raise f.error('[FR-COORD]', f'Unexpected element {symbol} at atom {i + 1}')
+            equilibrium.append(position)
+            if not has_atoms:
+                atom = make_atom_dict(symbol, position, i+1, 0., [0.] * 3, ignore_h and symbol == 'h')
+                if animate:
+                    atom['trajectory'].append(make_snap_dict(position, 0., [0.] * 3))
+                atoms.append(atom)
+        if not equilibrium or len(equilibrium) != len(atoms):
+            raise f.error('[FR-COORD]', 'Equilibrium atom count must match the molecule')
+    else:
+        equilibrium = [atom['position'] for atom in atoms]
+    if not f.is_marked('fr-norm-coord'):
+        return
+    if not f.is_marked('freq'):
+        f.restore_mark('fr-norm-coord')
+        raise f.error('[FR-NORM-COORD]', 'Missing [FREQ] for vibrational modes')
+    frequencies = []
+    for fields in _molden_section(f, 'freq'):
+        try:
+            if len(fields) != 1:
+                raise ValueError()
+            frequencies.append(molden_float(fields[0]))
+        except ValueError as exc:
+            raise f.error('[FREQ]', 'Expected one finite frequency per line') from exc
+
+    modes = {}
+    number = None
+    for fields in _molden_section(f, 'fr-norm-coord'):
+        if fields[0].lower() == 'vibration':
+            if number is not None and len(modes[number]) != len(atoms):
+                raise f.error('[FR-NORM-COORD]', f'Mode {number} needs one displacement per atom')
+            if len(fields) != 2 or not fields[1].isdigit():
+                raise f.error('[FR-NORM-COORD]', 'Expected vibration followed by the mode number')
+            number = int(fields[1])
+            if not 1 <= number <= len(frequencies) or number in modes:
+                raise f.error('[FR-NORM-COORD]', f'Invalid or repeated mode {number}')
+            modes[number] = []
+        elif number is None or len(modes[number]) >= len(atoms):
+            raise f.error('[FR-NORM-COORD]', 'Expected a vibration header before displacements')
+        else:
+            modes[number].append(_bohr_vector(f, f'[FR-NORM-COORD] mode {number}', fields))
+    if number is None or len(modes[number]) != len(atoms):
+        raise f.error('[FR-NORM-COORD]', f'Incomplete displacement block for mode {number}')
+    if len(modes) != len(frequencies):
+        raise f.error('[FR-NORM-COORD]', f'Found {len(modes)} modes for {len(frequencies)} frequencies')
+    out['vibrations'] = dict(equilibrium=equilibrium, frequencies=frequencies,
+                             displacements=[modes[i] for i in range(1, len(frequencies)+1)])
+
+
 @stopwatch("read molden")
 def molecule_from_molden(filename, _options):
     """Read molden file to look for coordinates and optionally orbital data"""
@@ -448,6 +527,9 @@ def molecule_from_molden(filename, _options):
 
     marks = {"molden": MOLDEN_RE,
              "atoms": ATOMS_RE,
+             "freq": re.compile(r"\[\s*FREQ\s*\]", re.I),
+             "fr-coord": re.compile(r"\[\s*FR-COORD\s*\]", re.I),
+             "fr-norm-coord": re.compile(r"\[\s*FR-NORM-COORD\s*\]", re.I),
              "gto": GTO_RE,
              "mo": MO_RE,
              "5d": re.compile(r"\[5D\]", flags=re.IGNORECASE),
@@ -465,7 +547,7 @@ def molecule_from_molden(filename, _options):
         try:
             while True:
                 line = f.readline()
-                if ANY_RE.search(line):
+                if NEWSECTION_RE.match(line):
                     for x in marks:
                         if marks[x].search(line):
                             f.set_mark(x, line)
@@ -473,13 +555,14 @@ def molecule_from_molden(filename, _options):
             pass
 
         if not f.is_marked("molden"):
-            raise Exception(
-                "Molden file is missing [Molden Format] specification")
-        if not f.is_marked("atoms"):
-            raise Exception("Molden file is missing [Atoms] specification")
+            raise ValueError(f"{filename}: Molden file is missing [Molden Format] specification")
+        if f.is_marked("atoms"):
+            out["atoms"] = molden_read_atoms(f, ignore_h, animate=animate)
+        elif not f.is_marked("fr-coord"):
+            raise ValueError(f"{filename}: Molden file is missing [Atoms] or [FR-COORD]")
 
-        # read through atoms section
-        out["atoms"] = molden_read_atoms(f, ignore_h, animate=animate)
+        if f.is_marked("fr-coord") or f.is_marked("fr-norm-coord"):
+            molden_read_vibrations(f, out, ignore_h, animate)
 
         if f.is_marked("gto"):  # read through GTO section to build basis
             out["basis"] = molden_read_gto(f, [atom["index"] for atom in out["atoms"]])
