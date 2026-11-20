@@ -633,7 +633,7 @@ def PlotWireFrame(context, molecule, _options):
 
 def AnimateMolecule(context, molecule, options):
     """Keyframes position of atoms and opacity of bonds"""
-    frame_map = get_frame_mapper(options)
+    frame_map = get_frame_mapper(options, molecule.frame_numbers)
 
     # check to make sure trajectory information is stored for at least the first atom
     if not molecule.atoms[0].trajectory:
@@ -674,7 +674,7 @@ def AnimateMolecule(context, molecule, options):
                         x.keyframe_insert(data_path='scale',
                                           frame=frame_map(iframe))
 
-    if options["animate_bonds"] == "dynamic":
+    if options["animate_bonds"] == "dynamic" and molecule.explicit_bonds is None:
         bondmask = molecule.bond_mask(options)
         for bond in molecule.bonds:
             i, j = bond.iatom.index, bond.jatom.index
@@ -759,7 +759,7 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None):
 
     vertex_sets = []
     vertex_trajectory_map = {}
-    fmap = get_frame_mapper(options)
+    fmap = get_frame_mapper(options, getattr(molecule, "frame_numbers", None))
 
     # Count total tasks for progress tracking
     if progress_state is not None:
@@ -995,11 +995,11 @@ def process_options(options, *, cube=False):
     return options
 
 
-def get_frame_mapper(options):
-    """ returns a function that maps snapshot number to frame number """
+def get_frame_mapper(options, frame_numbers=None):
+    """Map a snapshot position to a Blender frame, including explicit manifest timing."""
     stride = options["keystride"]
     def f(i):
-        return i*stride + 1
+        return (frame_numbers[i] if frame_numbers is not None else i) * stride + 1
     return f
 
 

@@ -1,6 +1,8 @@
 """Tests for molecular_blender.importers and molecular_blender.turbomole_reader"""
 
+import json
 import os
+from pathlib import Path
 import tempfile
 import unittest
 import numpy as np
@@ -321,6 +323,64 @@ class TestJsonRead(unittest.TestCase):
         f = self._write("empty.json", '{"other": "stuff"}')
         result = molecule_from_json(f, {})
         assert result is None
+        with self.assertRaisesRegex(ValueError, 'Missing molecules list'):
+            molecule_from_file(f, {})
+
+    def manifest(self, entries):
+        return self._write('series.json', json.dumps({'molecules': entries}))
+
+    def test_frame_indices_and_references_report_the_entry(self):
+        self._write('a.xyz', '1\natom\nHe 0 0 0\n')
+        first = {'filename': 'a.xyz', 'frame': 2}
+        for invalid in (True, -1, 1.5, 1, 2):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, 'entry 2.*Frame indices'):
+                molecule_from_json(self.manifest([first, dict(first, frame=invalid)]), {})
+        for entry in ({'filename': 'missing.xyz'}, {'filename': 'a.xyz', 'polar': 'missing-polar'}, {}):
+            with self.assertRaisesRegex(ValueError, 'entry 2'):
+                molecule_from_json(self.manifest([first, entry]), {})
+        data = molecule_from_json(self.manifest([first, {'filename':'a.xyz'}, dict(first, frame=8)]), {})
+        self.assertEqual(data['frame_numbers'], [2, 3, 8])
+        self.assertEqual(len(data['atoms'][0]['trajectory']), 3)
+
+    def test_sdf_record_selection_and_explicit_topology_survive_merging(self):
+        source = (Path(EXAMPLES) / 'bond_orders.sdf').read_text().split('$$$$')[0]
+        shifted = source.replace('-3.4000', '-3.9000')
+        self._write('a.sdf', source + '$$$$\n' + shifted + '$$$$\n')
+        first = {'filename':'a.sdf', 'sdf_record':0}
+        second = dict(first, sdf_record=1)
+        options = {}
+        merged = molecule_from_json(self.manifest([first, second]), options)
+        self.assertEqual(options['plot_type'], 'animate')
+        self.assertEqual(merged['bonds'][0]['order'], 2)
+        self.assertEqual([s['position'][0] for s in merged['atoms'][0]['trajectory']], [-3.4, -3.9])
+        self._write('a.sdf', source + '$$$$\n' + shifted.replace('  1  2  2', '  1  2  1') + '$$$$\n')
+        with self.assertRaisesRegex(ValueError, 'entry 2.*bond orders'):
+            molecule_from_json(self.manifest([first, second]), {})
+
+    def test_molden_frames_keep_orbitals_and_reject_incompatible_basis(self):
+        original = (Path(EXAMPLES) / 'water-sto-3g.molden').read_text()
+        self._write('a.molden', original)
+        self._write('b.molden', original.replace('-20.670655', '-21.0'))
+        path = self.manifest([{'filename':x+'.molden'} for x in 'ab'])
+        data = molecule_from_json(path, {'orca_fix':True})
+        self.assertEqual(len(data['orbital_trajectory']), 1)
+        self.assertFalse(data['orbital_trajectory'][0]['denorm'])
+        self.assertNotEqual(data['mo'][0]['ene'], data['orbital_trajectory'][0]['mo'][0]['ene'])
+        self._write('b.molden', original.replace('3.42525091', '3.52525091'))
+        with self.assertRaisesRegex(ValueError, 'entry 2.*basis'):
+            molecule_from_json(path, {})
+
+    def test_cube_frames_keep_independent_grid_origins_and_check_dataset_identity(self):
+        cube = 'field\ngrid\n-1 0 0 0\n2 1 0 0\n2 0 1 0\n2 0 0 1\n1 0 0 0 0\n1 15\n1 2 3 4 5 6 7 8\n'
+        self._write('a.cube', cube)
+        self._write('b.cube', cube.replace('-1 0 0 0', '-1 1 0 0'))
+        path = self.manifest([{'filename': x+'.cube'} for x in 'ab'])
+        data = molecule_from_json(path, {})
+        self.assertGreater(data['volume_trajectory'][0]['origin'][0], data['volume']['origin'][0])
+        self._write('b.cube', cube.replace('1 15', '1 17'))
+        with self.assertRaisesRegex(ValueError, 'entry 2.*dataset IDs'):
+            molecule_from_json(path, {})
+
 
     def test_json_referencing_json_raises(self):
         f = self._write("bad.json", '{"molecules": [{"filename": "inner.json"}]}')

@@ -425,3 +425,18 @@ error without applying a partial assignment. This post-import perception action
 requires a static molecule with all atoms, including hydrogens, displayed.
 Manual atom moves change the displayed geometry; they do not recalculate orbital
 or density surfaces. Bond perception itself remains an explicit, opt-in action.
+
+### Figure and animation examples
+
+To try a trajectory, import `examples/water_bend.json` with **Ignore Hydrogens**
+off and scrub frames 1, 5 and 9. The manifest selects two illustrative poses
+from a multi-record SDF and returns to the first pose.
+
+In a multi-entry JSON manifest, each entry reads one structure. Paths are
+relative to the manifest and `sdf_record` selects a zero-based SDF record.
+Optional `frame` values are strictly increasing nonnegative integers. The
+first defaults to zero and each omitted value advances one step. Blender
+places the key at `1 + frame × keystride`. Atom identities and explicit SDF
+topology must match across frames. Molden frames retain their own coefficients
+and occupations and share a compatible basis and orbital channels. Cube frames
+can have different grid origins and spacings and must use the same dataset IDs.

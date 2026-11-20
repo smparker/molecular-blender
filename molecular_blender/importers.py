@@ -93,7 +93,10 @@ def molecule_from_file(filename, options):
                    cube=molecule_from_cube, json=molecule_from_json)
     reader = readers.get(file_format(filename))
     if reader is not None:
-        return reader(filename, options)
+        data = reader(filename, options)
+        if data is None:
+            raise ValueError("Missing molecules list in " + os.fspath(filename))
+        return data
 
     raise ValueError(
         f"Unsupported molecular file format: {filename!r}. "
@@ -639,58 +642,94 @@ def molecule_from_cube(filename, options):
     return out
 
 
+def _check_manifest_frame(first, current):
+    atoms = lambda data: [(a["index"], a["symbol"]) for a in data["atoms"]]
+    if atoms(first) != atoms(current):
+        raise ValueError("Atom count, indices and element order must match the first frame")
+    if any((key in first) != (key in current) for key in ("bonds", "basis", "mo", "volume", "polar")):
+        raise ValueError("Topology and field types must match the first frame")
+    if "bonds" in first:
+        def topology(data):
+            return sorted((tuple(sorted(b["atoms"])), b["order"]) for b in data["bonds"])
+        if (topology(first) != topology(current) or
+                [a["formal_charge"] for a in first["atoms"]] != [a["formal_charge"] for a in current["atoms"]]):
+            raise ValueError("SDF bond orders, endpoints and formal charges must match the first frame")
+    if first.get("basis") != current.get("basis"):
+        raise ValueError("Molden basis must match the first frame")
+    if "mo" in first:
+        def channels(data):
+            return [(len(m["coeff"]), (m.get("spin") or "").lower()) for m in data["mo"]]
+        if channels(first) != channels(current) or len(first.get("polar", [])) != len(current.get("polar", [])):
+            raise ValueError("Molden orbital counts, spin channels and field counts must match the first frame")
+    if "volume" in first and list(first["volume"]["labels"]) != list(current["volume"]["labels"]):
+        raise ValueError("Cube dataset IDs and order must match the first frame")
+
+
+
+
 def molecule_from_json(filename, options):
-    with open(filename, "r") as f:
-        data = json.load(f)
-
+    """Read one structure per manifest entry, with zero-based timeline indices."""
+    with open(filename) as source:
+        data = json.load(source)
+    if not isinstance(data, dict):
+        raise ValueError("Expected a JSON object in " + os.fspath(filename))
     if "molecules" not in data:
-        return
+        return None  # Historical direct reader API.
+    entries = data["molecules"]
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("Expected a nonempty molecules list in " + os.fspath(filename))
 
-    if len(data["molecules"]) > 1:
-        options["plot_type"] = "animate"
+    previous = -1
+    frames = []
+    merged = None
+    for i, entry in enumerate(entries):
+        label = "{}: entry {}".format(filename, i + 1)
+        try:
+            if not isinstance(entry, dict):
+                raise ValueError("Expected a manifest entry")
+            frame = entry.get("frame", previous + 1)
+            if type(frame) is not int or frame <= previous:
+                raise ValueError("Frame indices must be strictly increasing nonnegative integers")
+            previous = frame
+            frames.append(frame)
+            child_options = dict(options)
+            if len(entries) > 1 or "frame" in entry:
+                child_options["plot_type"] = "frame"
+            directory = os.path.dirname(filename)
+            if not isinstance(entry.get("filename"), str) or not entry["filename"].strip():
+                raise ValueError("Expected a filename")
+            path = os.path.join(directory, entry["filename"])
+            label += " (" + entry["filename"] + ")"
+            if file_format(path) == "json":
+                raise ValueError("A trajectory cannot reference another json manifest")
+            if "sdf_record" in entry:
+                if file_format(path) != "sdf":
+                    raise ValueError("sdf_record requires an SDF/MOL file")
+                child_options["sdf_record"] = entry["sdf_record"]
+            current = molecule_from_file(path, child_options)
+            if "polar" in entry:
+                current["polar"] = read_turbomole_polarizability(os.path.join(directory, entry["polar"]))
+            if len(entries) == 1 and "frame" not in entry:
+                if "plot_type" in child_options:
+                    options["plot_type"] = child_options["plot_type"]
+                return current
 
-    animate = options.get("plot_type", "") in [ "animate", "auto" ]
-    molecules = []
+            snapshots = [make_snap_dict(a["position"], a["charge"], a["gradient"]) for a in current["atoms"]]
+            if merged is None:
+                merged = current
+                for atom, snap in zip(merged["atoms"], snapshots):
+                    atom["trajectory"] = [snap]
+                continue
+            _check_manifest_frame(merged, current)
+            for atom, snap in zip(merged["atoms"], snapshots):
+                atom["trajectory"].append(snap)
+            if "volume" in current:
+                merged.setdefault("volume_trajectory", []).append(current["volume"])
+            if "mo" in current:
+                merged.setdefault("orbital_trajectory", []).append(current)
+        except Exception as exc:
+            raise ValueError("{}: {}".format(label, exc or "invalid frame")) from exc
 
-    for i, mol in enumerate(data["molecules"]):
-        fil = mol["filename"]
-        if fil.lower().endswith(".json"):
-            raise Exception("Molecules specified in a json must be xyz, molden or cube")
-        filnam = os.path.join(os.path.dirname(filename), fil)
-        moldata = molecule_from_file(filnam, options)
-        iframe = mol["frame"] if "frame" in mol else i
-        molecules.append( { "molecule" : moldata, "frame" : iframe } )
-
-        if "polar" in mol:
-            pol = mol["polar"]
-            pol = os.path.join(os.path.dirname(filename), pol)
-            turbopole = read_turbomole_polarizability(pol)
-            moldata["polar"] = turbopole
-
-        if not animate:
-            break
-
-    first = molecules.pop(0)
-    merged = first["molecule"]
-    natoms = len(merged["atoms"])
-
-    for mol in molecules:
-        if len(mol["molecule"]["atoms"]) != natoms:
-            raise Exception("Number of atoms must be the same in each frame.")
-        for out_atom, frame_atom in zip(merged["atoms"], mol["molecule"]["atoms"]):
-            if out_atom["symbol"] != frame_atom["symbol"]:
-                raise Exception("Order of atoms must be the same for each frame")
-            out_atom["trajectory"].append(frame_atom["trajectory"][0])
-
-        if "volume" in mol["molecule"]:
-            if "volume_trajectory" not in merged:
-                merged["volume_trajectory"] = []
-            merged["volume_trajectory"].append(mol["molecule"]["volume"])
-
-        if "mo" in mol["molecule"] and "gto" in mol["molecule"]:
-            if "orbital_trajectory" not in merged:
-                merged["orbital_trajectory"] = []
-            merged["orbital_trajectory"].append(
-                { x : mol["molecule"][x] for x in [ "atoms", "mo", "basis" ] })
-
+    merged["frame_numbers"] = frames
+    options["plot_type"] = "animate"
     return merged

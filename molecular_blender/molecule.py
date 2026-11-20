@@ -193,7 +193,7 @@ class Molecule(object):
     """Atoms and bonds form a molecule"""
 
     def __init__(self, name, atoms, volume=None, orbitals=None,
-            volume_trajectory=None, orbitals_trajectory=None, bonds=None):
+            volume_trajectory=None, orbitals_trajectory=None, bonds=None, frame_numbers=None):
         """Create Molecule"""
         self.name = name
         self.atoms = atoms
@@ -208,6 +208,7 @@ class Molecule(object):
         self.volume_trajectory = volume_trajectory
         self.orbitals = orbitals
         self.orbitals_trajectory = orbitals_trajectory
+        self.frame_numbers = frame_numbers
 
     @classmethod
     def from_dict(cls, name, inp):
@@ -220,7 +221,7 @@ class Molecule(object):
                 in inp["orbital_trajectory" ] ] if "orbital_trajectory" in inp else None
         return cls(name, [Atom.from_dict(x) for x in inp["atoms"]], volume=vol, orbitals=modata,
             volume_trajectory=vol_traj, orbitals_trajectory=mo_traj,
-            bonds=inp.get("bonds"))
+            bonds=inp.get("bonds"), frame_numbers=inp.get("frame_numbers"))
 
     def center_of_mass(self):
         """Computes center of mass from atoms list"""

@@ -1,0 +1,7 @@
+{
+  "molecules": [
+    {"filename": "water_bend.sdf", "sdf_record": 0, "frame": 0},
+    {"filename": "water_bend.sdf", "sdf_record": 1, "frame": 4},
+    {"filename": "water_bend.sdf", "sdf_record": 0, "frame": 8}
+  ]
+}

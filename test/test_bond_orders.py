@@ -42,6 +42,16 @@ class TestBondOrders(unittest.TestCase):
                         expected.append((i, j))
             self.assertEqual(bonded_pairs(atoms, static), expected)
 
+    def test_animated_sdf_keeps_explicit_bonds_in_dynamic_distance_mode(self):
+        from molecular_blender.scene_state import owned_objects
+        model, _, _ = BlendMoleculeSetup(bpy.context, 'examples/water_bend.json', ignore_hydrogen=False,
+                                        isovalues='', animate_bonds='dynamic', keystride=2)
+        self.assertEqual(model.frame_numbers, [0, 4, 8])
+        self.assertEqual(len(model.bonds), 2)
+        curves = owned_objects(model.scene_owner, 'bond')
+        self.assertTrue(curves)
+        self.assertTrue(all(o.animation_data is None or not o.animation_data.action for o in curves))
+
     def setUp(self):
         self.objects = set(bpy.data.objects)
         self.curves = set(bpy.data.curves)
