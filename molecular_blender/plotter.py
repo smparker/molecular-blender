@@ -53,6 +53,21 @@ def bind_bond_endpoints(bond, first, second):
         hook.matrix_inverse = atom.matrix_world.inverted() @ bond.matrix_world
 
 
+def _parent_geometry(context, pairs):
+    """Keep source-coordinate locations, animation channels and the original selection convention."""
+    if not pairs:
+        return
+    for child, parent in pairs:
+        child.parent = parent
+        child.matrix_parent_inverse = parent.matrix_world.inverted_safe()
+    context.view_layer.update()
+    for obj in context.selected_objects:
+        obj.select_set(False)
+    child, parent = pairs[-1]
+    child.select_set(True)
+    context.view_layer.objects.active = parent
+
+
 def _multiple_bond_profile(radius, order):
     """Strand radius, center spacing and total profile radius."""
     strand_radius = 0.7 * radius
@@ -356,8 +371,6 @@ def PlotMolecule(context, molecule, options):
     for atom in molecule.atoms:
         if atom.hidden:
             continue
-        # Unselect Everything
-        bpy.ops.object.select_all(action='DESELECT')
         base_atom = molecule.name + "_" + atom.element.symbol
         atom.name = unique_name(base_atom, obj_keys, 0)
         if atom.element.symbol in element_objects:
@@ -541,20 +554,11 @@ def PlotMolecule(context, molecule, options):
 
         clock.tick_print("set hooks")
 
-    for child, parent in to_parent:
-        bpy.ops.object.select_all(action='DESELECT')
-        child.select_set(True)
-        context.view_layer.objects.active = parent
-        bpy.ops.object.parent_set(type='OBJECT', keep_transform=False)
-
-    clock.tick_print("set parentage")
-
     if options["gradient"]:
         for atom in molecule.atoms:
             if atom.hidden:
                 continue
             if atom.gradient.length > 1.0e-30:
-                bpy.ops.object.select_all(action='DESELECT')
                 curve = track_new(bpy.data.curves.new(atom.name + "_gradient", type='CURVE'))
                 curve.dimensions = '3D'
                 curve.resolution_u = 2
@@ -568,10 +572,10 @@ def PlotMolecule(context, molecule, options):
 
                 curveOB.data.use_fill_caps = True
                 context.collection.objects.link(curveOB)
-                context.view_layer.objects.active = curveOB
-                curveOB.select_set(True)
-                context.view_layer.objects.active = bpy.data.objects[molecule.name]
-                bpy.ops.object.parent_set(type='OBJECT', keep_transform=False)
+                to_parent.append((curveOB, molecule_obj))
+
+    _parent_geometry(context, to_parent)
+    clock.tick_print("set parentage")
 
     return
 
@@ -941,14 +945,8 @@ def plot_rings(context, molecule, options):
         ringObj.data.materials.append(ringmat)
         ringObj.data = ringMesh
         ring_collection.objects.link(ringObj)
-        to_parent.append(ringObj)
-
-    molecule_obj = bpy.data.objects[molecule.name]
-    for child in to_parent:
-        bpy.ops.object.select_all(action='DESELECT')
-        child.select_set(True)
-        context.view_layer.objects.active = molecule_obj
-        bpy.ops.object.parent_set(type="OBJECT", keep_transform=False)
+        to_parent.append((ringObj, molecule.scene_owner))
+    _parent_geometry(context, to_parent)
 
 
 def default_options(options):

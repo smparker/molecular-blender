@@ -90,6 +90,15 @@ class TestGeometryRollback(unittest.TestCase):
             rings = [obj for obj in model.scene_owner.children_recursive if obj.name.startswith(model.name + '_ring')]
             self.assertTrue(rings)
             self.assertTrue(all(obj.active_material == ring for obj in rings))
+            bpy.context.view_layer.update()
+            for obj in rings:
+                for vertex in obj.data.vertices:
+                    self.assertLess((obj.matrix_world @ vertex.co - vertex.co).length, 1e-5)
+            for atom in model.atoms:
+                if atom.hidden:
+                    continue
+                for name in (atom.name, atom.plus_charge, atom.neg_charge):
+                    self.assertLess((bpy.data.objects[name].matrix_world.translation - atom.position).length, 1e-5)
             atom = model.atoms[0]
             self.assertEqual(bpy.data.objects[atom.plus_charge].active_material.name, model.pluscharge_mat)
             self.assertEqual(bpy.data.objects[atom.neg_charge].active_material.name, model.negcharge_mat)
