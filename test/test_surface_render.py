@@ -84,7 +84,16 @@ class TestSurfacePNG(unittest.TestCase):
                                 'from molecular_blender import render_cli; render_cli.register()')
                     output = Path(directory) / 'orbital panels'
                     cmd = [bpy.app.binary_path, '-b', '--factory-startup', str(blend), '--python-expr', register,
-                           '-c', 'molecular_render', '--molecule', owner.name, '--output', str(output)]
+                           '-c', 'molecular_render']
+                    listing = subprocess.run(cmd + ['--list'], capture_output=True, text=True, timeout=90)
+                    self.assertEqual(listing.returncode, 0, listing.stdout + listing.stderr)
+                    self.assertIn('Camera: ' + scene.camera.name, listing.stdout)
+                    self.assertIn('Molecule: ' + owner.name, listing.stdout)
+                    from molecular_blender.scene_state import read_record
+                    for surface in read_record(owner)['surfaces']:
+                        self.assertIn(f"Orbital {surface['field']}  ({surface['group']})", listing.stdout)
+                    self.assertFalse(output.exists())
+                    cmd += ['--molecule', owner.name, '--output', str(output)]
                     def run(label):
                         return subprocess.run(cmd + ['--surface', label], capture_output=True, text=True,
                                               timeout=90)

@@ -436,8 +436,12 @@ sets transparent film and RGBA PNG output for the scene.
 
 To regenerate a series from a saved figure, run Blender with the add-on enabled.
 Use the molecule root's Outliner name when the scene contains several molecules.
+List the active camera, molecule names, surface labels and group IDs from the
+saved scene with the first command. Pass a label or group ID to `--surface`
+to render a particular panel.
 
 ```sh
+blender -b "figure.blend" -c molecular_render --list
 blender -b "figure.blend" -c molecular_render --molecule "water" --output "panels"
 ```
 

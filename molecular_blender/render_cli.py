@@ -16,22 +16,39 @@ def render_series(argv):
     parser = argparse.ArgumentParser(prog='blender -b figure.blend -c molecular_render',
                                      description='Render saved surface groups with the active scene camera.')
     parser.add_argument('--molecule', help='Exact molecule root object name. Optional for a single molecule.')
-    parser.add_argument('--output', required=True, type=Path, help='Destination directory for transparent PNGs.')
+    action = parser.add_mutually_exclusive_group(required=True)
+    action.add_argument('--output', type=Path, help='Destination directory for transparent PNGs.')
+    action.add_argument('--list', action='store_true', help='List the camera, molecule names, surface labels and group IDs.')
     parser.add_argument('--surface', action='append', default=[], help='Exact sidebar label or group ID. Repeat to select several.')
     try:
         args = parser.parse_args(argv)
+        if args.list and args.surface:
+            parser.error('--surface selects panels to render with --output')
     except SystemExit as exc:
         return exc.code
     try:
         if not bpy.data.filepath:
             raise ValueError('Pass a saved .blend file before -c molecular_render')
-        owners = {obj.name: obj for obj in bpy.context.scene.objects if RECORD in obj}
-        if args.molecule is None and len(owners) == 1:
-            owner, = owners.values()
-        else:
-            owner = owners.get(args.molecule)
-        if owner is None:
+        scene = bpy.context.scene
+        owners = {obj.name: obj for obj in scene.objects if RECORD in obj}
+        if (args.molecule is not None and args.molecule not in owners
+                or args.molecule is None and not args.list and len(owners) != 1):
             raise ValueError('Choose --molecule from the active scene: ' + (', '.join(sorted(owners)) or '(none)'))
+        if args.molecule is not None:
+            owners = {args.molecule: owners[args.molecule]}
+        if args.list:
+            print('Camera:', scene.camera.name if scene.camera else '(none)')
+            if not owners:
+                print('No saved molecules in this scene.')
+            for name, owner in sorted(owners.items()):
+                print('Molecule:', name)
+                groups = surface_groups(owner, read_record(owner))
+                for key, group in groups.items():
+                    print(f"  {group['label']}  ({key})")
+                if not groups:
+                    print('  (no saved surfaces)')
+            return 0
+        owner, = owners.values()
         groups = surface_groups(owner, read_record(owner))
         keys = []
         for name in args.surface:
