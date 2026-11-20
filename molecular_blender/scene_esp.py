@@ -9,7 +9,7 @@ from bpy.props import EnumProperty, FloatProperty, IntProperty, StringProperty
 from .esp import sample_cube
 from .import_dialog import browser_path
 from .importers import file_format, molecule_from_cube, molecule_from_json
-from .scene_edit import _set_opacity
+from .scene_edit import _set_opacity, _surface_output
 from .scene_state import read_record, resolve_owner
 from .scene_surfaces import surface_groups, surface_opacity
 
@@ -28,6 +28,26 @@ def density_group(group):
         obj.animation_data and obj.animation_data.action for obj in group['objects'])
 
 
+def scale_nodes(material):
+    # Follow the active shader so renamed nodes and unrelated ramps are safe.
+    if material is None or not material.use_nodes:
+        raise ValueError("The field material needs shader nodes")
+    shader = _surface_output(material).inputs['Surface'].links[0].from_node
+    if shader.type == 'MIX_SHADER' and shader.inputs[2].is_linked:
+        shader = shader.inputs[2].links[0].from_node  # The mapped surface's opacity wrapper.
+    if shader.type != 'BSDF_PRINCIPLED' or not shader.inputs['Base Color'].is_linked:
+        raise ValueError('The mapped surface must use a Principled shader with a connected Base Color')
+    ramp = shader.inputs['Base Color'].links[0].from_node
+    if ramp.type == 'VALTORGB' and ramp.inputs['Fac'].is_linked:
+        scale = ramp.inputs['Fac'].links[0].from_node
+        if scale.type == 'MAP_RANGE' and scale.data_type == 'FLOAT' and scale.interpolation_type == 'LINEAR':
+            bounds = [scale.inputs[key] for key in ('From Min', 'From Max', 'To Min', 'To Max')]
+            low, high, start, end = (socket.default_value for socket in bounds)
+            if not any(socket.is_linked for socket in bounds) and low < high and (start, end) == (0., 1.):
+                return ramp, scale
+    raise ValueError('Field scale needs a Color Ramp connected to Base Color with a linear Map Range from 0 to 1')
+
+
 def field_map_settings(mat):
     if mat is None:
         return None
@@ -35,9 +55,23 @@ def field_map_settings(mat):
     prefix = 'mb_esp_' if kind == 'esp' else 'mb_field_'
     if prefix + 'limits' not in mat:
         return None
+    try:
+        _, scale = scale_nodes(mat)
+        limits = tuple(scale.inputs[key].default_value for key in ('From Min', 'From Max'))
+    except ValueError:
+        limits = mat[prefix + 'limits']
     return dict(kind=kind, label=mat.get('mb_field_label', 'ESP'),
                 path=mat[prefix + 'path'], dataset=mat[prefix + 'dataset'],
-                units=mat[prefix + 'units'], limits=mat[prefix + 'limits'])
+                units=mat[prefix + 'units'], limits=limits)
+
+
+def validate_limits(kind, low, high):
+    if not (math.isfinite(low) and math.isfinite(high) and low < high):
+        raise ValueError('Color limits must be finite and increase from minimum to maximum')
+    if kind == 'unsigned' and low < 0:
+        raise ValueError('The minimum for an unsigned field must be nonnegative')
+    if kind != 'unsigned' and not low < 0 < high:
+        raise ValueError('Signed color limits must span zero')
 
 
 def _field_material(path, dataset, units, low, high, opacity, kind, label):
@@ -128,12 +162,7 @@ def map_esp(context, record, group, path, dataset, units, low, high, *, kind='es
         label = 'Linear combination' if source_format == 'json' else 'ESP'
     if kind not in ('esp', 'signed', 'unsigned') or not label.strip() or (source_format == 'cube' and not units.strip()):
         raise ValueError('Choose a field type and enter its name and scalar units')
-    if not (math.isfinite(low) and math.isfinite(high) and low < high):
-        raise ValueError('Color limits must be finite and increase from minimum to maximum')
-    if kind == 'unsigned' and low < 0:
-        raise ValueError('The minimum for an unsigned field must be nonnegative')
-    if kind != 'unsigned' and not low < 0 < high:
-        raise ValueError('Signed color limits must span zero')
+    validate_limits(kind, low, high)
     if source_format == 'json':
         cube = molecule_from_json(path, {}, single_combination=True)
         units = cube['volume']['units']

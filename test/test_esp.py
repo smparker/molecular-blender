@@ -175,6 +175,48 @@ class TestMappedDensity(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, 'one linear_combination'):
                         map_difference()
                     self.assertEqual(surf.data, mapped)
+
+                # A second panel can take its range and edited ramp from this
+                # map after both scalar sources move. Mesh values stay intact.
+                from molecular_blender.field_scale import scale_values
+                from molecular_blender.scene_esp import scale_nodes
+                peer, style, opts = BlendMoleculeSetup(bpy.context, str(density), volume='density',
+                    cube_field_type='density', isovalues='.35', cumulative=False, remesh=0)
+                draw_surfaces(peer, style, bpy.context, opts)
+                peer_key, = surface_groups(peer.scene_owner, read_record(peer.scene_owner))
+                target, = owned_objects(peer.scene_owner, 'surface')
+                bpy.context.view_layer.objects.active = peer.scene_owner
+                opts = dict(group=peer_key, filepath=str(esp), field_kind='signed', field_units='e/bohr³',
+                            field_label='Second panel', minimum=-1., maximum=1.)
+                self.assertEqual(bpy.ops.molecular_blender.map_esp(**opts), {'FINISHED'})
+                mesh_before = target.data
+                duplicate = target.copy()
+                duplicate.parent = None
+                scene.collection.objects.link(duplicate)
+                original_material = duplicate.active_material
+                edit = bpy.ops.molecular_blender.edit_field_scale
+                node, _ = scale_nodes(surf.active_material)
+                node.color_ramp.elements.new(.2).color = (.1, .3, .2, 1.)
+                node.color_ramp.interpolation = 'EASE'
+                source_scale = scale_values(surf.active_material)
+                esp.unlink()
+                manifest.unlink()
+                with self.assertRaisesRegex(RuntimeError, 'matching units'):
+                    original_material['mb_field_units'] = 'V'
+                    edit(group=peer_key, copy_from=surf.name)
+                original_material['mb_field_units'] = 'e/bohr³'
+                self.assertEqual(edit(group=peer_key, copy_from=surf.name), {'FINISHED'})
+                self.assertEqual(target.data, mesh_before)
+                self.assertEqual(duplicate.active_material, original_material)
+                self.assertEqual(scale_values(target.active_material), source_scale)
+                self.assertEqual(edit(group=peer_key, minimum=-1., maximum=3.), {'FINISHED'})
+                self.assertEqual(scale_values(surf.active_material), source_scale)
+                self.assertEqual(field_map_settings(target.active_material)['limits'], (-1., 3.))
+                ramp = scale_nodes(target.active_material)[0].color_ramp
+                np.testing.assert_allclose(ramp.evaluate(.25)[:3], [1., 1., 1.], atol=1e-6)
+
+                bpy.context.view_layer.objects.active = owner
+
                 write_cube(esp, x)
                 self.assertEqual(apply(), {'FINISHED'})
                 self.assertNotIn('mb_field', surf.data.attributes)

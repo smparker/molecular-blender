@@ -6,28 +6,9 @@ import bpy
 from bpy.props import StringProperty
 from bpy_extras.io_utils import ExportHelper
 
-from .scene_edit import _surface_output
-from .scene_esp import field_map_settings
+from .scene_esp import field_map_settings, scale_nodes
 from .scene_state import read_record, resolve_owner
 from .scene_surfaces import surface_groups
-
-
-def _ramp_and_limits(material):
-    # Follow links so renaming nodes or adding an unrelated ramp does not change the legend.
-    shader = _surface_output(material).inputs['Surface'].links[0].from_node
-    if shader.type == 'MIX_SHADER' and shader.inputs[2].is_linked:
-        shader = shader.inputs[2].links[0].from_node  # The mapped surface's opacity wrapper.
-    if shader.type != 'BSDF_PRINCIPLED' or not shader.inputs['Base Color'].is_linked:
-        raise ValueError('The mapped surface must use a Principled shader with a connected Base Color')
-    ramp = shader.inputs['Base Color'].links[0].from_node
-    if ramp.type == 'VALTORGB' and ramp.inputs['Fac'].is_linked:
-        scale = ramp.inputs['Fac'].links[0].from_node
-        if scale.type == 'MAP_RANGE' and scale.data_type == 'FLOAT' and scale.interpolation_type == 'LINEAR':
-            bounds = [scale.inputs[key] for key in ('From Min', 'From Max', 'To Min', 'To Max')]
-            low, high, start, end = (socket.default_value for socket in bounds)
-            if not any(socket.is_linked for socket in bounds) and low < high and (start, end) == (0., 1.):
-                return ramp.color_ramp, low, high
-    raise ValueError('Legend needs a Color Ramp connected to Base Color with a linear Map Range from 0 to 1')
 
 
 def _svg_color(rgba):
@@ -41,7 +22,9 @@ def write_field_legend(material, path):
     settings = field_map_settings(material)
     if not settings or not material.use_nodes:
         raise ValueError('Choose a surface with a field map')
-    ramp, low, high = _ramp_and_limits(material)
+    node, scale = scale_nodes(material)
+    ramp = node.color_ramp
+    low, high = (scale.inputs[key].default_value for key in ('From Min', 'From Max'))
     title = f"{settings['label']} ({settings['units']})"
     width = max(360, 40 + 13 * len(title))
     left, right = 24, width - 24

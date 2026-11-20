@@ -615,6 +615,11 @@ or origin, and must cover the whole density surface. The add-on interpolates
 the supplied values onto the displayed vertices after remeshing and saves
 them as a point attribute (`mb_esp` for ESP or `mb_field` for a custom field).
 The material's Color Ramp is editable in the Shader Editor.
+Use **Edit Color Scale…** on a mapped surface to adjust its limits, colors
+and ramp stops. To match another panel, choose it under **Copy scale from**
+and confirm. The picker includes maps in the same scene with matching units
+and signed or unsigned ranges. The edit uses the saved mesh values and works
+after the source files move. A stop at zero follows zero when the limits change.
 **Change Field Map…** reopens the file, field and range settings.
 **Remove Map** restores the original geometry, material, and Remesh settings.
 
