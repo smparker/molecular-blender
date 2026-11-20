@@ -43,6 +43,7 @@ ctypedef np.float32_t DTYPE_t
 DEF CYDEBUG = False
 
 from .constants import ang2bohr
+from .compute_ao_py import higher_shell_log_bound
 from .containing_isovalues import isovalue_containing_proportion
 
 molden_shorder = [[""],
@@ -80,6 +81,8 @@ cdef class Shell:
     cdef public object denormed_coeffs
     cdef public float mxx
     cdef public float most_diffuse
+    cdef double log_envelope
+    cdef public float screen_log_weight
     cdef public float logthr
     cdef public float mxnorm
 
@@ -111,11 +114,14 @@ cdef class Shell:
         cdef int imin = np.argmin(self.exponents)
         self.mxx = mxx  # save max x just for use later
         self.most_diffuse = np.min(self.exponents)
-        self.logthr = np.log(thr * mxx**self.l, dtype=DTYPE)
         self.mxnorm = np.max(self.norms[:, imin]) * abs(self.prim_coeffs[imin])
-
-        self.logthr -= np.log(self.mxnorm)
-        self.logthr /= -self.most_diffuse
+        if l >= 3:
+            self.log_envelope = higher_shell_log_bound(l, self.most_diffuse, self.denormed_coeffs)
+            self.screen_log_weight = 2.0 / self.most_diffuse
+            self.logthr = self.screen_log_weight * (self.log_envelope - math.log(thr))
+        else:
+            self.screen_log_weight = -1.0
+            self.logthr = (np.log(self.mxnorm) - np.log(thr * mxx**self.l, dtype=DTYPE)) / self.most_diffuse
 
     def __norms(self):
         """Returns [nL, nexp] array of norms"""
@@ -141,6 +147,9 @@ cdef class Shell:
     def bounding_box_size(self, thr, logmxcoeff=0.0):
         """Returns half the edgelength of a box outside of which the shell
         is guaranteed to be below the given threshold"""
+        if self.l >= 3:
+            rr = self.screen_log_weight * (self.log_envelope + logmxcoeff - math.log(thr))
+            return math.sqrt(max(0.0, rr))
         xx = (self.l + 1) * (np.log(self.mxx) - np.log(thr / self.mxnorm) + logmxcoeff) / self.most_diffuse
         if xx < 0:
             return 0.0
@@ -164,7 +173,7 @@ cdef class Shell:
         cdef float sqrt_35_3 = sqrt(35.0/3.0)
         cdef float sqrt_35_1 = sqrt(35.0/1.0)
 
-        cdef float logthresh = self.logthr - logmxcoeff
+        cdef float logthresh = self.logthr + self.screen_log_weight * logmxcoeff
 
         cdef int nexp = len(self.exponents)
         cdef int l = self.l
@@ -246,7 +255,7 @@ cdef class Shell:
         cdef float Y = self.Y
         cdef float Z = self.Z
 
-        cdef float logthresh = self.logthr - logmxcoeff
+        cdef float logthresh = self.logthr + self.screen_log_weight * logmxcoeff
 
         cdef int nx = len(xx)
         cdef int ny = len(yy)
@@ -370,7 +379,7 @@ cdef class Shell:
         cdef float y = self.Y
         cdef float z = self.Z
 
-        cdef float logthresh = self.logthr - logmxcoeff
+        cdef float logthresh = self.logthr + self.screen_log_weight * logmxcoeff
 
         cdef int nx = len(xx)
         cdef int ny = len(yy)
@@ -503,6 +512,7 @@ ctypedef struct CShell:
     float mxx
     float most_diffuse
     float logthr
+    float screen_log_weight
     float mxnorm
 
 @cython.boundscheck(CYDEBUG)
@@ -520,7 +530,7 @@ cdef void add_box_values(CShell* shell,
     cdef float Y = shell.Y
     cdef float Z = shell.Z
 
-    cdef float logthresh = shell.logthr - logmxcoeff
+    cdef float logthresh = shell.logthr + shell.screen_log_weight * logmxcoeff
 
     cdef int ix
     cdef int iy
@@ -690,7 +700,7 @@ cdef bint compute_chi_box_shell(CShell* shell,
     cdef float Y = shell.Y
     cdef float Z = shell.Z
 
-    cdef float logthresh = shell.logthr - logmxcoeff
+    cdef float logthresh = shell.logthr + shell.screen_log_weight * logmxcoeff
 
     cdef int ix
     cdef int iy
@@ -881,6 +891,7 @@ cdef class OrbitalCalculater:
             self.cshells[ish].denormed_coeffs = &sh_denormed_coeffs[0]
             self.cshells[ish].mxx = sh.mxx
             self.cshells[ish].most_diffuse = sh.most_diffuse
+            self.cshells[ish].screen_log_weight = sh.screen_log_weight
             self.cshells[ish].logthr = sh.logthr
             self.cshells[ish].mxnorm = sh.mxnorm
 
@@ -1025,6 +1036,7 @@ cdef class DensityCalculater:
             self.cshells[ish].denormed_coeffs = &sh_denormed_coeffs[0]
             self.cshells[ish].mxx = sh.mxx
             self.cshells[ish].most_diffuse = sh.most_diffuse
+            self.cshells[ish].screen_log_weight = sh.screen_log_weight
             self.cshells[ish].logthr = sh.logthr
             self.cshells[ish].mxnorm = sh.mxnorm
 
@@ -1135,7 +1147,7 @@ cdef class DensityCalculater:
             X = self.cshells[ish].X
             Y = self.cshells[ish].Y
             Z = self.cshells[ish].Z
-            logthresh = self.cshells[ish].logthr - logmxorb[ish]
+            logthresh = self.cshells[ish].logthr + self.cshells[ish].screen_log_weight * logmxorb[ish]
 
             x0 = xvals[0] - X; x1 = xvals[nx-1] - X
             y0 = yvals[0] - Y; y1 = yvals[ny-1] - Y

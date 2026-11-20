@@ -100,6 +100,20 @@ def plane_polynomial_g(XX, YY, Z):
             ZZ*ZZ*ZZ*XX*np.sqrt(35/5), ZZ*ZZ*ZZ*YY*np.sqrt(35/5), XX*XX*YY*YY*np.sqrt(35/3), XX*XX*ZZ*ZZ*np.sqrt(35/3), YY*YY*ZZ*ZZ*np.sqrt(35/3),
             XX*XX*YY*ZZ*np.sqrt(35), YY*YY*XX*ZZ*np.sqrt(35), ZZ*ZZ*XX*YY*np.sqrt(35)])
 
+def higher_shell_log_bound(l, exponent, radial_coeffs):
+    """Log prefactor B such that the f/g shell is bounded by B exp(-a r²/2)
+    for unit-bounded MO coefficients and smallest primitive exponent a.
+    """
+    # Bound each Cartesian monomial by r^l and sum the absolute radial
+    # coefficients.  The largest angular multipliers are sqrt(15) and sqrt(35).
+    angular_sum = 10 * math.sqrt(15) if l == 3 else 15 * math.sqrt(35)
+    prefactor = angular_sum * np.sum(np.abs(radial_coeffs), dtype=np.float64)
+    if prefactor == 0:
+        return -math.inf
+    # max_r r^l exp(-a r²/2) = (l / (e a))^(l/2).
+    return math.log(prefactor) + (l / 2) * (math.log(l / exponent) - 1)
+
+
 class Shell(object):
     """Container for shell data"""
 
@@ -125,11 +139,14 @@ class Shell(object):
         imin = np.argmin(self.exponents)
         self.mxx = mxx  # save max x just for use later
         self.diffuse = np.min(self.exponents)
-        self.logthr = np.log(thr * mxx**self.l)
         self.mxnorm = np.max(self.norms[:, imin]) * abs(self.coeff[imin])
-
-        self.logthr -= np.log(self.mxnorm)
-        self.logthr /= -self.diffuse
+        if l >= 3:
+            self.log_envelope = higher_shell_log_bound(l, self.diffuse, self.denormedcoeffs)
+            self.screen_log_weight = 2.0 / self.diffuse
+            self.logthr = self.screen_log_weight * (self.log_envelope - math.log(thr))
+        else:
+            self.screen_log_weight = -1.0
+            self.logthr = (np.log(self.mxnorm) - np.log(thr * mxx**self.l)) / self.diffuse
 
     shorder = [[""],
                ["x", "y", "z"],
@@ -164,6 +181,9 @@ class Shell(object):
     def bounding_box_size(self, thr, logmxcoeff=0.0):
         """Returns half the edgelength of a box outside of which the shell
         is guaranteed to be below the given threshold"""
+        if self.l >= 3:
+            rr = self.screen_log_weight * (self.log_envelope + logmxcoeff - math.log(thr))
+            return math.sqrt(max(0.0, rr))
         xx = (self.l + 1) * (np.log(self.mxx) - np.log(thr / self.mxnorm) + logmxcoeff) / self.diffuse
         if xx < 0:
             return 0.0
@@ -176,7 +196,7 @@ class Shell(object):
         pz = z - self.Z
         rr = px * px + py * py + pz * pz
 
-        if rr < self.logthr - logmxcoeff:
+        if rr < self.logthr + self.screen_log_weight * logmxcoeff:
             radial = np.dot(np.exp(-1.0 * rr * self.exponents), self.denormedcoeffs)
             return radial * self.polynomial(px, py, pz)
 
@@ -196,7 +216,7 @@ class Shell(object):
         pz  = z_a - self.Z
 
         rr = pxx*pxx + pyy*pyy + pz * pz
-        included = rr < self.logthr - logmxcoeff
+        included = rr < self.logthr + self.screen_log_weight * logmxcoeff
         if np.any(included):
             # Memory-efficient vectorized computation
             exp_terms = np.exp(-1.0 * rr.reshape(-1, 1) * self.exponents)
