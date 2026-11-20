@@ -643,19 +643,17 @@ def AnimateMolecule(context, molecule, options):
     if all([atom.name == '' for atom in molecule.atoms]):
         raise Exception(
             "No names found for any atom in Molecule. Was PlotMolecule or PlotAtoms called?")
+    for item in context.selected_objects:
+        item.select_set(False)
     for atom in filter(lambda x: x.name != '', molecule.atoms):
-        if atom.name not in bpy.data.objects.keys():
+        atom_obj = bpy.data.objects.get(atom.name)
+        if atom_obj is None:
             raise Exception(
                 "Atom " + atom.name + " not found. Was PlotMolecule or PlotAtoms called properly?")
 
         if atom.hidden:
             continue
 
-        # deselect everything for good measure
-        for item in context.selectable_objects:
-            item.select_set(False)
-
-        atom_obj = bpy.data.objects[atom.name]
         pluscharge = bpy.data.objects[atom.plus_charge] if (
             options["charges"] != "none") else ""
         negcharge = bpy.data.objects[atom.neg_charge] if (
