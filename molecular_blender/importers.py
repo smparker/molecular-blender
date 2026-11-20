@@ -813,15 +813,18 @@ def _linear_combination(entry, directory, options):
     return result
 
 
-def molecule_from_json(filename, options):
+def molecule_from_json(filename, options, *, single_combination=False):
     """Read one structure per manifest entry, with zero-based timeline indices."""
     with open(filename) as source:
         data = json.load(source)
     if not isinstance(data, dict):
         raise ValueError("Expected a JSON object in " + os.fspath(filename))
+    entries = data.get("molecules")
+    if single_combination and not (isinstance(entries, list) and len(entries) == 1
+            and isinstance(entries[0], dict) and "linear_combination" in entries[0]):
+        raise ValueError(f"{filename}: field mapping needs one linear_combination entry in molecules")
     if "molecules" not in data:
         return None  # Historical direct reader API.
-    entries = data["molecules"]
     if not isinstance(entries, list) or not entries:
         raise ValueError("Expected a nonempty molecules list in " + os.fspath(filename))
 

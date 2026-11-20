@@ -1,4 +1,5 @@
 """ESP mapping in source coordinates on the final displayed density geometry."""
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -149,6 +150,31 @@ class TestMappedDensity(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, 'units'):
                         bpy.ops.molecular_blender.map_esp(**dict(args, field_units=''))
                     self.assertEqual(surf.data, old_data)
+                manifest = root / 'induced.json'
+                shifted = root / 'polarized.cube'
+                write_cube(shifted, x + 2.)
+                write_cube(esp, np.full(x.shape, 2.))
+                entry = dict(units='e/bohr³', linear_combination=[
+                    dict(filename=shifted.name, coefficient=1.), dict(filename=esp.name, coefficient=-1.)])
+                manifest.write_text(json.dumps(dict(molecules=[entry])))
+                def map_difference():
+                    return bpy.ops.molecular_blender.map_esp(group=key, filepath=str(manifest),
+                        field_label='Induced density', minimum=-2., maximum=1.)
+                self.assertEqual(map_difference(), {'FINISHED'})
+                np.testing.assert_allclose([p.value for p in surf.data.attributes['mb_field'].data],
+                                           [v.co.x for v in surf.data.vertices], atol=1.e-6)
+                info = field_map_settings(surf.active_material)
+                self.assertEqual((info['kind'], info['units'], info['dataset'], info['path']),
+                                 ('signed', 'e/bohr³', 0, str(manifest)))
+                legend = root / 'induced.svg'
+                bpy.ops.molecular_blender.export_field_legend(group=key, filepath=str(legend))
+                self.assertIn('Induced density (e/bohr³)', legend.read_text())
+                mapped = surf.data
+                for invalid in ([entry, entry], [dict(filename=shifted.name)]):
+                    manifest.write_text(json.dumps(dict(molecules=invalid)))
+                    with self.assertRaisesRegex(RuntimeError, 'one linear_combination'):
+                        map_difference()
+                    self.assertEqual(surf.data, mapped)
                 write_cube(esp, x)
                 self.assertEqual(apply(), {'FINISHED'})
                 self.assertNotIn('mb_field', surf.data.attributes)

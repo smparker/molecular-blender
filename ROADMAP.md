@@ -38,6 +38,7 @@ External potential cubes can color single-frame density surfaces. [Sampling](mol
 
 - [x] **Map supplied ESP grids.** Sample a selected cube dataset on the final displayed density mesh, with atom alignment and coverage checks. Save per-vertex values, declared potential units, editable diverging colors and explicit limits. Removing the map restores the original surface.
 - [x] **Generalize field-mapped materials.** Single-frame density surfaces support signed and unsigned scalar cubes with named fields, explicit units and editable color ramps.
+- [x] **Map JSON field combinations.** Map a single weighted combination of cube datasets directly onto a density mesh using the manifest’s units and a signed color ramp.
 - [x] **Export a field legend for compositing.** Save an SVG with the mapped material’s field name, units, edited Color Ramp, limits and signed zero tick.
 
 - [ ] **Implement a wavefunction ESP evaluator.** In atomic units, evaluate `V(r) = Σ_A Z_A / |r-R_A| - ∫ ρ(r') / |r-r'| dr'`. Reuse the AO density matrix, but add the electron–point Coulomb integrals; existing pointwise density evaluation does not supply this integral. Compare a native Gaussian-integral backend with an optional external calculation path. [PySCF's MEP example](https://github.com/pyscf/pyscf/blob/master/examples/1-advanced/031-MEP.py) is a useful implementation/reference calculation.

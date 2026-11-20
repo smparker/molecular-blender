@@ -364,7 +364,7 @@ class MB_PT_molecule(bpy.types.Panel):
                 if density_group(group):
                     controls = entry.row(align=True)
                     controls.operator('molecular_blender.map_esp',
-                                      text='Change Field Map…' if mapped else 'Map Field Cube…').group = key
+                                      text='Change Field Map…' if mapped else 'Map Field…').group = key
                     if mapped:
                         controls.operator('molecular_blender.clear_esp', text='Remove Map').group = key
                 entry.prop(group['objects'][0], 'mb_surface_opacity', text='Opacity', slider=True)

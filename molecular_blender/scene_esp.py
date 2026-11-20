@@ -7,7 +7,8 @@ import numpy as np
 from bpy.props import EnumProperty, FloatProperty, IntProperty, StringProperty
 
 from .esp import sample_cube
-from .importers import file_format, molecule_from_cube
+from .import_dialog import browser_path
+from .importers import file_format, molecule_from_cube, molecule_from_json
 from .scene_edit import _set_opacity
 from .scene_state import read_record, resolve_owner
 from .scene_surfaces import surface_groups, surface_opacity
@@ -115,10 +116,17 @@ def _discard_unused(meshes, materials):
             bpy.data.materials.remove(mat)
 
 
-def map_esp(context, record, group, path, dataset, units, low, high, *, kind='esp', label='ESP'):
+def map_esp(context, record, group, path, dataset, units, low, high, *, kind='esp', label=None):
     if not density_group(group):
         raise ValueError('Select a single-frame density surface')
-    if kind not in ('esp', 'signed', 'unsigned') or not label.strip() or not units.strip():
+    source_format = file_format(path)
+    if source_format == 'json':
+        kind, dataset = 'signed', 0
+    elif source_format != 'cube':
+        raise ValueError('Choose a field cube or a JSON linear combination')
+    if label is None:
+        label = 'Linear combination' if source_format == 'json' else 'ESP'
+    if kind not in ('esp', 'signed', 'unsigned') or not label.strip() or (source_format == 'cube' and not units.strip()):
         raise ValueError('Choose a field type and enter its name and scalar units')
     if not (math.isfinite(low) and math.isfinite(high) and low < high):
         raise ValueError('Color limits must be finite and increase from minimum to maximum')
@@ -126,9 +134,11 @@ def map_esp(context, record, group, path, dataset, units, low, high, *, kind='es
         raise ValueError('The minimum for an unsigned field must be nonnegative')
     if kind != 'unsigned' and not low < 0 < high:
         raise ValueError('Signed color limits must span zero')
-    if file_format(path) != 'cube':
-        raise ValueError('Choose a cube containing the scalar field')
-    cube = molecule_from_cube(path, {'cube_dataset': dataset})
+    if source_format == 'json':
+        cube = molecule_from_json(path, {}, single_combination=True)
+        units = cube['volume']['units']
+    else:
+        cube = molecule_from_cube(path, {'cube_dataset': dataset})
     if ([atom['symbol'] for atom in cube['atoms']] != [a['element'] for a in record['atoms']]
             or not np.allclose([a['position'] for a in cube['atoms']], [a['position'] for a in record['atoms']],
                                atol=1e-4, rtol=0)):
@@ -204,12 +214,12 @@ def clear_esp(group):
 
 class MB_OT_map_esp(bpy.types.Operator):
     bl_idname = 'molecular_blender.map_esp'
-    bl_label = 'Map Field Cube onto Density'
-    bl_description = 'Color a density surface from an ESP or other scalar cube in the same coordinates'
+    bl_label = 'Map Field onto Density'
+    bl_description = 'Color a density surface with a cube or a JSON linear combination of cubes'
     bl_options = {'UNDO'}
     group: StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
     filepath: StringProperty(subtype='FILE_PATH', options={'SKIP_SAVE'})
-    filter_glob: StringProperty(default='*.cube;*.cub', options={'HIDDEN'})
+    filter_glob: StringProperty(default='*.cube;*.cub;*.json', options={'HIDDEN'})
     dataset: IntProperty(name='Cube dataset index', default=0, min=0)
 
     def _update_kind(self, context):
@@ -250,9 +260,13 @@ class MB_OT_map_esp(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
     def draw(self, context):
-        self.layout.prop(self, 'field_kind')
-        self.layout.prop(self, 'dataset')
-        fields = ('units',) if self.field_kind == 'esp' else ('field_label', 'field_units')
+        if file_format(browser_path(self, context)) == 'json':
+            self.layout.label(text='Signed field · units and datasets from JSON')
+            fields = ('field_label',)
+        else:
+            self.layout.prop(self, 'field_kind')
+            self.layout.prop(self, 'dataset')
+            fields = ('units',) if self.field_kind == 'esp' else ('field_label', 'field_units')
         for key in (*fields, 'minimum', 'maximum'):
             self.layout.prop(self, key)
 
@@ -264,7 +278,7 @@ class MB_OT_map_esp(bpy.types.Operator):
             record = read_record(owner)
             group = surface_groups(owner, record)[self.group]
             path = os.path.abspath(bpy.path.abspath(self.filepath))
-            esp = self.field_kind == 'esp'
+            esp = file_format(path) != 'json' and self.field_kind == 'esp'
             units = self.units if esp else self.field_units.strip()
             label = 'ESP' if esp else self.field_label.strip()
             map_esp(context, record, group, path, self.dataset, units, self.minimum, self.maximum,

@@ -584,10 +584,10 @@ visible until its length exceeds the formation cutoff by the chosen percentage.
 The default is 5%. Set `bond_break_margin=0` for a single cutoff. The rule is
 evaluated on the sampled snapshots and applies only to distance-inferred bonds.
 
-### Color a density surface with a field cube
+### Color a density surface with a cube or a JSON field combination
 
 Import a density cube or add a **Total**, **Alpha**, or **Beta Density** surface
-to a Molden molecule. In **Molecule → Surfaces**, choose **Map Field Cube…** on
+to a Molden molecule. In **Molecule → Surfaces**, choose **Map Field…** on
 the single-frame density surface. Select the cube, dataset and color limits.
 Use **Electrostatic Potential** for an ESP cube in Hartree/e or volts. For other
 quantities, enter a field name and units (`1` for dimensionless values).
@@ -595,6 +595,13 @@ quantities, enter a field name and units (`1` for dimensionless values).
 for positive values. **Unsigned Field** runs from white at the lower limit to
 blue at the upper limit. Use the same units and limits across figures.
 Use Material Preview or Rendered shading to see the colors.
+
+To map induced density, select a JSON file containing one `linear_combination`
+entry, such as the [polarized-minus-reference example](#combine-cube-fields-in-json).
+Enter a field name and color limits spanning zero. The map uses the term
+datasets, weights, resampling setting and units from the manifest. Its first
+cube supplies the atom coordinates and sampling grid. **Export Legend…** uses
+the field name and manifest units.
 
 The field cube must list the same atoms in the same order and source
 positions (within 0.0001 Å). Its grid can have different spacing, orientation,
