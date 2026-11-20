@@ -7,7 +7,7 @@ import stat
 
 import bpy
 
-from .importers import cube_dataset_labels, file_format
+from .importers import cube_dataset_labels, file_format, preview_molden_convention
 
 MAX_DATASET_MENU = 256
 
@@ -116,15 +116,18 @@ def get_dataset_choice(op):
 
 
 def draw_surfaces(layout, op, context):
-    kind, labels = surface_source(browser_path(op, context), op.frame_start)
+    path = browser_path(op, context)
+    kind, labels = surface_source(path, op.frame_start)
     if kind not in ('molden', 'cube'):
         return
     box = layout.box()
     box.label(text='Surfaces')
-    draw_surface_controls(box, op, kind, labels)
+    if kind == 'molden' and file_format(path) == 'json':
+        _, path = _preview(_manifest_source, path, op.frame_start)
+    draw_surface_controls(box, op, kind, labels, path)
 
 
-def draw_surface_controls(box, op, kind, labels=None):
+def draw_surface_controls(box, op, kind, labels=None, path=None):
     if kind == 'molden':
         box.prop(op, 'volume')
         if op.volume == 'orbital':
@@ -151,7 +154,11 @@ def draw_surface_controls(box, op, kind, labels=None):
              emboss=False)
     if op.surface_advanced:
         if kind == 'molden':
-            box.prop(op, 'orca_fix')
+            box.prop(op, 'molden_convention')
+            if op.molden_convention == 'auto' and path:
+                convention = _preview(preview_molden_convention, path)
+                label = {'orca': 'ORCA', 'standard': 'Standard Molden'}.get(convention)
+                box.label(text='Auto uses ' + label if label else 'Auto uses standard Molden unless the title identifies ORCA')
         else:
             box.prop(op, 'cube_both_signs')
         box.prop(op, 'remesh')

@@ -26,10 +26,16 @@ class MoldenSurfaceProperties:
         description="Set isovalues so they contain given proportion of the total density",
         default=True)
 
-    orca_fix: BoolProperty(
-            name="Orca molden fix",
-            description="Fix for orca molden files with incorrect AO norms",
-            default=False)
+    molden_convention: EnumProperty(
+        name="Molden convention", default='auto',
+        items=(('auto', 'Auto', 'Use ORCA for an orca_2mkl producer title, otherwise standard Molden'),
+               ('standard', 'Standard Molden', 'Use standard Molden normalization and phases'),
+               ('orca', 'ORCA', 'Use orca_2mkl normalization and phases')))
+
+    # Existing Blender scripts and presets can still explicitly select either convention.
+    orca_fix: BoolProperty(options={'HIDDEN'},
+        get=lambda op: op.molden_convention == 'orca',
+        set=lambda op, value: setattr(op, 'molden_convention', 'orca' if value else 'standard'))
 
     volume: EnumProperty(
         name="Field",

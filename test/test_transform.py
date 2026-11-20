@@ -67,7 +67,7 @@ class TestGetSphToCart(unittest.TestCase):
         from molecular_blender.orbitals import MOData
         directory = Path(__file__).parent / 'fixtures' / 'orca_water_fg'
         samples = np.loadtxt(directory / 'mo-values.dat')
-        model = MOData.from_dict(molecule_from_molden(directory / 'water.molden', {'orca_fix': True}))
+        model = MOData.from_dict(molecule_from_molden(directory / 'water.molden', {}))
         axis = np.linspace(-3., 3., 13, dtype=np.float32)
         indices = tuple(((samples[:, :3] + 3) * 2).astype(int).T)
         for number, reference in enumerate(samples[:, 3:].T, 1):

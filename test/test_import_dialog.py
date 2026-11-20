@@ -37,6 +37,7 @@ class TestAdaptiveImport(unittest.TestCase):
         self.context.active_file = SimpleNamespace(relative_path=filename, name=Path(filename).name)
         box = Mock()
         self.ui.draw_surfaces(SimpleNamespace(box=lambda: box), self.op, self.context)
+        self.labels = [call.kwargs['text'] for call in box.label.call_args_list]
         return {call.args[1] for call in box.prop.call_args_list}
 
     def test_molden_fields_follow_selection(self):
@@ -55,9 +56,21 @@ class TestAdaptiveImport(unittest.TestCase):
             self.assertIn('resolution', props)
             self.assertFalse(props & {'orbital', 'orbital_choice', 'orbital_spin'})
         self.op.surface_advanced = True
-        self.assertIn('orca_fix', self.visible('wave.molden'))
+        self.assertIn('molden_convention', self.visible('wave.molden'))
         for name in ('atoms.XYZ', 'mol.SD', 'mol.sdf', 'mol.mol', ''):
             self.assertFalse(self.visible(name))
+
+    def test_orca_title_preview_including_manifest(self):
+        self.op.surface_advanced = True
+        source = self.folder / 'wave.molden'
+        source.write_text('[Molden Format]\n[Title]\n Molden file created by orca_2mkl for BaseName=test\n[Atoms] AU\n')
+        (self.folder / 'trajectory.json').write_text(json.dumps({'molecules': [{'filename': source.name}]}))
+        for name in (source.name, 'trajectory.json'):
+            self.visible(name)
+            self.assertIn('Auto uses ORCA', self.labels)
+        self.op.molden_convention = 'standard'
+        self.visible(source.name)
+        self.assertNotIn('Auto uses ORCA', self.labels)
 
     def test_cube_and_manifest_previews_track_both_files(self):
         cube = self.folder / 'fields.cub'
@@ -69,7 +82,7 @@ class TestAdaptiveImport(unittest.TestCase):
             props = self.visible(manifest.name)
             self.assertIn('dataset_choice', props)
             self.assertIn('cube_field_type', props)
-            self.assertFalse(props & {'volume', 'orbital', 'resolution', 'orca_fix'})
+            self.assertFalse(props & {'volume', 'orbital', 'resolution', 'molden_convention'})
             items = self.ui.dataset_items(self.op, self.context)
             self.assertEqual([item[1] for item in items], ['Dataset 1 (ID 7)', 'Dataset 2 (ID 23)'])
             self.op.cumulative = False

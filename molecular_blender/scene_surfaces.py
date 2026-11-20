@@ -7,7 +7,7 @@ from bpy.props import StringProperty
 from . import import_dialog
 from .importers import FORMAT_SUFFIXES, file_format
 from .molecule import Atom, Molecule
-from .options import validated_options
+from .options import molden_convention, validated_options
 from .plotter import create_geometry, create_surface_mesh_data, field_weld_distance, process_options
 from .scene_edit import _set_color, _set_opacity, _surface_output
 from .scene_state import ID, new_id, surface_sampling, owned_objects, read_record, resolve_owner, write_record
@@ -360,7 +360,7 @@ class MB_OT_add_surface(MoldenSurfaceProperties, SurfaceJobOperator, bpy.types.O
     bl_options = {'UNDO'}
 
     _settings_names = ('volume', 'orbital', 'orbital_spin', 'cumulative', 'isovalues',
-                       'resolution', 'remesh', 'orca_fix')
+                       'resolution', 'remesh', 'molden_convention')
 
     def invoke(self, context, event):
         self._target = resolve_owner(context.object)
@@ -373,7 +373,9 @@ class MB_OT_add_surface(MoldenSurfaceProperties, SurfaceJobOperator, bpy.types.O
         return context.window_manager.invoke_props_dialog(self, width=350)
 
     def draw(self, context):
-        import_dialog.draw_surface_controls(self.layout, self, 'molden')
+        owner = resolve_owner(context.object)
+        path = read_record(owner)['source'] if owner and self.surface_advanced else None
+        import_dialog.draw_surface_controls(self.layout, self, 'molden', path=path)
 
     def execute(self, context):
         try:
@@ -382,6 +384,8 @@ class MB_OT_add_surface(MoldenSurfaceProperties, SurfaceJobOperator, bpy.types.O
                 raise ValueError('Select a Molden molecule')
             record = read_record(owner)
             overrides = {name: getattr(self, name) for name in self._settings_names}
+            if not self.properties.is_property_set('molden_convention') and not self.properties.is_property_set('orca_fix'):
+                overrides['molden_convention'] = record['settings']['molden_convention']
             return start_molden_job(self, context, owner, record, overrides)
         except (KeyError, ValueError) as exc:
             self.report({'ERROR'}, str(exc))
@@ -402,8 +406,8 @@ def recompute_settings(record, group):
     signed = field not in DENSITY_LABELS or field == 'spin'
     sampling = group['sampling'] or dict(cumulative=False, isovalues=', '.join(
         str(x) for x in sorted({abs(v) if signed else v for v in group['levels']})),
-        resolution=record['settings']['resolution'], orca_fix=record['settings']['orca_fix'])
-    return dict(sampling, volume=field if field in DENSITY_LABELS else 'orbital',
+        resolution=record['settings']['resolution'], molden_convention=molden_convention(record['settings']))
+    return dict(sampling, molden_convention=molden_convention(sampling), volume=field if field in DENSITY_LABELS else 'orbital',
                 orbital=field if field not in DENSITY_LABELS else 'homo', orbital_spin=group['spin'])
 
 

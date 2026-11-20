@@ -319,7 +319,7 @@ if _HAS_BPY:
                 orbital_spin=self.orbital_spin,
                 resolution=self.resolution,
                 remesh=self.remesh,
-                orca_fix=self.orca_fix,
+                molden_convention=self.molden_convention,
                 colors=self.colors,
             )
 

@@ -13,7 +13,7 @@ import uuid
 import bpy
 from bpy.app.handlers import persistent
 
-from .options import validated_options
+from .options import molden_convention, validated_options
 
 RECORD = 'mb_molecule'
 ROLE = 'mb_role'
@@ -124,6 +124,8 @@ def persist_molecule(molecule, source, settings):
                   atoms=atoms, bonds=bonds, surfaces=[], orbitals=orbital_metadata(molecule.orbitals),
                   fields=(dict(datasets=list(molecule.volume.labels), field_type=molecule.volume.field_type)
                           if molecule.volume is not None else None))
+    if 'molden_convention' in molecule.surface_input:
+        record['molden_convention'] = molecule.surface_input['molden_convention']
     if molecule.volume is not None:
         for key in ("units", "linear_combination", "resample"):
             value = getattr(molecule.volume, key)
@@ -160,7 +162,7 @@ def surface_sampling(options):
         levels = sorted({abs(level) for level in levels})
     return dict(isovalues=', '.join(str(level) for level in levels),
                 cumulative=options['cumulative'], resolution=options['resolution'],
-                orca_fix=options.get('orca_fix', False))
+                molden_convention=molden_convention(options))
 
 
 def persist_surfaces(owner, definitions, options):

@@ -31,7 +31,7 @@ import json
 import os
 import sys
 
-from .options import trajectory_range
+from .options import molden_convention, trajectory_range
 from .esp import add_resampled_cube
 from .util import stopwatch
 from .periodictable import elements, symbols
@@ -304,6 +304,30 @@ MO_RE = re.compile(r"\[\s*mo\s*\]", flags=re.IGNORECASE)
 NEWSECTION_RE = re.compile(r"\s*\[")
 
 
+TITLE_RE = re.compile(r"^\s*\[\s*title\s*\]\s*$", re.I)
+ORCA_TITLE_RE = re.compile(r"^\s*Molden\s+file\s+created\s+by\s+orca_2mkl\b", re.I)
+
+
+def convention_from_title(lines):
+    for line in lines:
+        if NEWSECTION_RE.match(line):
+            break
+        if ORCA_TITLE_RE.match(line):
+            return 'orca'
+    return 'standard'
+
+
+def preview_molden_convention(path):
+    """Inspect only the preamble in the file browser. Later titles resolve on import."""
+    with open(path) as stream:
+        for line in islice(stream, 80):
+            if TITLE_RE.match(line):
+                return convention_from_title(stream)
+            if ATOMS_RE.match(line) or GTO_RE.match(line) or MO_RE.match(line):
+                break
+    return None
+
+
 def molden_read_atoms(f, ignore_h=False, animate=False):
     """reads [Atoms] section of molden files"""
     out = []
@@ -548,9 +572,9 @@ def molecule_from_molden(filename, _options):
     ignore_h = _options.get("ignore_hydrogen", False)
     animate = _options.get("plot_type", "") == "animate"
     out = {"atoms": []}
-    out["denorm"] = not _options.get("orca_fix", False)
+    mode = molden_convention(_options)
 
-    marks = {"molden": MOLDEN_RE,
+    marks = {"molden": MOLDEN_RE, "title": TITLE_RE,
              "atoms": ATOMS_RE,
              "freq": re.compile(r"\[\s*FREQ\s*\]", re.I),
              "fr-coord": re.compile(r"\[\s*FR-COORD\s*\]", re.I),
@@ -581,6 +605,13 @@ def molecule_from_molden(filename, _options):
 
         if not f.is_marked("molden"):
             raise ValueError(f"{filename}: Molden file is missing [Molden Format] specification")
+        if mode == 'auto':
+            mode = 'standard'
+            if f.is_marked('title'):
+                f.restore_mark('title')
+                mode = convention_from_title(f.f)
+        out['molden_convention'] = mode
+        out['denorm'] = mode == 'standard'
         if f.is_marked("atoms"):
             out["atoms"] = molden_read_atoms(f, ignore_h, animate=animate)
         elif not f.is_marked("fr-coord"):

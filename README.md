@@ -657,17 +657,23 @@ framing in the [figure script](examples/render_water_esp.py).
 
 ### Molden normalization by writer
 
-For Molden files written by ORCA 6.1.1 `orca_2mkl`, enable **Orca molden fix**
-in the import options (`orca_fix=True` in Python). This reads the normalization
-already present in the contraction coefficients, including the spherical d-shell
-factor. For spherical f and g shells it also converts ORCA's radial factors and
-the phases of the components with |m| ≥ 3. The
-[ethene calculation](test/fixtures/orca_ethene/ethene.inp) checks a π orbital
-on both lobes and near the node. A [water calculation with f and g polarization
-functions](test/fixtures/orca_water_fg/README.md) checks signed amplitudes
-against ORCA's cubes for all 23 orbitals.
+New imports use **Auto** under **Surfaces → Advanced → Molden convention**.
+A producer title from `orca_2mkl` selects **ORCA**. Other files use **Standard
+Molden**. The Molecule sidebar shows the convention used for the import. For
+files with missing or edited titles, select either convention explicitly. In
+Python use `molden_convention="auto"`, `"standard"`, or `"orca"`. Existing
+scripts and saved scenes using `orca_fix=True` or `False` retain their explicit
+ORCA or standard choice.
 
-For PySCF's spherical Molden export, leave **Orca molden fix** off. A
+The ORCA convention uses the normalization already present in the contraction
+coefficients, including the spherical d-shell factor. For spherical f and g
+shells it also converts ORCA’s radial factors and the phases of components with
+|m| ≥ 3. The [ethene calculation](test/fixtures/orca_ethene/ethene.inp) checks a
+π orbital on both lobes and near the node. The [ORCA 6.1.1 water
+calculation](test/fixtures/orca_water_fg/README.md) checks signed amplitudes for
+all 23 orbitals.
+
+The spherical Molden reference from PySCF uses the standard convention. A
 [PySCF 2.11 water reference](test/fixtures/pyscf_water/generate.py) checks all
 28 signed orbitals and total density at 64 off-axis grid points, including
 contracted d, f and g functions on oxygen. Running the generator with PySCF

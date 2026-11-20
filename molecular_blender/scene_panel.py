@@ -38,7 +38,7 @@ def molecule_summary(obj):
         atom = next((a for a in record['atoms'] if a['id'] == atom_id), None)
     groups = surface_groups(owner, record)
     return dict(owner=owner, source=record['source'], units=record['units'],
-                selected_atom=atom,
+                selected_atom=atom, convention=record.get('molden_convention', settings['molden_convention']),
                 atoms=len(record['atoms']), visible_atoms=len(owned_objects(owner, 'atom')),
                 bonds=len(record['bonds']), surfaces=sum(len(g['objects']) for g in groups.values()),
                 groups=groups,
@@ -279,6 +279,9 @@ class MB_PT_molecule(bpy.types.Panel):
         box = layout.box()
         box.label(text='Source: ' + os.path.basename(summary['source']))
         box.label(text=summary['source'])
+        if file_format(summary['source']) == 'molden' and summary['convention'] in ('orca', 'standard'):
+            label = 'ORCA' if summary['convention'] == 'orca' else 'Standard Molden'
+            box.label(text='Molden convention: ' + label)
         available = os.path.isfile(summary['source'])
         if not available:
             box.label(text='Source unavailable; saved scene remains editable', icon='INFO')

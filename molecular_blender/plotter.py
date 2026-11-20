@@ -951,7 +951,8 @@ def plot_rings(context, molecule, options):
 
 def default_options(options):
     """add defaults to options in case called outside of blender"""
-    from .options import DEFAULTS
+    from .options import DEFAULTS, molden_convention
+    options['molden_convention'] = molden_convention(options)
     for name, value in DEFAULTS.items():
         options.setdefault(name, value)
     return options

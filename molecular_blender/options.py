@@ -41,7 +41,7 @@ DEFAULTS = {"bonds": True,
 
 
 # Additional reader controls also belong to saved settings.
-DEFAULTS.update(orca_fix=False, sdf_record=0, atom_scale=1.0, surface_opacity=1.0)
+DEFAULTS.update(molden_convention="auto", sdf_record=0, atom_scale=1.0, surface_opacity=1.0)
 ENUMS = {
     'hook_atoms': ('auto', 'on', 'off'),
     'plot_style': ('vdw', 'bs', 'fixedbs', 'sticks'),
@@ -52,9 +52,22 @@ ENUMS = {
     'charges': ('none', 'scale'),
     'volume': ('orbital', 'density', 'alpha', 'beta', 'spin'),
     'cube_field_type': ('auto', 'orbital', 'density', 'signed'),
+    'molden_convention': ('auto', 'standard', 'orca'),
     'orbital_spin': ('all', 'alpha', 'beta'),
     'colors': ('default', 'vmd'),
 }
+
+
+def molden_convention(options):
+    """Translate the legacy boolean in scripts and saved scene/surface settings."""
+    if 'orca_fix' in options and not isinstance(options['orca_fix'], bool):
+        raise ValueError('orca_fix must be a boolean')
+    if 'molden_convention' not in options and 'orca_fix' in options:
+        return 'orca' if options['orca_fix'] else 'standard'
+    mode = options.get('molden_convention', 'auto')
+    if mode not in ENUMS['molden_convention']:
+        raise ValueError('molden_convention must be auto, standard, or orca')
+    return mode
 
 
 def trajectory_range(options):
@@ -73,6 +86,8 @@ def validated_options(values):
     Historical Python API defaults are retained independently of UI presets.
     """
     out = dict(DEFAULTS, **values)
+    out['molden_convention'] = molden_convention(values)
+    out.pop('orca_fix', None)
     if 'cube_both_signs' in out and not isinstance(out['cube_both_signs'], bool):
         raise ValueError('cube_both_signs must be a boolean')
     for name, choices in ENUMS.items():

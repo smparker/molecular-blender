@@ -39,6 +39,19 @@ class TestSidebarActions(unittest.TestCase):
         obj.select_set(True)
         bpy.context.view_layer.objects.active = obj
 
+    def test_legacy_surface_convention_survives_recomputing(self):
+        from molecular_blender.scene_state import read_record
+        from molecular_blender.scene_surfaces import recompute_settings
+        from molecular_blender.options import validated_options
+        model = self.molecule()
+        self.assertEqual(read_record(model.scene_owner)['molden_convention'], 'standard')
+        for legacy in (False, True):
+            record = {'settings': validated_options({'orca_fix': not legacy})}
+            group = {'field': 'homo', 'spin': 'all', 'sampling': {'orca_fix': legacy,
+                     'resolution': .1, 'cumulative': False, 'isovalues': '.05'}}
+            opts = validated_options(dict(record['settings'], **recompute_settings(record, group)))
+            self.assertEqual(opts['molden_convention'], 'orca' if legacy else 'standard')
+
     def test_sidebar_add_and_toggle_without_touching_selection_or_other_molecules(self):
         from mathutils import Matrix, Vector
         from molecular_blender.plotter import compute_surface_vertex_sets, create_surface_meshes

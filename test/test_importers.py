@@ -267,6 +267,29 @@ class TestMoldenRead(unittest.TestCase):
         with self.assertRaisesRegex(Exception, "Atoms"):
             molecule_from_molden(f, {})
 
+    def test_molden_convention_uses_only_the_producer_title(self):
+        from molecular_blender.importers import molecule_from_molden
+        from molecular_blender.options import validated_options
+        from pathlib import Path
+        import tempfile
+        header = '[Molden Format]\n'
+        atoms = '[Atoms] AU\nHe 1 2 0 0 0\n'
+        marker = 'Molden file created by orca_2mkl for BaseName=test\n'
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'orca_2mkl.molden'
+            for title, expected in [('[Title]\n' + marker, 'orca'), ('', 'standard'),
+                                    ('[Title]\nAn ORCA comparison\n', 'standard'),
+                                    ('[Comment]\n' + marker, 'standard')]:
+                path.write_text(header + title + atoms)
+                for options, chosen in (({}, expected), ({'molden_convention': 'auto'}, expected),
+                                        ({'molden_convention': 'standard'}, 'standard'),
+                                        ({'molden_convention': 'orca'}, 'orca'),
+                                        ({'orca_fix': False}, 'standard'), ({'orca_fix': True}, 'orca')):
+                    with self.subTest(title=title, options=options):
+                        geo = molecule_from_molden(path, validated_options(options))
+                        self.assertEqual(geo['molden_convention'], chosen)
+                        self.assertEqual(geo['denorm'], chosen == 'standard')
+
     def test_orca_fix(self):
         geo = molecule_from_molden(
             os.path.join(EXAMPLES, "water-sto-3g.molden"),
