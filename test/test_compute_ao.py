@@ -159,10 +159,20 @@ class _TestShellMixin:
         assert sh.size == 6
 
     def test_bounding_box_size_p(self):
-        """Use p shell since l=0 shells give bounding_box_size=0 by formula."""
         sh = self._make_p_shell()
         bb = sh.bounding_box_size(1e-6)
         assert bb > 0
+
+    def test_large_coefficient_preserves_s_p_d_tails(self):
+        for l in range(3):
+            with self.subTest(l=l):
+                shell = self.ao.Shell([0., 0., 0.], l, [.2], [1.], 0, denorm=False)
+                coeff = np.zeros(shell.size, dtype=np.float32)
+                coeff[0] = 64  # first Cartesian term is x^l
+                orbital = self.ao.OrbitalCalculater([shell], coeff)
+                reference = 64 * 9**l * np.exp(-.2 * 9**2)
+                self.assertGreater(reference, 1e-6)
+                np.testing.assert_allclose(orbital.value(9., 0., 0.), reference, rtol=3e-6)
 
 
 class TestShellPy(_TestShellMixin, unittest.TestCase):

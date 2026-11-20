@@ -43,7 +43,7 @@ ctypedef np.float32_t DTYPE_t
 DEF CYDEBUG = False
 
 from .constants import ang2bohr
-from .compute_ao_py import higher_shell_log_bound
+from .compute_ao_py import shell_screening_parameters
 from .containing_isovalues import isovalue_containing_proportion
 
 molden_shorder = [[""],
@@ -115,13 +115,8 @@ cdef class Shell:
         self.mxx = mxx  # save max x just for use later
         self.most_diffuse = np.min(self.exponents)
         self.mxnorm = np.max(self.norms[:, imin]) * abs(self.prim_coeffs[imin])
-        if l >= 3:
-            self.log_envelope = higher_shell_log_bound(l, self.most_diffuse, self.denormed_coeffs)
-            self.screen_log_weight = 2.0 / self.most_diffuse
-            self.logthr = self.screen_log_weight * (self.log_envelope - math.log(thr))
-        else:
-            self.screen_log_weight = -1.0
-            self.logthr = (np.log(self.mxnorm) - np.log(thr * mxx**self.l, dtype=DTYPE)) / self.most_diffuse
+        self.log_envelope, self.screen_log_weight = shell_screening_parameters(l, self.most_diffuse, self.denormed_coeffs)
+        self.logthr = self.screen_log_weight * (self.log_envelope - math.log(thr))
 
     def __norms(self):
         """Returns [nL, nexp] array of norms"""
@@ -147,13 +142,8 @@ cdef class Shell:
     def bounding_box_size(self, thr, logmxcoeff=0.0):
         """Returns half the edgelength of a box outside of which the shell
         is guaranteed to be below the given threshold"""
-        if self.l >= 3:
-            rr = self.screen_log_weight * (self.log_envelope + logmxcoeff - math.log(thr))
-            return math.sqrt(max(0.0, rr))
-        xx = (self.l + 1) * (np.log(self.mxx) - np.log(thr / self.mxnorm) + logmxcoeff) / self.most_diffuse
-        if xx < 0:
-            return 0.0
-        return np.sqrt(xx, dtype=DTYPE)
+        rr = self.screen_log_weight * (self.log_envelope + logmxcoeff - math.log(thr))
+        return math.sqrt(max(0.0, rr))
 
     @cython.boundscheck(CYDEBUG)
     @cython.wraparound(CYDEBUG)

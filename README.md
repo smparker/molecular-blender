@@ -634,7 +634,7 @@ Map Range, including edited colors and limits. A signed scale marks zero at
 its position between the two limits. The SVG uses sRGB swatches for the
 material colors before scene lighting and the render view transform.
 
-### ORCA Molden normalization
+### Molden normalization by writer
 
 For Molden files written by ORCA 6.1.1 `orca_2mkl`, enable **Orca molden fix**
 in the import options (`orca_fix=True` in Python). This reads the normalization
@@ -645,3 +645,9 @@ the phases of the components with |m| ≥ 3. The
 on both lobes and near the node. A [water calculation with f and g polarization
 functions](test/fixtures/orca_water_fg/README.md) checks signed amplitudes
 against ORCA's cubes for all 23 orbitals.
+
+For PySCF's spherical Molden export, leave **Orca molden fix** off. A
+[PySCF 2.11 water reference](test/fixtures/pyscf_water/generate.py) checks all
+28 signed orbitals and total density at 64 off-axis grid points, including
+contracted d, f and g functions on oxygen. Running the generator with PySCF
+recreates the reference samples and both figure inputs from the same calculation.
