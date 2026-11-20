@@ -99,6 +99,10 @@ def orbital_metadata(model):
             for i, (e, sym, occ) in enumerate(zip(model.energies, model.symmetries, model.occupations))]
 
 
+def atom_bond_style(settings):
+    return {key: settings[key] for key in ('atom_scale', 'bond_thickness', 'colors')}
+
+
 def persist_molecule(molecule, source, settings):
     owner = molecule.scene_owner
     atoms = []
@@ -116,7 +120,8 @@ def persist_molecule(molecule, source, settings):
                   direction=list(b.direction) if b.direction is not None else None)
              for b in molecule.bonds]
     record = dict(version=VERSION, id=new_id(), source=os.path.abspath(source), units='Angstrom',
-                  settings=settings, atoms=atoms, bonds=bonds, surfaces=[], orbitals=orbital_metadata(molecule.orbitals),
+                  settings=settings, initial_style=atom_bond_style(settings),
+                  atoms=atoms, bonds=bonds, surfaces=[], orbitals=orbital_metadata(molecule.orbitals),
                   fields=(dict(datasets=list(molecule.volume.labels), field_type=molecule.volume.field_type)
                           if molecule.volume is not None else None))
     if molecule.volume is not None:

@@ -402,6 +402,12 @@ bonds between them. You can also select either half of a bond to color the
 whole bond. **Restore Element Colors** returns the selection to the current
 molecule palette, including the usual neutral bonds for ball-and-stick models.
 
+**Reset Atom and Bond Style** restores the selected molecule's imported atom
+size multiplier, bond thickness and palette, and clears all fragment accents.
+You can use it after editing bond orders or styling a surface. Older blend files
+use the atom and bond settings saved before the first restyle or reset with this
+version.
+
 Expand **Orbitals** to browse the saved index, energy, occupation, spin, and
 symmetry in input order. Use the **Page** arrows or enter a page number.
 **Go to HOMO** and **Go to LUMO** jump to and mark the matching row for the

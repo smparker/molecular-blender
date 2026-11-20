@@ -170,6 +170,61 @@ class TestRestyle(unittest.TestCase):
         self.assertEqual(molecule.scene_owner['mb_molecule'], before)
         self.assertEqual(set(bpy.data.materials), materials)
 
+    def test_reset_restores_import_style_after_bond_and_surface_edits(self):
+        from molecular_blender import scene_edit
+        from molecular_blender.bond_edit import set_manual_bond
+        from molecular_blender.plotter import BlendMoleculeSetup, draw_surfaces
+        from molecular_blender.scene_state import owned_objects, read_record
+        scene_edit.register()
+        self.addCleanup(scene_edit.unregister)
+        model, styler, options = BlendMoleculeSetup(bpy.context, 'examples/water-sto-3g.molden',
+            plot_style='sticks', ignore_hydrogen=False, atom_scale=1.25, colors='vmd',
+            bond_thickness=.13, volume='density', cumulative=False, isovalues='.05', resolution=.2, remesh=0)
+        draw_surfaces(model, styler, bpy.context, options)
+        owner = model.scene_owner
+        bond_id = read_record(owner)['bonds'][0]['id']
+        set_manual_bond(owner, 2, bond_id=bond_id)
+        atoms, bonds = owned_objects(owner, 'atom'), owned_objects(owner, 'bond')
+        expected = [(obj, tuple(obj.active_material.diffuse_color)) for obj in atoms + bonds]
+        sizes = [atom.scale.x for atom in atoms]
+        surface, = owned_objects(owner, 'surface')
+        surface.hide_render = True
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in atoms + bonds:
+            obj.select_set(True)
+        bpy.context.view_layer.objects.active = atoms[0]
+        bpy.ops.molecular_blender.style_selected(color=(.1, .4, .8))
+        scene_edit.restyle_molecule(owner, colors='default', atom_scale=1.8, bond_thickness=.3, surface_opacity=.6)
+        surface_state = surface.data, surface.active_material, read_record(owner)['surfaces']
+        for _ in range(2):
+            self.assertEqual(bpy.ops.molecular_blender.reset_atom_bond_style(), {'FINISHED'})
+            for obj, rgba in expected:
+                self.assertNotIn('mb_accent_color', obj)
+                self.assertEqual(tuple(obj.active_material.diffuse_color), rgba)
+            for atom, size in zip(atoms, sizes):
+                self.assertAlmostEqual(atom.scale.x, size, places=5)
+            self.assertTrue(all(abs(obj.data.bevel_depth - .13) < 1e-6 for obj in bonds))
+            record = read_record(owner)
+            self.assertEqual(record['settings']['colors'], 'vmd')
+            self.assertEqual(record['bonds'][0]['order'], 2)
+            self.assertTrue(record['bonds'][0]['locked'])
+            self.assertEqual((surface.data, surface.active_material, record['surfaces']), surface_state)
+            self.assertTrue(surface.hide_render)
+            self.assertAlmostEqual(record['settings']['surface_opacity'], .6)
+
+    def test_reset_uses_existing_saved_style_for_legacy_record(self):
+        from molecular_blender.plotter import BlendMoleculeSetup
+        from molecular_blender.scene_edit import restyle_molecule
+        from molecular_blender.scene_state import read_record, write_record
+        model, _, _ = BlendMoleculeSetup(bpy.context, 'examples/bond_orders.sdf', colors='vmd', isovalues='')
+        owner = model.scene_owner
+        record = read_record(owner)
+        del record['initial_style']
+        write_record(owner, record)
+        restyle_molecule(owner, colors='default')
+        restyle_molecule(owner, reset_style=True)
+        self.assertEqual(read_record(owner)['settings']['colors'], 'vmd')
+
     def test_operator_undo_redo_in_fresh_blender(self):
         root = Path(__file__).resolve().parents[1]
         script = '''

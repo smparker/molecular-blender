@@ -5,7 +5,7 @@ from bpy.props import BoolProperty, FloatProperty, FloatVectorProperty, EnumProp
 from .geometry_import import track_new
 from .options import validated_options
 from .periodictable import elements
-from .scene_state import (read_record, write_record, resolve_owner, owned_objects,
+from .scene_state import (atom_bond_style, read_record, write_record, resolve_owner, owned_objects,
                           normalize_duplicate_ids, ID, ROLE)
 from .stylers import get_styler
 from .util import darken_color
@@ -119,10 +119,16 @@ def _set_opacity(material, opacity):
 
 
 def restyle_molecule(owner, *, atom_scale=None, bond_thickness=None,
-                     colors=None, surface_opacity=None):
+                     colors=None, surface_opacity=None, reset_style=False):
     normalize_duplicate_ids()
     record = read_record(owner)
     old_settings = record['settings']
+    # Older scene records only retain their most recently saved settings.
+    initial_style = record.setdefault('initial_style', atom_bond_style(old_settings))
+    if reset_style:
+        atom_scale = initial_style['atom_scale']
+        bond_thickness = initial_style['bond_thickness']
+        colors = initial_style['colors']
     atom_scale = old_settings['atom_scale'] if atom_scale is None else atom_scale
     bond_thickness = old_settings['bond_thickness'] if bond_thickness is None else bond_thickness
     colors = old_settings['colors'] if colors is None else colors
@@ -131,10 +137,10 @@ def restyle_molecule(owner, *, atom_scale=None, bond_thickness=None,
     settings = validated_options(dict(old_settings, atom_scale=atom_scale,
                                       bond_thickness=bond_thickness, colors=colors,
                                       surface_opacity=surface_opacity))
-    if bond_thickness <= 0:
-        raise ValueError('Bond thickness must be positive when restyling')
     atoms = owned_objects(owner, 'atom')
     bonds = owned_objects(owner, 'bond')
+    if bond_thickness <= 0 and (bonds or settings['plot_style'] == 'sticks'):
+        raise ValueError('Bond thickness must be positive when restyling bonds')
     surfaces = owned_objects(owner, 'surface') if edit_surface_opacity else []
     # Fail before making changes if a saved/externally edited object cannot be handled.
     for atom in atoms:
@@ -158,9 +164,12 @@ def restyle_molecule(owner, *, atom_scale=None, bond_thickness=None,
         for obj in atoms + bonds + surfaces:
             is_surface = obj in surfaces
             symbol = obj.get('mb_element')
+            accented = 'mb_accent_color' in obj
+            if not is_surface and (symbol is None or accented) and not (reset_style and accented):
+                continue
             for slot in obj.material_slots:
                 material = slot.material
-                if material is None or (not is_surface and (symbol is None or 'mb_accent_color' in obj)):
+                if material is None:
                     continue
                 key = (material.as_pointer(), symbol, is_surface)
                 if key not in copies:
@@ -170,7 +179,7 @@ def restyle_molecule(owner, *, atom_scale=None, bond_thickness=None,
                     if is_surface:
                         _set_opacity(copy, surface_opacity)
                     else:
-                        _set_color(copy, styler.element_color(elements[symbol]))
+                        _set_color(copy, styler.element_color(elements[symbol]) if symbol else styler.bond_color)
                 assignments.append((slot, material, copies[key]))
     except Exception:
         for material in copies.values():
@@ -194,10 +203,34 @@ def restyle_molecule(owner, *, atom_scale=None, bond_thickness=None,
     for slot, old, new in assignments:
         slot.link = 'OBJECT'
         slot.material = new
+    if reset_style:
+        for obj in atoms + bonds:
+            if 'mb_accent_color' in obj:
+                del obj['mb_accent_color']
     write_record(owner, record)
     for old in {old for _, old, _ in assignments}:
         if old.users == 0 and old.get('mb_style_material'):
             bpy.data.materials.remove(old)
+
+
+class MB_OT_reset_atom_bond_style(bpy.types.Operator):
+    bl_idname = 'molecular_blender.reset_atom_bond_style'
+    bl_label = 'Reset Atom and Bond Style'
+    bl_description = 'Restore the saved starting atom size, bond thickness and palette, and clear fragment accents'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        owner = resolve_owner(context.object)
+        return context.mode == 'OBJECT' and owner is not None and read_record(owner)['settings']['object_type'] != 'wireframe'
+
+    def execute(self, context):
+        try:
+            restyle_molecule(resolve_owner(context.object), reset_style=True)
+        except (ValueError, RuntimeError) as exc:
+            self.report({'ERROR'}, str(exc))
+            return {'CANCELLED'}
+        return {'FINISHED'}
 
 
 class MB_OT_restyle(bpy.types.Operator):
@@ -369,6 +402,7 @@ class MB_OT_style_selected(bpy.types.Operator):
 
 def register():
     bpy.utils.register_class(MB_OT_restyle)
+    bpy.utils.register_class(MB_OT_reset_atom_bond_style)
     bpy.utils.register_class(MB_OT_style_selected)
     bpy.utils.register_class(MB_OT_make_independent)
 
@@ -376,4 +410,5 @@ def register():
 def unregister():
     bpy.utils.unregister_class(MB_OT_make_independent)
     bpy.utils.unregister_class(MB_OT_style_selected)
+    bpy.utils.unregister_class(MB_OT_reset_atom_bond_style)
     bpy.utils.unregister_class(MB_OT_restyle)

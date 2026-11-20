@@ -378,6 +378,7 @@ class MB_PT_molecule(bpy.types.Panel):
         layout.operator('molecular_blender.make_independent', icon='DUPLICATE')
         if summary['object_type'] != 'wireframe':
             layout.operator('molecular_blender.restyle', text='Restyle molecule…')
+            layout.operator('molecular_blender.reset_atom_bond_style')
             box = layout.box()
             if context.object.get(ROLE) in ('atom', 'bond'):
                 box.operator('molecular_blender.style_selected', text='Style Selected…').restore = False
