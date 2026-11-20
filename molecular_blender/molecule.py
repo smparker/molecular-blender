@@ -23,6 +23,8 @@
 
 """Classes to encapsulate molecule data"""
 
+from itertools import product
+import math
 import numpy as np
 import mathutils
 from .orbitals import MOData
@@ -80,6 +82,8 @@ class Atom(object):
 class Bond(object):
     """Join two atoms in a bond"""
 
+    cutoff_scale = 1.2
+
     def __init__(self, iatom, jatom, style="", name="", mapping_function="erf",
                  order=1, direction=None):
         """Create Bond"""
@@ -95,7 +99,7 @@ class Bond(object):
                           jatom.element.vdw else iatom).element.symbol
         else:
             self.style = style
-        self.threshold = 1.2 * (iatom.element.covalent + jatom.element.covalent)
+        self.threshold = self.cutoff_scale * (iatom.element.covalent + jatom.element.covalent)
 
         if mapping_function == "erf":
             def f(x):
@@ -158,6 +162,33 @@ class VolumeData(object):
                    inp.get('datasets'), inp.get('labels'), inp.get('dataset_index', 0), inp.get('comments'), inp.get('field_type', 'unknown'))
 
 
+_ADJACENT_CELLS = tuple(product((-1, 0, 1), repeat=3))
+
+
+def bonded_pairs(atoms, static):
+    """Return positional pairs in the original i-major order, over any requested frame."""
+    radii = [a.element.covalent for a in atoms]
+    # Leave a little slack for mathutils' float32 distance at a cell boundary.
+    width = max(1., 2 * Bond.cutoff_scale * max(radii, default=0.) * 1.000001)
+    count = 0 if static else max((len(a.trajectory) for a in atoms), default=0)
+    pairs = set()
+    for frame in range(max(count, 1)):
+        cells = {}
+        for i, atom in enumerate(atoms):
+            if count and frame >= len(atom.trajectory):
+                continue
+            pos = atom.trajectory[frame].position if count else atom.position
+            if not all(math.isfinite(v) for v in pos):
+                continue
+            x, y, z = (math.floor(v / width) for v in pos)
+            for dx, dy, dz in _ADJACENT_CELLS:
+                for j, previous in cells.get((x+dx, y+dy, z+dz), ()):
+                    if (pos - previous).length <= Bond.cutoff_scale * (radii[i] + radii[j]):
+                        pairs.add((i, j))
+            cells.setdefault((x, y, z), []).append((i, pos))
+    return sorted(pairs)
+
+
 class Molecule(object):
     """Atoms and bonds form a molecule"""
 
@@ -209,7 +240,6 @@ class Molecule(object):
             return
 
         atoms = self.atoms
-        natoms = len(atoms)
         bondstyle = "universal" if options["universal_bonds"] else ""
         if self.explicit_bonds is not None:
             for entry in self.explicit_bonds:
@@ -225,15 +255,7 @@ class Molecule(object):
             raise BondPerceptionError("Perception requires a static graph; use staticfirst for animations")
         static = options["plot_type"] == "frame" or options["animate_bonds"] == "staticfirst"
 
-        for i in range(natoms):
-            for j in range(i):
-                # make a Bond object no matter what, then use it to check whether to keep
-                bond = Bond(atoms[i], atoms[j], bondstyle)
-                distance = (atoms[i].position - atoms[j].position).length if static \
-                    else min([(iatom.position - jatom.position).length for \
-                                    iatom, jatom in zip(atoms[i].trajectory, atoms[j].trajectory)])
-                if bond.is_bonded(distance):
-                    self.bonds.append(bond)
+        self.bonds = [Bond(atoms[i], atoms[j], bondstyle) for i, j in bonded_pairs(atoms, static)]
 
         if perceive:
             indices = {id(atom): i for i, atom in enumerate(atoms)}

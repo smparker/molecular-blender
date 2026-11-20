@@ -19,6 +19,29 @@ except ImportError:
 
 @unittest.skipUnless(HAS_BPY, 'requires Blender')
 class TestBondOrders(unittest.TestCase):
+    def test_spatial_neighbors_match_exhaustive_static_and_trajectory_pairs(self):
+        import random
+        from molecular_blender.molecule import Snapshot, bonded_pairs
+        rng = random.Random(719)
+        atoms = [Atom(rng.choice(('h', 'c', 'n', 's')), [rng.uniform(-7, 7) for _ in range(3)], i)
+                 for i in range(120)]
+        for atom in atoms:
+            atom.trajectory = [Snapshot(atom.position + Vector([rng.uniform(-.7, .7) for _ in range(3)]),
+                                        0, (0, 0, 0)) for _ in range(3)]
+        for static in (True, False):
+            expected = []
+            for i, a in enumerate(atoms):
+                for j, b in enumerate(atoms[:i]):
+                    bond = Bond(a, b)
+                    if static:
+                        exists = bond.is_bonded()
+                    else:
+                        exists = any(bond.is_bonded((x.position-y.position).length)
+                                     for x, y in zip(a.trajectory, b.trajectory))
+                    if exists:
+                        expected.append((i, j))
+            self.assertEqual(bonded_pairs(atoms, static), expected)
+
     def setUp(self):
         self.objects = set(bpy.data.objects)
         self.curves = set(bpy.data.curves)
