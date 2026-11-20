@@ -172,6 +172,16 @@ class TestSidebarActions(unittest.TestCase):
         self.assertEqual({s['id'] for s in record['surfaces']}, other['ids'])
         self.assertEqual(copy.data, shared_mesh)
 
+    def test_fine_orbital_mesh_welds_only_repeated_intersections(self):
+        from molecular_blender.plotter import BlendMoleculeSetup, create_surface_meshes
+        model, styler, options = BlendMoleculeSetup(bpy.context, str(self.path), orbital='5',
+            isovalues='.05', cumulative=False, resolution=.05, remesh=0)
+        a, b, c, d = (0., 0., 0.), (.004, 0., 0.), (0., .005, 0.), (0., 0., .006)
+        sets = [dict(name='5', isovalue=.05, triangles=[(a,c,b), (a,b,d), (b,c,d), (c,a,d)])]
+        create_surface_meshes(model, styler, bpy.context, options, sets, {}, select_surfaces=False)
+        mesh = sets[0]['mesh'].data
+        self.assertEqual((len(mesh.vertices), len(mesh.edges), len(mesh.polygons)), (4, 6, 4))
+
     def test_frontier_jumps_use_saved_populations_spin_and_import_order(self):
         from molecular_blender.scene_state import read_record, write_record
         from test_scene_panel import panel_labels

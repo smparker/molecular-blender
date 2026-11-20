@@ -104,6 +104,24 @@ class TestIsosurfaceAdaptive(unittest.TestCase):
         assert len(result) == 1
         assert len(result[0]["triangles"]) > 0
 
+    def test_offset_pi_lobes_are_closed_across_refinement_blocks(self):
+        def pi_field(x, y, z):
+            xx, yy, zz = np.ix_(x - .23, y + .18, z - .35)
+            return yy * np.exp(-(.7 * xx**2 + yy**2 + 1.3 * zz**2))
+
+        for spacing in (.27, .13):  # single and multiple refinement passes
+            lobes = isosurface_adaptive([-3]*3, [3]*3, 1.1, spacing, 4, [.18, -.18],
+                                        pi_field, np.eye(3)*bohr2ang, 'pi')
+            for lobe in lobes:
+                xyz = np.asarray(lobe['triangles']).reshape(-1, 3)
+                self.assertGreater(len(xyz), 0)
+                # Merge repeated edge intersections at float32 precision.
+                _, indices = np.unique(xyz.astype(float).round(5), axis=0, return_inverse=True)
+                faces = indices.reshape(-1, 3)
+                edges = np.sort(faces[:, [0, 1, 1, 2, 2, 0]].reshape(-1, 2), axis=1)
+                _, incidence = np.unique(edges, axis=0, return_counts=True)
+                self.assertTrue(np.all(incidence == 2), 'open edge on the signed lobe')
+
     def test_no_crossing(self):
         def zero_box(xvals, yvals, zvals):
             return np.zeros((len(xvals), len(yvals), len(zvals)), dtype=DTYPE)
@@ -211,6 +229,20 @@ class TestSurfaceResolution(unittest.TestCase):
                     self.assertEqual(len(spacings), 1)
                 else:
                     self.assertGreater(len(spacings), 1)
+
+    def test_default_orbital_grid_finds_isolated_lobes_with_no_coarse_crossings(self):
+        from types import SimpleNamespace
+        def field(x, y, z):
+            xx, yy, zz = np.ix_(x - .15, y + .09, z - .32)
+            return yy * np.exp(-36*(xx**2 + yy**2 + zz**2))
+        orbital = SimpleNamespace(bounding_box=lambda threshold: ([-2.]*3, [2.]*3), box_values=field)
+        tiled = molden_isosurface(orbital, [.04, -.04], .035)
+        reference = molden_isosurface(orbital, [.04, -.04], .035, method='simple')
+        for actual, expected in zip(tiled, reference):
+            self.assertGreater(len(expected['triangles']), 0)
+            a, b = (np.asarray(s['triangles']).reshape(-1, 3) for s in (actual, expected))
+            a, b = (v[np.lexsort((v[:, 2].round(5), v[:, 1].round(5), v[:, 0].round(5)))] for v in (a, b))
+            np.testing.assert_allclose(a, b, atol=1e-6)
 
     def test_invalid_method_and_resolution(self):
         for kwargs in ({'method': 'typo'}, {'resolution': 0},

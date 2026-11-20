@@ -689,20 +689,32 @@ def AnimateMolecule(context, molecule, options):
     return
 
 
-def create_mesh(name, verts, faces, material, context, remesh=8):
-    """Some black magic to make a mesh with the given name, verts, and faces"""
-    me = bpy.data.meshes.new(name)  # create a new mesh
-    me.from_pydata(verts, [], faces)
-    me.update()      # update the mesh with the new data
+def field_weld_distance(resolution):
+    # Intersections are shared to float32 precision. A fixed 0.01 Å weld
+    # also merges distinct vertices on fine grids and can tear a closed mesh.
+    return resolution * 1e-4
 
-    bm = bmesh.new()
+
+def create_surface_mesh_data(name, verts, faces, weld_distance):
+    me = bpy.data.meshes.new(name)
     try:
-        bm.from_mesh(me)
-        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.01)
-        bm.to_mesh(me)
-    finally:
-        bm.free()
+        me.from_pydata(verts, [], faces)
+        me.update()
+        bm = bmesh.new()
+        try:
+            bm.from_mesh(me)
+            bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=weld_distance)
+            bm.to_mesh(me)
+        finally:
+            bm.free()
+    except Exception:
+        bpy.data.meshes.remove(me)
+        raise
+    return me
 
+
+def create_mesh(name, verts, faces, material, context, remesh=8, weld_distance=0.01):
+    me = create_surface_mesh_data(name, verts, faces, weld_distance)
     ob = bpy.data.objects.new(name, me)  # create a new object
     ob.data = me          # link the mesh data to the object
     if ob.data.materials:
@@ -812,7 +824,8 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None):
                 field = model.get_orbital(model.resolve_orbital(name, channel))
             if levels is None:
                 levels = field.isovalue_containing_proportion(isovals) if options['cumulative'] else isovals
-            return molden_isosurface(field, levels, resolution, label), levels
+            method = 'adaptive' if model.is_density(name) else 'tiled'
+            return molden_isosurface(field, levels, resolution, label, method=method), levels
 
         for orbname, orbnumber in zip(orbnames, orblist):
             vset, orbital_isovals = field_surface(orbitals, orbname, orbnumber, orbname)
@@ -858,7 +871,10 @@ def create_surface_meshes(molecule, styler, context, options, vertex_sets, verte
         for v in fsets:
             name = "{0}_{1}_{2}".format(molecule.name, v["name"], v["isovalue"])
             verts, faces = create_geometry(v["triangles"])
-            vmesh = create_mesh(name, verts, faces, v["material"], context, remesh=options["remesh"])
+            # Weld duplicate intersections without collapsing nearby grid edges.
+            weld_distance = .01 if molecule.volume is not None else field_weld_distance(options['resolution'])
+            vmesh = create_mesh(name, verts, faces, v["material"], context,
+                                remesh=options["remesh"], weld_distance=weld_distance)
             v["mesh"] = vmesh
             fmeshes.append(vmesh)
 

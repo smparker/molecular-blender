@@ -28,8 +28,7 @@ information. For the meat of the isosurface construction,
 see marching_cube.py
 """
 
-import multiprocessing
-from itertools import starmap
+from itertools import product
 import numpy as np
 import math
 
@@ -63,7 +62,7 @@ def cube_isosurface(data, origin, axes, isovalues, name="cube", wm=None):
     return triangle_sets
 
 
-def molden_isosurface(orbital, isovalues, resolution, name="iso", wm=None, method="adaptive", rough_resolution=0.6):
+def molden_isosurface(orbital, isovalues, resolution, name="iso", wm=None, method="tiled", rough_resolution=0.6):
     """Return orbital triangles; resolution and rough_resolution are in angstrom."""
     p0, p1 = orbital.bounding_box(min([abs(x) for x in isovalues]) * 0.001)
     axes = np.eye(3, dtype=DTYPE) * bohr2ang
@@ -79,8 +78,8 @@ def isosurface(p0, p1, resolution, isovalues, box_func, axes, name, wm=None, met
     axes maps sampled coordinates to the output geometry. The low-level simple
     and adaptive routines continue to use grid counts and Bohr spacing directly.
     """
-    if method not in ('simple', 'adaptive'):
-        raise ValueError("Isosurface method must be 'simple' or 'adaptive'")
+    if method not in ('simple', 'adaptive', 'tiled'):
+        raise ValueError("Isosurface method must be 'simple', 'adaptive' or 'tiled'")
     if not math.isfinite(resolution) or resolution <= 0:
         raise ValueError('Isosurface resolution must be finite and positive')
     if not math.isfinite(rough_resolution) or rough_resolution <= 0:
@@ -89,86 +88,101 @@ def isosurface(p0, p1, resolution, isovalues, box_func, axes, name, wm=None, met
     if method == "adaptive":
         return isosurface_adaptive(p0, p1, rough_resolution*ang2bohr, resolution*ang2bohr,
                                   max_subdivide, isovalues, box_func, axes, name, wm)
-    else:
-        npoints = [ int(math.ceil((b-a)/(resolution*ang2bohr))) for a, b in zip(p0, p1) ]
-        return isosurface_simple(p0, p1, npoints, isovalues, box_func, axes, name, wm)
+    npoints = [max(1, math.ceil((b-a)/(resolution*ang2bohr))) for a, b in zip(p0, p1)]
+    if method == 'tiled':
+        return isosurface_tiled(p0, p1, npoints, isovalues, box_func, axes, name)
+    return isosurface_simple(p0, p1, npoints, isovalues, box_func, axes, name, wm)
+
+
+def isosurface_tiled(p0, p1, counts, isovalues, box_func, axes, name):
+    """Sample every grid point so even lobes inside a single coarse cell survive."""
+    grid = [np.linspace(a, b, n + 1, dtype=DTYPE) for a, b, n in zip(p0, p1, counts)]
+    step = (np.asarray(p1) - p0) / counts
+    surfaces = [{"isovalue": iso, "name": name, "triangles": []} for iso in isovalues]
+    # Share one layer of samples between adjacent tiles; every cell belongs to
+    # exactly one tile. Shell screening and marching cubes keep their native kernels.
+    width = 32
+    for start in product(*(range(0, n, width) for n in counts)):
+        values = box_func(*(axis[i:i+width+1] for axis, i in zip(grid, start)))
+        low, high = values.min(), values.max()
+        if not any(low <= level <= high for level in isovalues) or low == high:
+            continue
+        _mesh_tile(surfaces, values, isovalues, start, p0, step, axes)
+    return surfaces
+
+
+def _mesh_tile(surfaces, values, levels, start, origin, step, axes):
+    for surface, triangles in zip(surfaces, marching_cube_box(values, levels)):
+        if triangles:
+            points = origin + (np.asarray(triangles) + start) * step
+            surface["triangles"].extend((points @ axes).astype(DTYPE))
+
+
+def _crossing_cells(values, levels):
+    """Indices of grid cells with a sampled crossing at any requested level."""
+    corners = [values[tuple(slice(i, None if i else -1) for i in corner)]
+               for corner in product((0, 1), repeat=3)]
+    low, high = corners[0].copy(), corners[0].copy()
+    for corner in corners[1:]:
+        np.minimum(low, corner, out=low)
+        np.maximum(high, corner, out=high)
+    active = np.zeros(low.shape, dtype=bool)
+    for level in levels:
+        active |= (low <= level) & (level <= high) & (low != high)
+    return np.argwhere(active)
 
 
 def isosurface_adaptive(p0, p1, resolution_start, resolution_end, max_subdivide, isovalues, box_func, axes, name, wm=None):
-    """Return set of triangles from function object from multi-pass adaptive algorithm"""
+    """Refine coarse crossings, following each surface across sampled block faces."""
+    if max_subdivide < 2:
+        raise ValueError('Adaptive refinement requires at least two subdivisions')
+    p0 = np.asarray(p0, dtype=float)
+    extent = np.asarray(p1, dtype=float) - p0
+    counts = np.maximum(1, np.ceil(extent / resolution_start).astype(int))
+    target = np.maximum(1, np.ceil(extent / resolution_end).astype(int))
+    grid = [np.linspace(a, b, n + 1, dtype=DTYPE) for a, b, n in zip(p0, p1, counts)]
+    cells = _crossing_cells(box_func(*grid), isovalues)
+    surfaces = [{"isovalue": iso, "name": name, "triangles": []} for iso in isovalues]
+    while len(cells):
+        divisions = np.clip((target + counts - 1) // counts, 1, max_subdivide)
+        fine_counts = counts * divisions
+        final = np.all(fine_counts >= target)
+        # Every block uses slices of the same lattice, including its shared faces.
+        grid = [np.linspace(a, b, n + 1, dtype=DTYPE) for a, b, n in zip(p0, p1, fine_counts)]
+        step = extent / fine_counts
+        pending = [tuple(cell) for cell in cells]
+        visited = set(pending)
+        children = []
+        while pending:
+            cell = pending.pop()
+            start = divisions * cell
+            samples = [axis[i:i+d+1] for axis, i, d in zip(grid, start, divisions)]
+            values = box_func(*samples)
+            # A lobe may cross a face twice between its coarse corners. Follow
+            # fine crossings into every such neighbor, even beyond the outline.
+            for axis in range(3):
+                for side in (-1, 1):
+                    index = cell[axis] + side
+                    if not 0 <= index < counts[axis]:
+                        continue
+                    neighbor = cell[:axis] + (index,) + cell[axis+1:]
+                    if neighbor in visited:
+                        continue
+                    face = values.take(0 if side < 0 else -1, axis=axis)
+                    low, high = face.min(), face.max()
+                    if low != high and any(low <= level <= high for level in isovalues):
+                        pending.append(neighbor)
+                        visited.add(neighbor)
+            if final:
+                _mesh_tile(surfaces, values, isovalues, start, p0, step, axes)
+            else:
+                children.extend(start + _crossing_cells(values, isovalues))
+        if final:
+            break
+        counts = fine_counts
+        cells = children
+    return surfaces
 
-    np_start = [ int(math.ceil((b - a)/resolution_start))+1 for a, b in zip(p0, p1) ]
-    np_min_end = [ int(math.ceil((b - a)/resolution_end))+1 for a, b in zip(p0, p1) ]
-
-    subdivide = [ min(max_subdivide, max(2, int(math.ceil(want / start)))) for start, want in zip(np_start, np_min_end) ]
-
-    outlines = isosurface_outline(p0, p1, np_start, isovalues, box_func, axes, name)
-
-    np_now = [ a * s for a, s in zip(np_start, subdivide) ]
-
-    while not all([now > want for now, want in zip(np_now, np_min_end)]):
-        boxgen = ( (pp0, pp1, subdivide, isovalues, box_func, axes, name, wm) for pp0, pp1 in outlines )
-        new_outlines = starmap(isosurface_outline, boxgen)
-
-        outlines = sum(new_outlines, [])
-
-        np_now = [ a * s for a, s in zip(np_now, subdivide) ]
-
-    if not outlines:
-        return [{"isovalue": iso, "name" : name, "triangles": []} for iso in isovalues]
-
-    # optimal fine_subdivide: only subdivide as much as needed to reach target resolution
-    fine_subdivide = [ min(max_subdivide, max(2, int(math.ceil(want * s / now))))
-                       for want, now, s in zip(np_min_end, np_now, subdivide) ]
-
-    # pre-compute grid parameters (same for all boxes in this pass)
-    pp0_ref, pp1_ref = outlines[0]
-    xstep = DTYPE((pp1_ref[0] - pp0_ref[0]) / fine_subdivide[0])
-    ystep = DTYPE((pp1_ref[1] - pp0_ref[1]) / fine_subdivide[1])
-    zstep = DTYPE((pp1_ref[2] - pp0_ref[2]) / fine_subdivide[2])
-
-    scaled_axes = np.array(axes, dtype=DTYPE) * np.array([xstep, ystep, zstep], dtype=DTYPE)
-
-    dx = np.arange(fine_subdivide[0] + 1, dtype=DTYPE) * xstep
-    dy = np.arange(fine_subdivide[1] + 1, dtype=DTYPE) * ystep
-    dz = np.arange(fine_subdivide[2] + 1, dtype=DTYPE) * zstep
-
-    niso = len(isovalues)
-    raw_tris = [[] for _ in range(niso)]
-    tri_box_info = [[] for _ in range(niso)]
-
-    for pp0, pp1 in outlines:
-        xvals = DTYPE(pp0[0]) + dx
-        yvals = DTYPE(pp0[1]) + dy
-        zvals = DTYPE(pp0[2]) + dz
-
-        box_data = box_func(xvals, yvals, zvals)
-        tri_list = marching_cube_box(box_data, isovalues)
-
-        origin_x = DTYPE(pp0[0]) * bohr2ang
-        origin_y = DTYPE(pp0[1]) * bohr2ang
-        origin_z = DTYPE(pp0[2]) * bohr2ang
-
-        for iiso in range(niso):
-            tris = tri_list[iiso]
-            if tris:
-                start = len(raw_tris[iiso])
-                raw_tris[iiso].extend(tris)
-                tri_box_info[iiso].append((start, len(tris), origin_x, origin_y, origin_z))
-
-    triangle_sets = [{"isovalue": iso, "name" : name, "triangles": []} for iso in isovalues]
-
-    for iiso in range(niso):
-        if raw_tris[iiso]:
-            coords = np.array(raw_tris[iiso], dtype=DTYPE)
-            transformed = np.dot(coords, scaled_axes)
-            for start, count, ox, oy, oz in tri_box_info[iiso]:
-                transformed[start:start+count, :, 0] += ox
-                transformed[start:start+count, :, 1] += oy
-                transformed[start:start+count, :, 2] += oz
-            triangle_sets[iiso]["triangles"] = [ transformed[i] for i in range(transformed.shape[0]) ]
-
-    return triangle_sets
 
 def isosurface_outline(p0, p1, nvoxels, isovalues, box_func, axes, name, wm=None):
     """Returns low resolution outline of an isosurface"""
