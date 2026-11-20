@@ -129,6 +129,7 @@ def persist_molecule(molecule, source, settings):
         obj = bpy.data.objects.get(atom.name)
         if obj is not None and resolve_owner(obj) == owner:
             tag(obj, owner, 'atom', entry['id'])
+            obj['mb_atom_index'] = entry['index']
             obj['mb_element'] = atom.element.symbol
             obj['mb_base_scale'] = list(obj.scale)
     for bond, entry in zip(molecule.bonds, bonds):

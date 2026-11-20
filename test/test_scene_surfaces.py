@@ -241,6 +241,27 @@ class TestSidebarActions(unittest.TestCase):
         bpy.ops.molecular_blender.select_atoms(match='fragment')
         self.assertEqual(set(bpy.context.selected_objects), {oxygen})
 
+    def test_index_ranges_validate_before_changing_selection(self):
+        from molecular_blender.scene_state import ID, owned_objects, read_record
+        owner = self.molecule().scene_owner
+        peer = self.molecule().scene_owner
+        objects = {o[ID]: o for o in owned_objects(owner, 'atom')}
+        atoms = [objects[a['id']] for a in read_record(owner)['atoms']]
+        self.select(owner)
+        peer.select_set(True)
+        ops = bpy.ops.molecular_blender
+        self.assertEqual(ops.select_atom_indices(indices='3, 1 - 2, 1'), {'FINISHED'})
+        self.assertEqual(set(bpy.context.selected_objects), set(atoms))
+        self.assertEqual(bpy.context.active_object, atoms[2])
+        for invalid in ('1,4', '3-1', '1-999999999999', '1,,2', ''):
+            self.assertEqual(ops.select_atom_indices(indices=invalid), {'CANCELLED'})
+            self.assertEqual(set(bpy.context.selected_objects), set(atoms))
+        atoms[0].hide_set(True)
+        self.assertEqual(ops.select_atom_indices(indices='1,2'), {'FINISHED'})
+        self.assertEqual(bpy.context.selected_objects, [atoms[1]])
+        self.assertEqual(ops.select_atom_indices(indices='1'), {'CANCELLED'})
+        self.assertEqual(bpy.context.active_object, atoms[1])
+
     def test_manifest_positions_and_orbitals_use_the_same_blender_frames(self):
         import json
         from molecular_blender.plotter import BlendMoleculeSetup, compute_surface_vertex_sets

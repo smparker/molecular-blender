@@ -1,8 +1,9 @@
 """Inspect the molecule owning the current Blender selection."""
 import os
+import re
 
 import bpy
-from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, IntProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, IntProperty, StringProperty
 
 from .importers import file_format
 from .orbitals import frontier_index
@@ -10,12 +11,13 @@ from .scene_state import ID, RECORD, ROLE, read_record, resolve_owner, owned_obj
 from .scene_surfaces import (MB_OT_add_surface, MB_OT_remove_surface, MB_OT_surface_visibility,
                              set_surface_color, set_surface_opacity, surface_color, surface_groups,
                              surface_opacity, surface_visible)
-from .scene_view import MB_OT_frame_molecule, MB_OT_view_face_on
+from .scene_view import MB_OT_frame_molecule, MB_OT_view_face_on, draw_atom_indices
 from .surface_operator import DENSITIES, ORBITAL_SPINS
 
 REPRESENTATIONS = {'vdw': 'Van der Waals', 'bs': 'Ball and stick',
                    'fixedbs': 'Fixed ball and stick', 'sticks': 'Sticks'}
 ORBITALS_PER_PAGE = 5
+_label_handler = None
 
 
 def molecule_summary(obj):
@@ -175,14 +177,74 @@ class MB_OT_select_atoms(bpy.types.Operator):
                 ids.update(new)
                 if self.match == 'fragment':
                     pending.extend(new)
-        selectable = set(context.selectable_objects)
-        matches = {obj for obj in owned_objects(owner, 'atom') if obj in selectable and obj[ID] in ids}
-        for obj in context.selected_objects:
-            if obj not in matches:
-                obj.select_set(False)
+        select_atom_ids(context, owner, ids)
+        return {'FINISHED'}
+
+
+def select_atom_ids(context, owner, ids):
+    selectable = set(context.selectable_objects)
+    available = {obj[ID]: obj for obj in owned_objects(owner, 'atom') if obj in selectable}
+    matches = [available[i] for i in ids if i in available]
+    if matches:
+        for obj in set(context.selected_objects).difference(matches):
+            obj.select_set(False)
         for obj in matches:
             obj.select_set(True)
-        return {'FINISHED'}
+        if context.active_object not in matches:
+            context.view_layer.objects.active = matches[0]
+    return len(matches)
+
+
+def atom_ids_from_indices(atoms, expression):
+    by_index = {atom['index']: atom['id'] for atom in atoms}
+    ids = {}
+    for token in expression.split(','):
+        match = re.fullmatch(r'\s*(\d+)(?:\s*-\s*(\d+))?\s*', token)
+        if not match:
+            raise ValueError('Enter atom indices or inclusive ranges, for example 4, 7, 12-16')
+        start = int(match[1])
+        end = int(match[2]) if match[2] is not None else start
+        if end < start:
+            raise ValueError('Put the smaller index first in ' + token.strip())
+        if end - start + 1 > len(atoms):
+            raise ValueError('Range extends beyond the saved atom indices: ' + token.strip())
+        for index in range(start, end + 1):
+            if index not in by_index:
+                raise ValueError('No atom with index {}'.format(index))
+            ids[by_index[index]] = None
+    return list(ids)
+
+
+class MB_OT_select_atom_indices(bpy.types.Operator):
+    bl_idname = 'molecular_blender.select_atom_indices'
+    bl_label = 'Select Atoms by Index'
+    bl_description = 'Select visible atoms by their stored indices, using commas and inclusive ranges'
+    bl_options = {'UNDO'}
+
+    indices: StringProperty(name='Indices', description='For example 4, 7, 12-16', options={'SKIP_SAVE'})
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and resolve_owner(context.object) is not None
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        self.layout.prop(self, 'indices')
+        self.layout.label(text='Example: 4, 7, 12-16')
+
+    def execute(self, context):
+        owner = resolve_owner(context.object)
+        try:
+            ids = atom_ids_from_indices(read_record(owner)['atoms'], self.indices)
+        except ValueError as exc:
+            self.report({'WARNING'}, str(exc))
+            return {'CANCELLED'}
+        selected = select_atom_ids(context, owner, ids)
+        if selected != len(ids):
+            self.report({'INFO'}, '{} selected, {} hidden or unavailable'.format(selected, len(ids) - selected))
+        return {'FINISHED'} if selected else {'CANCELLED'}
 
 
 class MB_PT_molecule(bpy.types.Panel):
@@ -220,6 +282,9 @@ class MB_PT_molecule(bpy.types.Panel):
         box.label(text='Coordinates: ' + summary['units'])
         box.label(text='Molecular charge setting: {:+d}'.format(summary['charge']))
         box.label(text='{} ({})'.format(summary['representation'], summary['object_type']))
+        if summary['visible_atoms']:
+            box.operator('molecular_blender.select_atom_indices', text='Select Atoms by Index…')
+            box.prop(owner, 'mb_show_atom_indices')
 
         atom = summary['selected_atom']
         if atom is not None:
@@ -292,12 +357,15 @@ class MB_PT_molecule(bpy.types.Panel):
             box.operator('molecular_blender.reperceive')
 
 
-_CLASSES = (MB_OT_select_atoms, MB_OT_surface_visibility,
+_CLASSES = (MB_OT_select_atoms, MB_OT_select_atom_indices, MB_OT_surface_visibility,
             MB_OT_add_surface, MB_OT_remove_surface,
             MB_OT_jump_orbital, MB_OT_frame_molecule, MB_OT_view_face_on, MB_PT_molecule)
 
 
 def register():
+    global _label_handler
+    bpy.types.Object.mb_show_atom_indices = BoolProperty(name='Show Atom Indices', default=False,
+        description='Label visible atoms of the active molecule in the viewport')
     bpy.types.Object.mb_surface_color = FloatVectorProperty(name='Surface color', subtype='COLOR',
         size=3, min=0., max=1., get=surface_color, set=set_surface_color, options=set())
     bpy.types.Object.mb_surface_opacity = FloatProperty(name='Surface opacity', min=0., max=1.,
@@ -310,9 +378,15 @@ def register():
                                                   get=_get_orbital_page, set=_set_orbital_page)
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
+    if not bpy.app.background:
+        _label_handler = bpy.types.SpaceView3D.draw_handler_add(draw_atom_indices, (), 'WINDOW', 'POST_PIXEL')
 
 
 def unregister():
+    global _label_handler
+    if _label_handler is not None:
+        bpy.types.SpaceView3D.draw_handler_remove(_label_handler, 'WINDOW')
+        _label_handler = None
     for cls in reversed(_CLASSES):
         bpy.utils.unregister_class(cls)
     del bpy.types.Object.mb_browser_spin
@@ -321,3 +395,4 @@ def unregister():
     del bpy.types.Object.mb_density_field
     del bpy.types.Object.mb_orbital_page
     del bpy.types.Object.mb_show_orbitals
+    del bpy.types.Object.mb_show_atom_indices

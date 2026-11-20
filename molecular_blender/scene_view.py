@@ -1,8 +1,47 @@
 """Frame displayed molecular geometry in the invoking 3D viewport."""
 import bpy
+import blf
+from bpy_extras.view3d_utils import location_3d_to_region_2d
 from mathutils import Vector
 
-from .scene_state import ROLE, owned_objects, resolve_owner
+from .scene_state import ID, ROLE, owned_objects, read_record, resolve_owner
+
+
+def atom_index_labels(context, owner):
+    legacy = None
+    for obj in owned_objects(owner, 'atom'):
+        if not obj.visible_get(view_layer=context.view_layer, viewport=context.space_data):
+            continue
+        index = obj.get('mb_atom_index')
+        if index is None:
+            if legacy is None:
+                legacy = {atom['id']: atom['index'] for atom in read_record(owner)['atoms']}
+            index = legacy.get(obj.get(ID))
+        if index is not None:
+            yield obj.matrix_world.translation, str(index)
+
+
+def draw_atom_indices():
+    context = bpy.context
+    owner = resolve_owner(context.object)
+    if owner is None or not owner.mb_show_atom_indices or not context.space_data.overlay.show_overlays:
+        return
+    size = round(13 * context.preferences.system.ui_scale)
+    if bpy.app.version < (4, 0, 0):
+        blf.size(0, size, 72)
+    else:
+        blf.size(0, size)
+    blf.color(0, 1, 1, 1, 1)
+    blf.enable(0, blf.SHADOW)
+    blf.shadow(0, 3, 0, 0, 0, 1)
+    try:
+        for position, label in atom_index_labels(context, owner):
+            xy = location_3d_to_region_2d(context.region, context.region_data, position)
+            if xy is not None and 0 <= xy.x < context.region.width and 0 <= xy.y < context.region.height:
+                blf.position(0, xy.x + 4, xy.y + 4, 0)
+                blf.draw(0, label)
+    finally:
+        blf.disable(0, blf.SHADOW)
 
 
 class _FrameMolecule:

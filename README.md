@@ -372,6 +372,14 @@ charge. The index follows the importer's numbering. Charge values come from the
 saved atom record, which defaults missing charges to zero. Cube imports label
 the charge from the atom line as **Cube atom charge**.
 
+**Select Atoms by Index…** accepts a comma-separated list such as
+`4, 7, 12-16`. It uses the indices shown in the sidebar, includes both ends
+of a range, and selects visible, selectable atoms on the current molecule.
+You can then use **Style Selected…** or, with three atoms, **View Face-On**.
+Turn on **Show Atom Indices** to see these numbers beside the visible atoms of
+the active molecule. The labels follow the atoms as you move the view or play
+an animation. Blender's viewport Overlays switch controls their display.
+
 **Select Same Element** selects the visible atoms of that element on this
 molecule. **Select Bonded Neighbors** selects the active atom and its directly
 bonded visible neighbors, including bonds added in the sidebar. **Select Bonded
