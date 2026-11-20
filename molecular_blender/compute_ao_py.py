@@ -196,15 +196,14 @@ class Shell(object):
         pz  = z_a - self.Z
 
         rr = pxx*pxx + pyy*pyy + pz * pz
-        if np.any(rr < self.logthr - logmxcoeff):
+        included = rr < self.logthr - logmxcoeff
+        if np.any(included):
             # Memory-efficient vectorized computation
             exp_terms = np.exp(-1.0 * rr.reshape(-1, 1) * self.exponents)
             radial = np.dot(exp_terms, self.denormedcoeffs).reshape(rr.shape)
+            radial[~included] = 0.
             out = self.plane_polynomial(pxx, pyy, pz)
-            # out -> [npoly, nx, ny]
-            # for p in range(out.shape[0]):
-            #     out[p,:,:] *= radial
-            out *= radial # does this really do the same thing?
+            out *= radial
             return out
         else:
             return None

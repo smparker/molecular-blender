@@ -337,7 +337,45 @@ class TestDensityCalculater(unittest.TestCase):
         assert plane.shape == (8, 8)
 
 
+def diffuse_fields(backend):
+    alpha = np.array([1., 0., 0., 0.], dtype=np.float32)
+    beta = np.array([0., 1., 0., 0.], dtype=np.float32)
+    spin = np.outer(alpha, alpha) - .5 * np.outer(beta, beta)
+    shells = [backend.Shell(np.array([x, 0, 0], dtype=np.float32), angular,
+                            np.array([exp], dtype=np.float32), np.ones(1, dtype=np.float32), start)
+              for x, angular, exp, start in ((-1., 0, .055, 0), (1., 1, .08, 1))]
+    return [backend.OrbitalCalculater(shells, beta), backend.DensityCalculater(shells, spin, 1.5)]
+
+
 class TestFractionalDensity(unittest.TestCase):
+    def test_public_calculator_aliases(self):
+        from molecular_blender import compute_ao
+        self.assertIs(compute_ao.DensityCalculator, compute_ao.DensityCalculater)
+        self.assertIs(compute_ao.OrbitalCalculator, compute_ao.OrbitalCalculater)
+
+    @unittest.skipUnless(HAS_CYTHON_AO, 'requires compiled AO backend')
+    def test_diffuse_open_shell_grid_and_containment_match(self):
+        axes = [np.linspace(-10, 10, size, dtype=np.float32) for size in (17, 15, 13)]
+        results = []
+        for backend in (ao_py, ao_cy):
+            fields = diffuse_fields(backend)
+            result = []
+            for field in fields:
+                grid = field.box_values(*axes)
+                self.assertEqual(grid.shape, (17, 15, 13))
+                self.assertLess(grid.min(), 0)
+                self.assertGreater(grid.max(), 0)
+                np.testing.assert_allclose(grid[:, :, 5], field.plane_values(*axes[:2], axes[2][5]), atol=1e-6)
+                self.assertAlmostEqual(grid[6, 7, 5], field.value(axes[0][6], axes[1][7], axes[2][5]), places=6)
+                self.assertAlmostEqual(grid[0, 0, 0], field.value(axes[0][0], axes[1][0], axes[2][0]), places=7)
+                levels = field.isovalue_containing_proportion([.5, -.5], resolution=.7,
+                                                              box=([-10.]*3, [10.]*3))
+                result.append((grid, levels))
+            results.append(result)
+        for (grid_a, levels_a), (grid_b, levels_b) in zip(*results):
+            np.testing.assert_allclose(grid_a, grid_b, atol=2e-6)
+            np.testing.assert_allclose(levels_a, levels_b, rtol=2e-4, atol=1e-6)
+
     @unittest.skipUnless(HAS_CYTHON_AO, 'requires compiled AO backend')
     def test_fractional_electron_count_and_density_match_python(self):
         coefficients = np.array([1.0], dtype=np.float32)

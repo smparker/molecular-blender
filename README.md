@@ -216,8 +216,8 @@ python3 blender_setup.py install --mode=copy --link-target=4.3,4.10
 `pyproject.toml` define the Python wheel and source distributions used by packaging CI.
 
 **Requirements:**
-- Python version matching your Blender version (3.9 for Blender 3.0-3.1, 3.10 for 3.2-3.6, 3.11 for 4.0-4.1, 3.12 for 4.2+)
-- Cython installed: `pip install cython`
+- A build targeting Blender's bundled Python ABI. Check `sys.version` in Blender's Python Console. This project's local Blender 4.3.2 uses Python 3.11.9 and NumPy 1.24.3.
+- Cython 3 for generating the native extension sources
 - NumPy installed: `pip install numpy`
 - C++ compiler (gcc, clang, or MSVC)
 

@@ -46,12 +46,7 @@ where = ["."]
 include = ["molecular_blender*"]
 
 [tool.cibuildwheel]
-# Build for Python 3.9 through 3.14 (covering all recent Blender versions)
-# Python 3.9: Blender 3.0-3.1
-# Python 3.10: Blender 3.2-3.6
-# Python 3.11: Blender 4.0-4.1
-# Python 3.12: Blender 4.2+
-# Python 3.13, 3.14: Future Blender versions
+# Standalone wheel ABIs. Blender extensions must match its bundled interpreter.
 build = "cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
 
 # Skip 32-bit builds (not needed for modern Blender)

@@ -20,6 +20,13 @@
 #  along with Molecular Blender; see COPYING.
 #  If not, see <http://www.gnu.org/licenses/>.
 
+"""Evaluate real-space orbitals and densities in atomic units.
+
+Coordinates passed to value(), plane_values() and box_values() are in Bohr.
+Grid axes for the compiled API are contiguous 1-D float32 arrays. Results
+are indexed [x, y] or [x, y, z] in the same order as the supplied axes.
+"""
+
 CYTHON_ENABLED = False
 try:
     from .compute_ao_cy import *
@@ -27,6 +34,9 @@ try:
 except ModuleNotFoundError as exc:
     if exc.name != __package__ + '.compute_ao_cy':
         raise
-    print("Warning: using pure python isosurface implementation.")
-    print("Building the cython version could give up to factor of 50 speedup.")
+    print("Using the Python atomic-orbital evaluator.")
     from .compute_ao_py import *
+
+# Both spellings refer to the same backend classes, including for old callers.
+OrbitalCalculator = OrbitalCalculater
+DensityCalculator = DensityCalculater

@@ -165,7 +165,8 @@ class MOData:
         return int(iorb)-1
 
     def get_orbital(self, iorb, spin=None):
-        return OrbitalCalculater(self.shells, self.coeff[self._orbital_index(iorb, spin), :])
+        """Return a Bohr-coordinate evaluator for a one-based orbital or HOMO-relative index."""
+        return OrbitalCalculator(self.shells, self.coeff[self._orbital_index(iorb, spin), :])
 
     @property
     def occupation_scale(self):
@@ -200,8 +201,9 @@ class MOData:
         return matrix, float(population)
 
     def get_density(self, densityname='density'):
+        """Return a Bohr-coordinate evaluator for the requested AO density matrix."""
         matrix, population = self.density_matrix(densityname)
-        return DensityCalculater(self.shells, matrix, population)
+        return DensityCalculator(self.shells, matrix, population)
 
     def is_density(self, densityname):
         return densityname in ["density", "spin", "alpha", "beta"] or densityname in self.densities.keys()

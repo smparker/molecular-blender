@@ -164,7 +164,7 @@ cdef class Shell:
         cdef float sqrt_35_3 = sqrt(35.0/3.0)
         cdef float sqrt_35_1 = sqrt(35.0/1.0)
 
-        cdef float logthresh = self.logthr
+        cdef float logthresh = self.logthr - logmxcoeff
 
         cdef int nexp = len(self.exponents)
         cdef int l = self.l
@@ -174,6 +174,8 @@ cdef class Shell:
         cdef DTYPE_t[:] denormed_coeffs = self.denormed_coeffs
 
         cdef float rr = dx*dx + dy*dy + dz*dz
+        if rr >= logthresh:
+            return 0.0
 
         cdef float radial = 0.0
 
@@ -1043,30 +1045,8 @@ cdef class DensityCalculater:
         return p0, p1
 
     cpdef DTYPE_t value(self, DTYPE_t x, DTYPE_t y, DTYPE_t z):
-        """Returns value of the density at specified point"""
-        cdef:
-            DTYPE_t out = 0.0
-            list nonzero_shells = []
-            int nao = sum([sh.size for sh in self.shells])
-            np.ndarray[DTYPE_t, ndim=1] phivals = np.zeros(nao, dtype=DTYPE)
-            int i, j
-            np.ndarray[DTYPE_t, ndim=1] ivals
-
-        for i, ish in enumerate(self.shells):
-            ivals = ish.value(x, y, z, logmxcoeff=self.logmxorb[i])
-            if ivals is not None:
-                phivals[ish.start:ish.start + ish.size] = ivals
-                nonzero_shells.append([i, ish])
-
-        for i, ish in nonzero_shells:
-            for j, jsh in nonzero_shells:
-                out += np.einsum("p,q,pq->",
-                               phivals[ish.start:ish.start + ish.size],
-                               phivals[jsh.start:jsh.start + jsh.size],
-                               self.density[ish.start:ish.start + ish.size,
-                                          jsh.start:jsh.start + jsh.size],
-                                 optimize=True)
-        return out
+        """Sample the same screened AO contraction as a one-pixel density plane."""
+        return self.plane_values(np.asarray([x], dtype=DTYPE), np.asarray([y], dtype=DTYPE), z)[0, 0]
 
     @cython.boundscheck(CYDEBUG)
     @cython.wraparound(CYDEBUG)
