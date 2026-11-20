@@ -19,6 +19,37 @@ except ImportError:
 
 @unittest.skipUnless(HAS_BPY, 'requires Blender')
 class TestBondOrders(unittest.TestCase):
+    def test_dynamic_bond_hysteresis_and_playback_at_intermediate_frames(self):
+        import tempfile
+        from molecular_blender.scene_state import read_record
+        original_frame = bpy.context.scene.frame_current
+        self.addCleanup(bpy.context.scene.frame_set, original_frame)
+        cutoff = Bond(Atom('c', [0, 0, 0], 0), Atom('c', [1, 0, 0], 1)).threshold
+        ratios = [1.03, .99, 1.03, 1.06, 1.02, .98]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'vibrating.xyz'
+            path.write_text(''.join(f'2\nsnapshot\nC 0 0 0\nC {cutoff*r} 0 0 {i/10}\n'
+                                    for i, r in enumerate(ratios)))
+            for policy in ('hold', 'linear'):
+                model, _, _ = BlendMoleculeSetup(bpy.context, str(path), trajectory_interpolation=policy,
+                    animate_bonds='dynamic', keystride=4, isovalues='', charges='scale', charge_offset=1.)
+                self.assertEqual(read_record(model.scene_owner)['settings']['trajectory_interpolation'], policy)
+                atom = bpy.data.objects[model.atoms[1].name]
+                charge = bpy.data.objects[model.atoms[1].plus_charge]
+                # Both halves of a split bond should hold their visibility until the next key.
+                bonds = [bpy.data.objects[name] for name in model.bonds[0].name]
+                for i, present in enumerate([False, True, True, False, False, True]):
+                    for delta in (0, 2):
+                        bpy.context.scene.frame_set(1 + 4*i + delta)
+                        for b in bonds:
+                            self.assertEqual((b.hide_viewport, b.hide_render), (not present, not present))
+                        next_i = min(i + 1, len(ratios) - 1)
+                        t = delta / 4 if policy == 'linear' else 0.
+                        r = (1-t)*ratios[i] + t*ratios[next_i]
+                        self.assertAlmostEqual(atom.location.x, cutoff*r, places=5)
+                        expected_scale = ((1-t)*model.scale(i/10).x + t*model.scale(next_i/10).x)
+                        self.assertAlmostEqual(charge.scale.x, expected_scale, places=5)
+
     def test_spatial_neighbors_match_exhaustive_static_and_trajectory_pairs(self):
         import random
         from molecular_blender.molecule import Snapshot, bonded_pairs

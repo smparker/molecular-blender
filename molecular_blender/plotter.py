@@ -634,6 +634,7 @@ def PlotWireFrame(context, molecule, _options):
 def AnimateMolecule(context, molecule, options):
     """Keyframes position of atoms and opacity of bonds"""
     frame_map = get_frame_mapper(options, molecule.frame_numbers)
+    interpolation = {'hold': 'CONSTANT', 'linear': 'LINEAR'}.get(options.get('trajectory_interpolation'))
 
     # check to make sure trajectory information is stored for at least the first atom
     if not molecule.atoms[0].trajectory:
@@ -673,6 +674,16 @@ def AnimateMolecule(context, molecule, options):
                     for x in [pluscharge, negcharge]:
                         x.keyframe_insert(data_path='scale',
                                           frame=frame_map(iframe))
+
+        if interpolation:
+            animated = [(atom_obj, 'location')]
+            if options['charges'] == 'scale':
+                animated.extend(((pluscharge, 'scale'), (negcharge, 'scale')))
+            for obj, path in animated:
+                for curve in obj.animation_data.action.fcurves:
+                    if curve.data_path == path:
+                        for point in curve.keyframe_points:
+                            point.interpolation = interpolation
 
     if options["animate_bonds"] == "dynamic" and molecule.explicit_bonds is None:
         bondmask = molecule.bond_mask(options)

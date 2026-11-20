@@ -146,6 +146,11 @@ if _HAS_BPY:
             description="Striding between keyframes in animation",
             default=1)
 
+        trajectory_interpolation: EnumProperty(name="Playback", items=(
+            ('blender', 'Blender Default', 'Use the keyframe interpolation from Blender preferences'),
+            ('hold', 'Hold', 'Show each sampled geometry until the next snapshot'),
+            ('linear', 'Linear', 'Interpolate atom positions and charge sizes linearly between snapshots')))
+
         bond_break_margin: FloatProperty(name="Break margin (%)", default=5.0, min=0, soft_max=25,
             description="Extra distance above the formation cutoff before an inferred bond disappears")
 
@@ -254,6 +259,7 @@ if _HAS_BPY:
             box.row().prop(self, "animate_bonds")
             box.row().prop(self, "keystride")
             if importers.file_format(import_dialog.browser_path(self, context)) in ('xyz', 'json'):
+                box.prop(self, "trajectory_interpolation")
                 if self.animate_bonds == 'dynamic':
                     box.prop(self, "bond_break_margin")
                 row = box.row(align=True)
@@ -292,6 +298,7 @@ if _HAS_BPY:
                 plot_style=self.plot_style,
                 object_type=self.object_type,
                 keystride=self.keystride,
+                trajectory_interpolation=self.trajectory_interpolation,
                 bond_break_margin=self.bond_break_margin,
                 frame_start=self.frame_start, frame_end=self.frame_end, frame_step=self.frame_step,
                 animate_bonds=self.animate_bonds,

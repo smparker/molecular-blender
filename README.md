@@ -536,6 +536,12 @@ times survive sampling, and **Keystride** still controls the spacing of Blender
 keyframes. The Python options are `frame_start`, `frame_end`, and `frame_step`.
 A single JSON entry wrapping an XYZ trajectory samples the XYZ frames.
 
+Under **Animation → Playback**, **Hold** keeps each sampled pose and charge
+size until the next key. **Linear** moves atoms and changes charge sizes at a
+constant rate between keys. **Blender Default** uses your keyframe preference.
+The Python option is `trajectory_interpolation="hold"`, `"linear"`, or `"blender"`.
+Bond and surface visibility switch on snapshot frames.
+
 With dynamic inferred bonds, **Break margin (%)** keeps an existing bond
 visible until its length exceeds the formation cutoff by the chosen percentage.
 The default is 5%. Set `bond_break_margin=0` for a single cutoff. The rule is

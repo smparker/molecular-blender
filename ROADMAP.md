@@ -88,7 +88,8 @@ Entry points: [importers.py](molecular_blender/importers.py), [transform.py](mol
 Entry points: `AnimateMolecule`, `compute_surface_vertex_sets`, and `create_surface_meshes` in [plotter.py](molecular_blender/plotter.py).
 
 - [x] **Expose trajectory sampling.** XYZ and JSON imports accept inclusive input ranges and a sampling stride. Only selected snapshots are allocated and original key times are preserved.
-- [ ] **Expose trajectory playback policy.** Add time units, frame rate and interpolation options.
+- [x] **Choose trajectory interpolation.** Hold or linearly interpolate sampled positions and charge sizes, or use Blender's keyframe preference.
+- [ ] **Expose physical playback timing.** Add time units and frame rate options.
 - [x] **Stabilize dynamic inferred bonds.** Separate formation and breaking distances with an adjustable break margin.
 - [ ] **Design per-frame bond-order perception.** Handle strand appearance/disappearance and charge conservation.
 - [ ] **Improve orbital animation continuity.** Track orbital overlap/phase across frames and expose the limitations around crossings and near-degenerate orbitals rather than trusting an unchanged index alone.
