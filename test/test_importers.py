@@ -428,6 +428,36 @@ class TestJsonRead(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Term 2.*origin'):
             molecule_from_json(manifest(), {})
 
+    def test_resample_combination_on_first_grid_only_with_full_coverage(self):
+        import numpy as np
+        def cube(name, origin, axes, shape):
+            indices = np.indices(shape).reshape(3, -1).T
+            x, y, z = (origin + indices @ axes).T
+            field = 2*x - y + x*y*z
+            rows = ['reference', 'two datasets', '1 ' + ' '.join(map(str, origin)) + ' 2']
+            rows += [' '.join(map(str, [-n, *axis])) for n, axis in zip(shape, axes)]
+            rows += ['1 0 0 0 0', ' '.join(map(str, np.column_stack((np.ones_like(field), field)).ravel()))]
+            self._write(name, '\n'.join(rows) + '\n')
+            return field.reshape(shape)
+        target = cube('target.cube', np.array([1., .25, .5]), np.diag([.25, .5, .75]), (5, 3, 3))
+        axes = np.array([[0., .5, 0.], [1., 0., 0.], [0., 0., 1.]])
+        cube('other.cube', np.zeros(3), axes, (4, 3, 3))
+        terms = [dict(filename='target.cube', coefficient=1.5, cube_dataset=1),
+                 dict(filename='other.cube', coefficient=-.5, cube_dataset=1)]
+        def read(**options):
+            return molecule_from_json(self.manifest([dict(units='1', linear_combination=terms, **options)]), {})
+        with self.assertRaisesRegex(ValueError, 'different grid'):
+            read()
+        with self.assertRaisesRegex(ValueError, 'true or false'):
+            read(resample='true')
+        volume = read(resample=True)['volume']
+        np.testing.assert_allclose(volume['data'], target, atol=1e-7)
+        np.testing.assert_allclose(volume['origin'], [1., .25, .5])
+        self.assertTrue(volume['resample'])
+        cube('other.cube', np.zeros(3), axes, (3, 3, 3))
+        with self.assertRaisesRegex(ValueError, 'Term 2.*cover'):
+            read(resample=True)
+
     def test_json_referencing_json_raises(self):
         f = self._write("bad.json", '{"molecules": [{"filename": "inner.json"}]}')
         with self.assertRaisesRegex(Exception, "json"):

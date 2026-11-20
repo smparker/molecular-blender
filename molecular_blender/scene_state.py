@@ -120,7 +120,7 @@ def persist_molecule(molecule, source, settings):
                   fields=(dict(datasets=list(molecule.volume.labels), field_type=molecule.volume.field_type)
                           if molecule.volume is not None else None))
     if molecule.volume is not None:
-        for key in ("units", "linear_combination"):
+        for key in ("units", "linear_combination", "resample"):
             value = getattr(molecule.volume, key)
             if value is not None:
                 record["fields"][key] = value

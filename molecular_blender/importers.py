@@ -30,6 +30,7 @@ import os
 import sys
 
 from .options import trajectory_range
+from .esp import add_resampled_cube
 from .util import stopwatch
 from .periodictable import symbols
 from .constants import bohr2ang
@@ -659,6 +660,9 @@ def _check_manifest_frame(first, current):
 def _linear_combination(entry, directory, options):
     terms = entry["linear_combination"]
     units = entry.get("units")
+    resample = entry.get("resample", False)
+    if not isinstance(resample, bool):
+        raise ValueError("resample must be true or false")
     if not isinstance(terms, list) or not terms:
         raise ValueError("linear_combination requires a nonempty list of cube terms")
     if not isinstance(units, str) or not units.strip():
@@ -685,12 +689,19 @@ def _linear_combination(entry, directory, options):
             result = cube
             template = grid
             total = np.zeros(grid["nres"], dtype=np.float64)
-        elif (grid["nres"] != template["nres"]
+        different_grid = (grid["nres"] != template["nres"]
               or not np.allclose(grid["origin"], template["origin"], atol=1e-5, rtol=0)
               or not np.allclose((grid["axes"] - template["axes"]) * (np.array(grid["nres"]) - 1)[:, None],
-                                 0, atol=1e-5, rtol=0)):
-            raise ValueError(f"Term {index} ({name}) has a different grid shape, origin or axes")
-        total += np.multiply(grid["data"], weight, dtype=np.float64)
+                                 0, atol=1e-5, rtol=0))
+        if different_grid:
+            if not resample:
+                raise ValueError(f"Term {index} ({name}) has a different grid shape, origin or axes")
+            try:
+                add_resampled_cube(total, template, grid, weight)
+            except ValueError as exc:
+                raise ValueError(f"Term {index} ({name}) must cover the first cube's grid: {exc}") from exc
+        else:
+            total += np.multiply(grid["data"], weight, dtype=np.float64)
         # Only geometry and grid metadata are needed from the first term.
         del grid["data"], grid["datasets"]
     if not np.all(np.isfinite(total)) or np.max(np.abs(total)) > np.finfo(np.float32).max:
@@ -698,6 +709,8 @@ def _linear_combination(entry, directory, options):
     values = total.astype(np.float32)
     template.update(data=values, datasets=values[..., None], labels=[0], dataset_index=0,
                     field_type="signed", units=units, linear_combination=terms)
+    if resample:
+        template["resample"] = True
     return result
 
 

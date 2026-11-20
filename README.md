@@ -501,6 +501,7 @@ this plots the polarized density minus the reference density.
 {
   "molecules": [{
     "units": "e/bohr^3",
+    "resample": true,
     "linear_combination": [
       {"filename": "polarized.cube", "coefficient": 1},
       {"filename": "reference.cube", "coefficient": -1}
@@ -511,8 +512,11 @@ this plots the polarized density minus the reference density.
 
 Add more terms or use fractional coefficients for weighted sums and averages.
 Each term accepts a zero-based `cube_dataset` (default 0). The first cube
-supplies the displayed atoms. All terms must describe the same physical grid
-after coordinate conversion to angstroms. The `units` string declares the
+supplies the displayed atoms and output grid. By default, all grids must match
+after coordinate conversion to angstroms. With `"resample": true`, the importer
+uses trilinear interpolation for terms with a different spacing, origin, or
+axis orientation. Each cube must cover the entire first grid. Supply all fields
+in the same molecular coordinate frame before import. The `units` string declares the
 scalar units shared by every term. A term can also declare its units, which
 must match. Supply values in those units before import. Cube comments are
 free text. **Include both signs** draws accumulation and depletion at equal

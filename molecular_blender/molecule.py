@@ -125,7 +125,7 @@ class Bond(object):
 class VolumeData(object):
     """Stores volumetric information from, for example, a cube file"""
 
-    def __init__(self, origin, axes, nres, data, datasets=None, labels=None, dataset_index=0, comments=None, field_type="unknown", units=None, linear_combination=None):
+    def __init__(self, origin, axes, nres, data, datasets=None, labels=None, dataset_index=0, comments=None, field_type="unknown", units=None, linear_combination=None, resample=None):
         """Create Volumetric data storage"""
         self.origin = origin
         self.axes = axes
@@ -134,6 +134,7 @@ class VolumeData(object):
         self.field_type = field_type
         self.units = units
         self.linear_combination = linear_combination
+        self.resample = resample
         self.datasets = np.asarray(data)[..., None] if datasets is None else np.asarray(datasets)
         self.labels = list(range(self.datasets.shape[-1])) if labels is None else list(labels)
         if self.datasets.shape != tuple(nres) + (len(self.labels),):
@@ -162,7 +163,7 @@ class VolumeData(object):
         """Build VolumeData from dictionary"""
         return cls(inp["origin"], inp["axes"], inp["nres"], inp["data"],
                    inp.get('datasets'), inp.get('labels'), inp.get('dataset_index', 0), inp.get('comments'), inp.get('field_type', 'unknown'),
-                   inp.get('units'), inp.get('linear_combination'))
+                   inp.get('units'), inp.get('linear_combination'), inp.get('resample'))
 
 
 _ADJACENT_CELLS = tuple(product((-1, 0, 1), repeat=3))
