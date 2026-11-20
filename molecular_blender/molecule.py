@@ -28,6 +28,7 @@ import math
 import numpy as np
 import mathutils
 from .orbitals import MOData
+from .options import DEFAULTS
 from .bond_perception import perceive_bond_orders, BondPerceptionError
 from .util import stopwatch
 from .aromatics import find_planar_cycles
@@ -312,13 +313,17 @@ class Molecule(object):
     def bond_mask(self, options):
         """Construct mask determining whether a bond should be drawn at each frame"""
         outmask = {}
+        break_scale = 1 + options.get("bond_break_margin", DEFAULTS["bond_break_margin"]) / 100
         for bond in self.bonds:
             iatom, jatom = bond.iatom, bond.jatom
 
             pairmask = []
+            bonded = False
+            break_distance = bond.threshold * break_scale
             for isnap, jsnap in zip(iatom.trajectory, jatom.trajectory):
                 vec = isnap.position - jsnap.position
-                pairmask.append(bond.is_bonded(vec.length))
+                bonded = vec.length <= (break_distance if bonded else bond.threshold)
+                pairmask.append(bonded)
 
             outmask[(iatom.index, jatom.index)] = pairmask
         return outmask

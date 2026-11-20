@@ -17,6 +17,7 @@ DEFAULTS = {"bonds": True,
                 "frame_end": -1,
                 "frame_step": 1,
                 "animate_bonds": "staticfirst",
+                "bond_break_margin": 5.0,
                 "universal_bonds": True,
                 "ignore_hydrogen": True,
                 "gradient": False,
@@ -93,7 +94,7 @@ def validated_options(values):
     for name in ('resolution', 'keystride', 'bond_order_max_iterations'):
         if out[name] <= 0:
             raise ValueError(name + ' must be positive')
-    for name in ('bond_thickness', 'cube_dataset', 'sdf_record', 'remesh'):
+    for name in ('bond_thickness', 'bond_break_margin', 'cube_dataset', 'sdf_record', 'remesh'):
         if out[name] < 0:
             raise ValueError(name + ' must not be negative')
     trajectory_range(out)

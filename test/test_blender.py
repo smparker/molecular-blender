@@ -90,6 +90,7 @@ class TestAnimateSticksAndCharges(unittest.TestCase):
                          plot_style="sticks",
                          plot_type="animate",
                          animate_bonds="dynamic",
+                         bond_break_margin=0.0,
                          ignore_hydrogen=False,
                          keystride=2,
                          charges="scale",

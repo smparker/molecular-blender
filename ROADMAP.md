@@ -89,7 +89,8 @@ Entry points: `AnimateMolecule`, `compute_surface_vertex_sets`, and `create_surf
 
 - [x] **Expose trajectory sampling.** XYZ and JSON imports accept inclusive input ranges and a sampling stride. Only selected snapshots are allocated and original key times are preserved.
 - [ ] **Expose trajectory playback policy.** Add time units, frame rate and interpolation options.
-- [ ] **Stabilize topology over time.** Add bond-formation/breaking hysteresis near cutoffs. Design and test per-frame bond-order perception separately from the existing fixed-first-frame assignment, including strand appearance/disappearance and charge conservation.
+- [x] **Stabilize dynamic inferred bonds.** Separate formation and breaking distances with an adjustable break margin.
+- [ ] **Design per-frame bond-order perception.** Handle strand appearance/disappearance and charge conservation.
 - [ ] **Improve orbital animation continuity.** Track orbital overlap/phase across frames and expose the limitations around crossings and near-degenerate orbitals rather than trusting an unchanged index alone.
 - [ ] **Avoid retaining every surface frame in memory.** Offer lazy calculation, a bounded disk cache, and staged scene updates instead of storing all triangle sets and all mesh objects simultaneously.
 

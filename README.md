@@ -536,6 +536,11 @@ times survive sampling, and **Keystride** still controls the spacing of Blender
 keyframes. The Python options are `frame_start`, `frame_end`, and `frame_step`.
 A single JSON entry wrapping an XYZ trajectory samples the XYZ frames.
 
+With dynamic inferred bonds, **Break margin (%)** keeps an existing bond
+visible until its length exceeds the formation cutoff by the chosen percentage.
+The default is 5%. Set `bond_break_margin=0` for a single cutoff. The rule is
+evaluated on the sampled snapshots and applies only to distance-inferred bonds.
+
 ### Color a density surface with a field cube
 
 Import a density cube or add a **Total**, **Alpha**, or **Beta Density** surface
