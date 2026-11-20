@@ -364,7 +364,8 @@ it is distinct from each atom's partial charge.
 
 Click **Frame Molecule** to fit the molecule and its visible surfaces in the
 current viewport. It preserves the selection. In camera view it switches to a
-perspective view and keeps the render camera in place.
+perspective view and keeps the render camera in place. Select three noncollinear
+atoms and click **View Face-On (3 Atoms)** to look perpendicular to their plane.
 
 Select an atom to see its element, stored atom index, partial charge, and formal
 charge. The index follows the importer's numbering. Charge values come from the

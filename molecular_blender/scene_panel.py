@@ -10,7 +10,7 @@ from .scene_state import ID, RECORD, ROLE, read_record, resolve_owner, owned_obj
 from .scene_surfaces import (MB_OT_add_surface, MB_OT_remove_surface, MB_OT_surface_visibility,
                              set_surface_color, set_surface_opacity, surface_color, surface_groups,
                              surface_opacity, surface_visible)
-from .scene_view import MB_OT_frame_molecule
+from .scene_view import MB_OT_frame_molecule, MB_OT_view_face_on
 from .surface_operator import DENSITIES, ORBITAL_SPINS
 
 REPRESENTATIONS = {'vdw': 'Van der Waals', 'bs': 'Ball and stick',
@@ -206,6 +206,8 @@ class MB_PT_molecule(bpy.types.Panel):
         owner = summary['owner']
         layout.label(text=owner.name, icon='OUTLINER_OB_EMPTY')
         layout.operator('molecular_blender.frame_molecule', icon='VIEWZOOM')
+        if summary['selected_atom'] is not None:
+            layout.operator('molecular_blender.view_face_on', text='View Face-On (3 Atoms)')
         box = layout.box()
         box.label(text='Source: ' + os.path.basename(summary['source']))
         box.label(text=summary['source'])
@@ -290,8 +292,9 @@ class MB_PT_molecule(bpy.types.Panel):
             box.operator('molecular_blender.reperceive')
 
 
-_CLASSES = (MB_OT_select_atoms, MB_OT_surface_visibility, MB_OT_add_surface, MB_OT_remove_surface,
-            MB_OT_jump_orbital, MB_OT_frame_molecule, MB_PT_molecule)
+_CLASSES = (MB_OT_select_atoms, MB_OT_surface_visibility,
+            MB_OT_add_surface, MB_OT_remove_surface,
+            MB_OT_jump_orbital, MB_OT_frame_molecule, MB_OT_view_face_on, MB_PT_molecule)
 
 
 def register():

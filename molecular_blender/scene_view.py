@@ -2,13 +2,11 @@
 import bpy
 from mathutils import Vector
 
-from .scene_state import owned_objects, resolve_owner
+from .scene_state import ROLE, owned_objects, resolve_owner
 
 
-class MB_OT_frame_molecule(bpy.types.Operator):
-    bl_idname = 'molecular_blender.frame_molecule'
-    bl_label = 'Frame Molecule'
-    bl_description = 'Fit the visible molecule in this viewport, preserving the selection and render camera'
+class _FrameMolecule:
+    face_on = False
 
     @classmethod
     def poll(cls, context):
@@ -25,6 +23,23 @@ class MB_OT_frame_molecule(bpy.types.Operator):
             rotation = view.view_rotation.copy()
             if view.view_perspective == 'CAMERA':
                 rotation = view.view_matrix.to_quaternion().inverted()
+            if self.face_on:
+                atoms = context.selected_objects
+                if len(atoms) != 3 or any(obj.get(ROLE) != 'atom' or resolve_owner(obj) != owner for obj in atoms):
+                    self.report({'INFO'}, 'Select three atoms from the same molecule')
+                    return {'CANCELLED'}
+                a, b, c = (obj.matrix_world.translation for obj in atoms)
+                ab, ac = b - a, c - a
+                normal = ab.normalized().cross(ac.normalized())
+                if normal.length < 1e-5:
+                    self.report({'INFO'}, 'The three selected atoms must define a plane')
+                    return {'CANCELLED'}
+                normal.normalize()
+                # Use the closest side and keep the current screen orientation.
+                toward_viewer = rotation @ Vector((0, 0, 1))
+                if normal.dot(toward_viewer) < 0:
+                    normal.negate()
+                rotation = toward_viewer.rotation_difference(normal) @ rotation
             to_view = rotation.inverted().to_matrix().to_4x4()
             depsgraph = context.evaluated_depsgraph_get()
             low = [float('inf')] * 3
@@ -51,7 +66,7 @@ class MB_OT_frame_molecule(bpy.types.Operator):
             # when Lock Camera to View is on. Use the current lens and aspect.
             if view.view_perspective == 'CAMERA':
                 view.view_perspective = 'PERSP'
-                view.view_rotation = rotation
+            view.view_rotation = rotation
             view.update()
             half = (Vector(high) - Vector(low)) * 0.5
             projection = view.window_matrix
@@ -65,3 +80,16 @@ class MB_OT_frame_molecule(bpy.types.Operator):
             view.update()
         context.area.tag_redraw()
         return {'FINISHED'}
+
+
+class MB_OT_frame_molecule(_FrameMolecule, bpy.types.Operator):
+    bl_idname = 'molecular_blender.frame_molecule'
+    bl_label = 'Frame Molecule'
+    bl_description = 'Fit the visible molecule in this viewport, preserving the selection and render camera'
+
+
+class MB_OT_view_face_on(_FrameMolecule, bpy.types.Operator):
+    bl_idname = 'molecular_blender.view_face_on'
+    bl_label = 'View Face-On'
+    bl_description = 'Look perpendicular to the plane of three selected atoms and frame their molecule'
+    face_on = True
