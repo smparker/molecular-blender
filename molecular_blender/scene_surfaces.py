@@ -18,6 +18,8 @@ from .surface_operator import DENSITIES, MoldenSurfaceProperties, SurfaceJobOper
 
 DENSITY_LABELS = {k: name for k, name, _ in DENSITIES}
 VISIBILITY_HOME = 'mb_surface_visibility_home'
+SOLO_GROUP = 'mb_solo_surface'
+_PRE_SOLO = 'mb_visibility_before_solo'
 
 
 def surface_groups(owner, record):
@@ -154,6 +156,67 @@ def set_surface_visibility(objects, visible):
             bpy.data.collections.remove(coll)
 
 
+def visibility_state(obj):
+    if obj.animation_data:
+        return 0 if surface_visible(obj) else 3
+    return int(obj.hide_render) + 2 * int(obj.hide_viewport)
+
+
+def restore_visibility(obj, state):
+    if obj.animation_data:
+        set_surface_visibility([obj], state == 0)
+    else:
+        obj.hide_render = bool(state & 1)
+        obj.hide_viewport = bool(state & 2)
+
+
+def apply_solo(owner, groups):
+    if owner[SOLO_GROUP] not in groups:
+        end_solo(owner)
+        return
+    for key, group in groups.items():
+        for obj in group['objects']:
+            if _PRE_SOLO not in obj:
+                obj[_PRE_SOLO] = visibility_state(obj)
+        set_surface_visibility(group['objects'], key == owner[SOLO_GROUP])
+
+
+def end_solo(owner):
+    if SOLO_GROUP not in owner:
+        return
+    for obj in owned_objects(owner, 'surface'):
+        if _PRE_SOLO in obj:
+            restore_visibility(obj, obj[_PRE_SOLO])
+            del obj[_PRE_SOLO]
+    del owner[SOLO_GROUP]
+
+
+class MB_OT_solo_surface(bpy.types.Operator):
+    bl_idname = 'molecular_blender.solo_surface'
+    bl_label = 'Solo Surface'
+    bl_description = 'Show only this surface on this molecule. Click again to restore previous visibility'
+    bl_options = {'UNDO'}
+
+    group: StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
+
+    def execute(self, context):
+        owner = resolve_owner(context.object)
+        if owner is None:
+            return {'CANCELLED'}
+        groups = surface_groups(owner, read_record(owner))
+        if self.group not in groups:
+            return {'CANCELLED'}
+        if context.object in owned_objects(owner, 'surface'):
+            owner.select_set(True)
+            context.view_layer.objects.active = owner
+        if owner.get(SOLO_GROUP) == self.group:
+            end_solo(owner)
+        else:
+            owner[SOLO_GROUP] = self.group
+            apply_solo(owner, groups)
+        return {'FINISHED'}
+
+
 class MB_OT_surface_visibility(bpy.types.Operator):
     bl_idname = 'molecular_blender.surface_visibility'
     bl_label = 'Toggle surface visibility'
@@ -171,6 +234,7 @@ class MB_OT_surface_visibility(bpy.types.Operator):
             return {'CANCELLED'}
         objects = group['objects']
         visible = not any(surface_visible(obj) for obj in objects)
+        end_solo(owner)
         if not visible and context.object in objects:
             owner.select_set(True)
             context.view_layer.objects.active = owner
@@ -219,6 +283,8 @@ class MB_OT_remove_surface(bpy.types.Operator):
         group = surface_groups(owner, record).get(self.group)
         if group is None:
             return {'CANCELLED'}
+        if owner.get(SOLO_GROUP) == self.group:
+            end_solo(owner)
         objects = group['objects']
         if context.object in objects:
             owner.select_set(True)

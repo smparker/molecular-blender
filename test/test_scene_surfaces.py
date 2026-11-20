@@ -374,6 +374,39 @@ class TestSidebarActions(unittest.TestCase):
         self.assertEqual(read_record(peer)['source'], before['source'])
         self.assertEqual(len(surface_model(owner, after).surface_input.load(after['settings']).atoms), 3)
 
+    def test_solo_switches_and_restores_individual_states_even_after_adding_a_surface(self):
+        from molecular_blender.plotter import BlendMoleculeSetup, draw_surfaces
+        from molecular_blender.scene_state import read_record
+        from molecular_blender.scene_surfaces import SOLO_GROUP, surface_groups, visibility_state
+        model, styler, options = BlendMoleculeSetup(bpy.context, str(self.path), orbital='5,6',
+            isovalues='.05', cumulative=False, resolution=.35, remesh=0)
+        owner = model.scene_owner
+        draw_surfaces(model, styler, bpy.context, options)
+        groups = surface_groups(owner, read_record(owner))
+        (a, first), (b, second) = groups.items()
+        first['objects'][0].hide_render = True
+        second['objects'][0].hide_viewport = True
+        states = {o: visibility_state(o) for g in groups.values() for o in g['objects']}
+        self.select(first['objects'][0])
+        ops = bpy.ops.molecular_blender
+        self.assertEqual(ops.solo_surface(group=b), {'FINISHED'})
+        self.assertEqual(bpy.context.active_object, owner)
+        self.assertTrue(all(visibility_state(o) == 3 for o in first['objects']))
+        self.assertTrue(all(visibility_state(o) == 0 for o in second['objects']))
+        draw_surfaces(model, styler, bpy.context, options)
+        extra = [o for k, g in surface_groups(owner, read_record(owner)).items() if k not in groups for o in g['objects']]
+        self.assertTrue(extra and all(visibility_state(o) == 3 for o in extra))
+        self.assertEqual(ops.solo_surface(group=a), {'FINISHED'})
+        self.assertTrue(all(visibility_state(o) == 0 for o in first['objects']))
+        self.assertTrue(all(visibility_state(o) == 3 for o in second['objects']))
+        self.assertEqual(ops.solo_surface(group=a), {'FINISHED'})
+        self.assertEqual(states, {o: visibility_state(o) for o in states})
+        self.assertTrue(all(visibility_state(o) == 0 for o in extra))
+        ops.solo_surface(group=b)
+        ops.remove_surface(group=b)
+        self.assertNotIn(SOLO_GROUP, owner)
+        self.assertTrue(all(visibility_state(o) == states[o] for o in first['objects']))
+
     def test_legacy_animated_groups_preserve_keyframes_and_save_visibility(self):
         from molecular_blender.scene_state import tag, read_record, write_record
         from molecular_blender.scene_surfaces import surface_groups, surface_visible, set_surface_visibility

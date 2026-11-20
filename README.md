@@ -417,6 +417,10 @@ edit the materials directly, so you can see the result in Material Preview or
 Rendered shading as you adjust them. The trash button removes that calculation
 and supports Blender Undo.
 
+Click **Solo** to show just that calculation on its molecule. Click another
+row's **Solo** to switch, or click the active **Solo** again to restore the
+previous visibility of each lobe. Using a row's eye also exits Solo.
+
 **Make Molecule Independent** detaches geometry and materials shared with
 objects outside the molecule, including multiple-bond bevel shapes. It keeps
 internal sharing, so identical atoms can still reuse a mesh. The action

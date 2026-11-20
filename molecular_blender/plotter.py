@@ -917,6 +917,12 @@ def create_surface_meshes(molecule, styler, context, options, vertex_sets, verte
                 obj.keyframe_insert(data_path="hide_viewport", frame=frame)
                 obj.keyframe_insert(data_path="hide_render", frame=frame)
 
+    if hasattr(molecule, 'scene_owner'):
+        from .scene_surfaces import SOLO_GROUP, apply_solo, surface_groups
+        if SOLO_GROUP in mol_obj:
+            from .scene_state import read_record
+            apply_solo(mol_obj, surface_groups(mol_obj, read_record(mol_obj)))
+
 
 @stopwatch("draw surfaces")
 def draw_surfaces(molecule, styler, context, options):
