@@ -12,6 +12,7 @@ from .scene_surfaces import (SOLO_GROUP, MB_OT_add_surface, MB_OT_locate_source,
                              MB_OT_remove_surface, MB_OT_solo_surface, MB_OT_surface_visibility, set_surface_color,
                              set_surface_opacity, surface_color, surface_groups, surface_opacity, surface_visible)
 from .surface_export import MB_ExportSurface, MB_OT_export_surface_series, MB_OT_transparent_png, draw_png_preset
+from .scene_esp import BASE_MESH, MB_OT_map_esp, MB_OT_clear_esp, density_group
 from .scene_view import MB_OT_frame_molecule, MB_OT_view_face_on, draw_atom_indices
 from .surface_operator import DENSITIES, ORBITAL_SPINS
 
@@ -335,16 +336,31 @@ class MB_PT_molecule(bpy.types.Panel):
                              icon='HIDE_OFF' if visible else 'HIDE_ON').group = key
                 row.operator('molecular_blender.solo_surface', text='Solo',
                              depress=owner.get(SOLO_GROUP) == key).group = key
-                if orbitals and molden:
+                obj = group['objects'][0]
+                mapped = BASE_MESH in obj
+                if orbitals and molden and not mapped:
                     action = row.row(align=True)
                     action.enabled = available
                     action.operator('molecular_blender.recompute_surface', text='', icon='FILE_REFRESH').group = key
                 row.operator('molecular_blender.remove_surface', text='', icon='TRASH').group = key
-                colors = entry.row(align=True)
-                for sign, label in ((True, 'Positive'), (False, 'Negative')):
-                    phase = group['phases'].get(sign)
-                    if phase:
-                        colors.prop(phase[0], 'mb_surface_color', text=label)
+                if mapped:
+                    mat = obj.active_material
+                    if mat and 'mb_esp_limits' in mat:
+                        low, high = mat['mb_esp_limits']
+                        entry.label(text='ESP · ' + os.path.basename(mat['mb_esp_path']))
+                        entry.label(text=f"{low:g} to {high:g} {mat['mb_esp_units']}")
+                else:
+                    colors = entry.row(align=True)
+                    for sign, label in ((True, 'Positive'), (False, 'Negative')):
+                        phase = group['phases'].get(sign)
+                        if phase:
+                            colors.prop(phase[0], 'mb_surface_color', text=label)
+                if density_group(group):
+                    controls = entry.row(align=True)
+                    controls.operator('molecular_blender.map_esp',
+                                      text='Change ESP Map…' if mapped else 'Map ESP Cube…').group = key
+                    if mapped:
+                        controls.operator('molecular_blender.clear_esp', text='Remove Map').group = key
                 entry.prop(group['objects'][0], 'mb_surface_opacity', text='Opacity', slider=True)
                 levels = _level_labels(group['levels'])
                 for i in range(0, len(levels), 3):
@@ -370,7 +386,7 @@ class MB_PT_molecule(bpy.types.Panel):
 
 _CLASSES = (MB_OT_select_atoms, MB_OT_select_atom_indices, MB_OT_surface_visibility, MB_OT_solo_surface,
             MB_ExportSurface, MB_OT_export_surface_series, MB_OT_transparent_png, MB_OT_locate_source,
-            MB_OT_add_surface, MB_OT_recompute_surface, MB_OT_remove_surface,
+            MB_OT_map_esp, MB_OT_clear_esp, MB_OT_add_surface, MB_OT_recompute_surface, MB_OT_remove_surface,
             MB_OT_jump_orbital, MB_OT_frame_molecule, MB_OT_view_face_on, MB_PT_molecule)
 
 

@@ -527,3 +527,21 @@ inclusive, zero-based positions. A last frame of `-1` reads through the end.
 times survive sampling, and **Keystride** still controls the spacing of Blender
 keyframes. The Python options are `frame_start`, `frame_end`, and `frame_step`.
 A single JSON entry wrapping an XYZ trajectory samples the XYZ frames.
+
+### Map an ESP cube onto a density surface
+
+Import a density cube or add a **Total**, **Alpha**, or **Beta Density** surface
+to a Molden molecule. In **Molecule → Surfaces**, choose **Map ESP Cube…** on
+the single-frame density surface. Select the cube containing the potential,
+its dataset index, its scalar units (Hartree/e or volts), and the negative and
+positive color limits. Use the same units and limits across figures. The map
+shows negative potential in red, zero in white, and positive potential in blue.
+Use Material Preview or Rendered shading to see the colors.
+
+The potential cube must list the same atoms in the same order and source
+positions (within 0.0001 Å). Its grid can have different spacing, orientation,
+or origin, and must cover the whole density surface. The add-on interpolates
+the supplied values onto the displayed vertices after remeshing and saves
+them as the `mb_esp` point attribute. The material's Color Ramp is editable
+in the Shader Editor. **Change ESP Map…** can change the file or limits.
+**Remove Map** restores the original geometry, material, and Remesh settings.

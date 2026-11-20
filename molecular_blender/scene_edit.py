@@ -241,11 +241,14 @@ def make_molecule_independent(owner):
     if any(o.library for o in objects):
         raise ValueError('Make library-linked objects local in Blender before editing their molecule')
     geometry = {o.data for o in objects}
+    geometry.update(o["mb_esp_original_mesh"] for o in objects if "mb_esp_original_mesh" in o)
     users = bpy.data.user_map(subset=geometry)
     copies = {data: data.copy() for data in geometry if data.library or users[data] - objects}
     for obj in objects:
         if obj.data in copies:
             obj.data = copies[obj.data]
+        if obj.get("mb_esp_original_mesh") in copies:
+            obj["mb_esp_original_mesh"] = copies[obj["mb_esp_original_mesh"]]
     geometry = {copies.get(data, data) for data in geometry}
 
     # Generated bevel objects live outside collections and can be shared even
@@ -268,6 +271,7 @@ def make_molecule_independent(owner):
 
     materials = {m for data in geometry for m in data.materials if m}
     materials.update(slot.material for obj in objects for slot in obj.material_slots if slot.material)
+    materials.update(o["mb_esp_original_material"] for o in objects if "mb_esp_original_material" in o)
     users = bpy.data.user_map(subset=materials)
     local_users = objects | geometry
     copies = {m: m.copy() for m in materials if m.library or users[m] - local_users}
@@ -276,6 +280,8 @@ def make_molecule_independent(owner):
             if material in copies:
                 data.materials[i] = copies[material]
     for obj in objects:
+        if obj.get("mb_esp_original_material") in copies:
+            obj["mb_esp_original_material"] = copies[obj["mb_esp_original_material"]]
         for slot in obj.material_slots:
             if slot.link == 'OBJECT' and slot.material in copies:
                 slot.material = copies[slot.material]

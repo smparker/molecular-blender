@@ -52,6 +52,11 @@ def surface_groups(owner, record):
             groups[key] = dict(label=label, field=field, spin=entry.get('orbital_spin', settings['orbital_spin']),
                                sampling=entry.get('sampling'), levels=set(), objects=[], phases={}, ids=set())
         group = groups[key]
+        if field == 'cube':
+            cube_kind = settings['cube_field_type']
+            if cube_kind == 'auto':
+                cube_kind = (record['fields'] or {}).get('field_type', 'unknown')
+            group['cube_kind'] = cube_kind
         group['ids'].add(entry['id'])
         if members:
             group['levels'].add(entry['isovalue'])
@@ -246,6 +251,8 @@ def remove_surface_objects(objects):
     meshes = {obj.data for obj in objects if obj.type == 'MESH'}
     materials = {slot.material for obj in objects for slot in obj.material_slots if slot.material}
     materials.update(mat for mesh in meshes for mat in mesh.materials if mat)
+    meshes.update(obj['mb_esp_original_mesh'] for obj in objects if 'mb_esp_original_mesh' in obj)
+    materials.update(obj['mb_esp_original_material'] for obj in objects if 'mb_esp_original_material' in obj)
     actions = {obj.animation_data.action for obj in objects if obj.animation_data and obj.animation_data.action}
     collections = {coll for obj in objects for coll in obj.users_collection}
     hidden = {coll for coll in collections if VISIBILITY_HOME in coll}
@@ -494,6 +501,8 @@ class MB_OT_recompute_surface(MoldenSurfaceProperties, SurfaceJobOperator, bpy.t
         group = surface_groups(owner, record).get(self.group)
         if group is None:
             raise ValueError('The surface calculation no longer exists')
+        if any('mb_esp_original_mesh' in obj for obj in group['objects']):
+            raise ValueError('Remove the ESP map before recomputing the density geometry')
         return record, group, recompute_settings(record, group)
 
     def invoke(self, context, event):
