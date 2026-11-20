@@ -90,6 +90,48 @@ class TestRestyle(unittest.TestCase):
         self.assertAlmostEqual(surface.active_material.node_tree.nodes['MB Surface Opacity'].inputs[0].default_value, 0.35)
         self.assertIsNone(original_material.node_tree.nodes.get('MB Surface Opacity'))
 
+    def test_selected_accents_and_restore_handle_split_bonds_and_shared_atoms(self):
+        from molecular_blender.plotter import BlendMoleculeSetup
+        from molecular_blender import scene_edit
+        from molecular_blender.scene_state import ID, owned_objects
+        from molecular_blender.stylers import get_styler
+        from molecular_blender.periodictable import elements
+        scene_edit.register()
+        self.addCleanup(scene_edit.unregister)
+        model, _, _ = BlendMoleculeSetup(bpy.context, 'examples/water-sto-3g.molden',
+                                         ignore_hydrogen=False, isovalues='')
+        owner = model.scene_owner
+        atoms = owned_objects(owner, 'atom')
+        h, other_h = [o for o in atoms if o['mb_element'] == 'h']
+        oxygen, = [o for o in atoms if o['mb_element'] == 'o']
+        bonds = owned_objects(owner, 'bond')
+        halves = [o for o in bonds if h[ID] in o['mb_endpoints']]
+        self.assertEqual(len(halves), 2)
+        bpy.ops.object.select_all(action='DESELECT')
+        bpy.context.view_layer.objects.active = h
+        h.select_set(True)
+        oxygen.select_set(True)
+        shared = other_h.active_material
+        for value in (.1, .3):
+            self.assertEqual(bpy.ops.molecular_blender.style_selected(color=(value, .2, .8)), {'FINISHED'})
+            for obj in (h, oxygen, *halves):
+                self.assertAlmostEqual(obj.active_material.diffuse_color[0], value)
+            self.assertEqual(other_h.active_material, shared)
+            self.assertTrue(all('mb_accent_color' not in o for o in bonds if o not in halves))
+        scene_edit.restyle_molecule(owner, colors='vmd')
+        self.assertAlmostEqual(oxygen.active_material.diffuse_color[0], .3)
+        bpy.ops.object.select_all(action='DESELECT')
+        halves[0].select_set(True)
+        bpy.context.view_layer.objects.active = halves[0]
+        self.assertEqual(bpy.ops.molecular_blender.style_selected(restore=True), {'FINISHED'})
+        palette = get_styler({'colors': 'vmd'})
+        for obj in halves:
+            self.assertNotIn('mb_accent_color', obj)
+            expected = palette.element_color(elements[obj['mb_element']])
+            for actual, want in zip(obj.active_material.diffuse_color, expected):
+                self.assertAlmostEqual(actual, want)
+        self.assertIn('mb_accent_color', h)
+
     def test_invalid_style_leaves_scene_unchanged(self):
         from molecular_blender.plotter import BlendMoleculeSetup
         from molecular_blender.scene_edit import restyle_molecule

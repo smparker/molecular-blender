@@ -1,11 +1,11 @@
 """Molecule-scoped appearance edits; scientific fields are never recomputed."""
 import bpy
-from bpy.props import FloatProperty, EnumProperty
+from bpy.props import BoolProperty, FloatProperty, FloatVectorProperty, EnumProperty
 
 from .options import validated_options
 from .periodictable import elements
 from .scene_state import (read_record, write_record, resolve_owner, owned_objects,
-                          normalize_duplicate_ids, ID)
+                          normalize_duplicate_ids, ID, ROLE)
 from .stylers import get_styler
 from .util import darken_color
 
@@ -159,7 +159,7 @@ def restyle_molecule(owner, *, atom_scale=None, bond_thickness=None,
             symbol = obj.get('mb_element')
             for slot in obj.material_slots:
                 material = slot.material
-                if material is None or (not is_surface and symbol is None):
+                if material is None or (not is_surface and (symbol is None or 'mb_accent_color' in obj)):
                     continue
                 key = (material.as_pointer(), symbol, is_surface)
                 if key not in copies:
@@ -235,9 +235,71 @@ class MB_OT_restyle(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MB_OT_style_selected(bpy.types.Operator):
+    bl_idname = 'molecular_blender.style_selected'
+    bl_label = 'Style Selected'
+    bl_description = 'Color selected atoms, selected bonds and bonds between selected atoms'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    color: FloatVectorProperty(name='Accent color', subtype='COLOR', size=3,
+                               min=0., max=1., default=(0.95, 0.35, 0.05))
+    restore: BoolProperty(options={'HIDDEN', 'SKIP_SAVE'})
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and resolve_owner(context.object) is not None
+
+    def invoke(self, context, event):
+        if self.restore:
+            return self.execute(context)
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        owner = resolve_owner(context.object)
+        selected = [obj for obj in context.selected_objects if resolve_owner(obj) == owner]
+        atoms = [obj for obj in selected if obj.get(ROLE) == 'atom']
+        atom_ids = {obj[ID] for obj in atoms}
+        bond_ids = {obj[ID] for obj in selected if obj.get(ROLE) == 'bond'}
+        targets = atoms + [obj for obj in owned_objects(owner, 'bond')
+                           if obj[ID] in bond_ids or set(obj['mb_endpoints']) <= atom_ids]
+        if not targets:
+            self.report({'INFO'}, 'Select atoms or bonds to style')
+            return {'CANCELLED'}
+        styler = get_styler(read_record(owner)['settings'])
+        copies = {}
+        for obj in targets:
+            if self.restore and 'mb_accent_color' not in obj:
+                continue
+            symbol = obj.get('mb_element')
+            color = (*self.color, 1.) if not self.restore else (
+                styler.element_color(elements[symbol]) if symbol else styler.bond_color)
+            for slot in obj.material_slots:
+                material = slot.material
+                if material is None:
+                    continue
+                key = (material, color)
+                if key not in copies:
+                    copy = material.copy()
+                    copy['mb_style_material'] = True
+                    _set_color(copy, color)
+                    copies[key] = copy
+                slot.link = 'OBJECT'
+                slot.material = copies[key]
+            if self.restore:
+                del obj['mb_accent_color']
+            else:
+                obj['mb_accent_color'] = tuple(self.color)
+        for old in {mat for mat, color in copies}:
+            if old.users == 0 and old.get('mb_style_material'):
+                bpy.data.materials.remove(old)
+        return {'FINISHED'}
+
+
 def register():
     bpy.utils.register_class(MB_OT_restyle)
+    bpy.utils.register_class(MB_OT_style_selected)
 
 
 def unregister():
+    bpy.utils.unregister_class(MB_OT_style_selected)
     bpy.utils.unregister_class(MB_OT_restyle)

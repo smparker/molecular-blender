@@ -377,6 +377,11 @@ bonded visible neighbors, including bonds added in the sidebar. **Select Bonded
 Fragment** follows those bonds to select every visible, selectable atom in the
 same connected fragment. A hidden atom can connect two visible atoms.
 
+**Style Selected…** applies an accent color to the selected atoms and to the
+bonds between them. You can also select either half of a bond to color the
+whole bond. **Restore Element Colors** returns the selection to the current
+molecule palette, including the usual neutral bonds for ball-and-stick models.
+
 Expand **Orbitals** to browse the saved index, energy, occupation, spin, and
 symmetry in input order. Use the **Page** arrows or enter a page number.
 **Go to HOMO** and **Go to LUMO** jump to and mark the matching row for the

@@ -109,7 +109,12 @@ def _new_curves(owner, record, bond, atoms):
                 curve.bevel_factor_start, curve.bevel_factor_end = ((0, 0.5), (0.5, 1))[index]
             if colored:
                 atom = (first, second)[index]
-                if atom.active_material is not None:
+                if 'mb_accent_color' in atom:
+                    base = get_styler(settings).atom_material(owner.name + '_bond_' + symbols[index],
+                                                             elements[symbols[index]])
+                    base['mb_style_material'] = True
+                    curve.materials.append(base)
+                elif atom.active_material is not None:
                     curve.materials.append(atom.active_material)
                 obj['mb_element'] = symbols[index]
             else:

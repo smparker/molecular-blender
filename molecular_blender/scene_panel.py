@@ -277,6 +277,9 @@ class MB_PT_molecule(bpy.types.Panel):
         if summary['object_type'] != 'wireframe':
             layout.operator('molecular_blender.restyle', text='Restyle molecule…')
             box = layout.box()
+            if context.object.get(ROLE) in ('atom', 'bond'):
+                box.operator('molecular_blender.style_selected', text='Style Selected…').restore = False
+                box.operator('molecular_blender.style_selected', text='Restore Element Colors').restore = True
             box.label(text='Select two atoms or a bond')
             row = box.row(align=True)
             for order, label in (('1', 'Single'), ('2', 'Double'), ('3', 'Triple')):
