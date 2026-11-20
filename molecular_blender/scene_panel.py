@@ -250,6 +250,8 @@ class MB_PT_molecule(bpy.types.Panel):
             box.label(text='Cube datasets: {}'.format(len(fields['datasets'])))
             box.label(text='Dataset IDs: ' + ', '.join(str(x) for x in fields['datasets']))
             box.label(text='Field type: ' + fields['field_type'])
+            if 'units' in fields:
+                box.label(text='Field units: ' + fields['units'])
         if not orbitals and fields is None:
             box.label(text='No orbital or grid data')
         if summary['groups']:

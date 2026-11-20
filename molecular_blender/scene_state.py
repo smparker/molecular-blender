@@ -119,6 +119,11 @@ def persist_molecule(molecule, source, settings):
                   settings=settings, atoms=atoms, bonds=bonds, surfaces=[], orbitals=orbital_metadata(molecule.orbitals),
                   fields=(dict(datasets=list(molecule.volume.labels), field_type=molecule.volume.field_type)
                           if molecule.volume is not None else None))
+    if molecule.volume is not None:
+        for key in ("units", "linear_combination"):
+            value = getattr(molecule.volume, key)
+            if value is not None:
+                record["fields"][key] = value
     write_record(owner, record)
     for atom, entry in zip(molecule.atoms, atoms):
         obj = bpy.data.objects.get(atom.name)

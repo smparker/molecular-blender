@@ -401,6 +401,32 @@ class TestJsonRead(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'no JSON'):
             molecule_from_json(path, {'frame_start': 5})
 
+    def test_linear_combination_of_cube_datasets_and_units(self):
+        import numpy as np
+        cube = ('field\ngrid\n1 0 0 0 2\n2 1 0 0\n2 0 1 0\n2 0 0 1\n1 0 0 0 0\n'
+                + ' '.join(f'{i} {7-i}' for i in range(8)) + '\n')
+        self._write('a.cube', cube)
+        self._write('b.cube', cube)
+        terms = [dict(filename='a.cube', coefficient=.5, cube_dataset=0),
+                 dict(filename='b.cube', coefficient=-2, cube_dataset=1),
+                 dict(filename='a.cube', coefficient=.25, cube_dataset=0)]
+        def manifest():
+            return self.manifest([dict(linear_combination=terms, units='e/bohr^3')])
+        volume = molecule_from_json(manifest(), {})['volume']
+        np.testing.assert_allclose(volume['data'].ravel(), .75*np.arange(8)-2*np.arange(7, -1, -1))
+        self.assertEqual(volume['datasets'].shape, (2, 2, 2, 1))
+        self.assertEqual(volume['field_type'], 'signed')
+        self.assertEqual(volume['linear_combination'], terms)
+        for key, val, message in [('units', 'e/angstrom^3', 'units'), ('coefficient', None, 'coefficient'),
+                                   ('cube_dataset', 2, 'cube_dataset')]:
+            old = dict(terms[-1])
+            terms[-1][key] = val
+            with self.assertRaisesRegex(ValueError, 'entry 1.*' + message):
+                molecule_from_json(manifest(), {})
+            terms[-1] = old
+        self._write('b.cube', cube.replace('1 0 0 0 2', '1 1 0 0 2'))
+        with self.assertRaisesRegex(ValueError, 'Term 2.*origin'):
+            molecule_from_json(manifest(), {})
 
     def test_json_referencing_json_raises(self):
         f = self._write("bad.json", '{"molecules": [{"filename": "inner.json"}]}')

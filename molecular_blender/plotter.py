@@ -779,29 +779,30 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None):
             progress_state["completed"] = progress_state.get("completed", 0) + 1
 
     if molecule.volume is not None:  # volumetric data was read
-        vol = molecule.volume
-        vol.select_dataset(options.get("cube_dataset", 0))
-        isovals = options["isovalues"]
+        frames = [molecule.volume, *(molecule.volume_trajectory or ())]
+        for vol in frames:
+            vol.select_dataset(options.get("cube_dataset", 0))
+        levels = options["isovalues"]
         if options["cumulative"]:
-            isovals = vol.isovalue_containing_proportion(isovals, options.get("cube_field_type", "auto"))
-
-        vsets = cube_isosurface(vol.data, vol.origin, vol.axes, isovals, name="cube")
-        tick()
-        if vsets:
-            vertex_sets.extend(vsets)
-        if molecule.volume_trajectory is not None:
-            f0 = fmap(0)
-            vertex_trajectory_map.setdefault(f0, []).extend([v["name"] for v in vsets])
-            for i, vol_snap in enumerate(molecule.volume_trajectory, 1):
-                vol_snap.select_dataset(options.get("cube_dataset", 0))
-                name = "cube-{:5d}".format(i)
-                vsets = cube_isosurface(vol_snap.data, vol_snap.origin, vol_snap.axes, isovals, name=name)
-                for v in vsets:
-                    v['series'] = 'cube'
-                tick()
-                fi = fmap(i)
-                vertex_trajectory_map.setdefault(fi, []).extend([v["name"] for v in vsets])
-                vertex_sets.extend(vsets)
+            reference = frames[0]
+            if reference.linear_combination:
+                reference = next((vol for vol in frames if np.any(vol.data)), None)
+                if reference is None:
+                    for _ in frames:
+                        tick()
+                    return [], {}
+            levels = reference.isovalue_containing_proportion(levels, options.get("cube_field_type", "auto"))
+        for i, vol in enumerate(frames):
+            name = "cube-{:5d}".format(i) if i else "cube"
+            surfaces = cube_isosurface(vol.data, vol.origin, vol.axes, levels, name=name)
+            if vol.linear_combination:
+                surfaces = [s for s in surfaces if len(s['triangles'])]
+            for surface in surfaces:
+                surface['series'] = 'cube'
+            if len(frames) > 1:
+                vertex_trajectory_map[fmap(i)] = [s['name'] for s in surfaces]
+            vertex_sets.extend(surfaces)
+            tick()
 
     elif molecule.orbitals is not None:  # orbital data was read
         orbitals = molecule.orbitals

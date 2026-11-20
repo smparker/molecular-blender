@@ -38,7 +38,7 @@ def surface_groups(owner, record):
         key = entry.get('group', field)
         if key not in groups:
             if field == 'cube':
-                label = 'Cube'
+                label = 'Linear combination' if (record['fields'] or {}).get('linear_combination') else 'Cube'
                 datasets = (record['fields'] or {}).get('datasets', [])
                 if len(datasets) > 1:
                     label += ' · dataset {}'.format(datasets[settings['cube_dataset']])

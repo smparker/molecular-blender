@@ -441,6 +441,32 @@ topology must match across frames. Molden frames retain their own coefficients
 and occupations and share a compatible basis and orbital channels. Cube frames
 can have different grid origins and spacings and must use the same dataset IDs.
 
+### Combine cube fields in JSON
+
+A manifest entry can supply a `linear_combination` of cube datasets. For example,
+this plots the polarized density minus the reference density.
+
+```json
+{
+  "molecules": [{
+    "units": "e/bohr^3",
+    "linear_combination": [
+      {"filename": "polarized.cube", "coefficient": 1},
+      {"filename": "reference.cube", "coefficient": -1}
+    ]
+  }]
+}
+```
+
+Add more terms or use fractional coefficients for weighted sums and averages.
+Each term accepts a zero-based `cube_dataset` (default 0). The first cube
+supplies the displayed atoms. All terms must describe the same physical grid
+after coordinate conversion to angstroms. The `units` string declares the
+scalar units shared by every term. A term can also declare its units, which
+must match. Supply values in those units before import. Cube comments are
+free text. **Include both signs** draws accumulation and depletion at equal
+absolute levels. A combination can also be one frame of a JSON trajectory.
+
 ### Sample trajectory frames
 
 For XYZ and JSON imports, **First input frame** and **Last input frame** are

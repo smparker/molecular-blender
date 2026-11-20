@@ -29,6 +29,8 @@ def _manifest_source(path, first_frame):
     with open(path) as stream:
         entries = json.load(stream)['molecules']
     first = entries[0 if len(entries) == 1 else first_frame]
+    if 'linear_combination' in first:
+        return 'cube', None
     child = os.path.join(os.path.dirname(path), first['filename'])
     return file_format(child), child
 
@@ -57,6 +59,8 @@ def surface_source(path, first_frame=0):
     kind = file_format(path)
     if kind == 'json':
         kind, path = _preview(_manifest_source, path, first_frame) or (None, None)
+        if kind == 'cube' and path is None:
+            return 'cube', range(1)
     labels = _preview(cube_dataset_labels, path) if kind == 'cube' else None
     return kind, labels
 

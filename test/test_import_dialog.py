@@ -81,6 +81,17 @@ class TestAdaptiveImport(unittest.TestCase):
             manifest.write_text('{')
             self.assertFalse(self.visible(manifest.name))
 
+    def test_combination_exposes_only_result_dataset_even_after_sampling(self):
+        manifest = self.folder / 'fields.json'
+        manifest.write_text(json.dumps({'molecules': [
+            {'filename': 'first.molden'},
+            {'units': 'e/bohr^3', 'linear_combination': [{'filename': 'a.cube', 'coefficient': 1}]}]}))
+        self.op.frame_start = 1
+        self.assertEqual(self.ui.surface_source(str(manifest), 1), ('cube', range(1)))
+        props = self.visible(manifest.name)
+        self.assertIn('cube_field_type', props)
+        self.assertFalse(props & {'dataset_choice', 'volume', 'orbital'})
+
     def test_execute_uses_confirmed_file_and_ignores_hidden_settings(self):
         from molecular_blender import MolecularBlender
         from molecular_blender.plotter import process_options

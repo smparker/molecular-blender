@@ -569,6 +569,8 @@ def molecule_from_cube(filename, options):
         nres = [abs(n) for n in nres]
         axes *= length_unit
         out["volume"]["origin"] = np.array(origin, dtype=np.float32) * length_unit
+        if not np.isfinite(out["volume"]["origin"]).all():
+            raise ValueError("Cube origin must be finite")
         out["volume"]["nres"] = nres
         out["volume"]["axes"] = axes
 
@@ -648,10 +650,55 @@ def _check_manifest_frame(first, current):
             return [(len(m["coeff"]), (m.get("spin") or "").lower()) for m in data["mo"]]
         if channels(first) != channels(current) or len(first.get("polar", [])) != len(current.get("polar", [])):
             raise ValueError("Molden orbital counts, spin channels and field counts must match the first frame")
+    if "volume" in first and first["volume"].get("units") != current["volume"].get("units"):
+        raise ValueError("Cube scalar units must match the first frame")
     if "volume" in first and list(first["volume"]["labels"]) != list(current["volume"]["labels"]):
         raise ValueError("Cube dataset IDs and order must match the first frame")
 
 
+def _linear_combination(entry, directory, options):
+    terms = entry["linear_combination"]
+    units = entry.get("units")
+    if not isinstance(terms, list) or not terms:
+        raise ValueError("linear_combination requires a nonempty list of cube terms")
+    if not isinstance(units, str) or not units.strip():
+        raise ValueError("Declare the common scalar units of the cube terms with units")
+    if any(key in entry for key in ("filename", "polar", "sdf_record")):
+        raise ValueError("A linear_combination replaces the filename in a manifest entry")
+    result = None
+    for index, term in enumerate(terms, 1):
+        name = term.get("filename") if isinstance(term, dict) else None
+        if not isinstance(name, str) or file_format(name) != "cube":
+            raise ValueError(f"Term {index} needs a cube filename")
+        weight = term.get("coefficient")
+        if type(weight) not in (int, float) or not np.isfinite(float(weight)):
+            raise ValueError(f"Term {index} ({name}) needs a finite coefficient")
+        if term.get("units", units) != units:
+            raise ValueError(f"Term {index} ({name}) has different scalar units")
+        try:
+            cube = molecule_from_cube(os.path.join(directory, name),
+                                      dict(options, cube_dataset=term.get("cube_dataset", 0)))
+        except (ValueError, OSError, EOFError) as exc:
+            raise ValueError(f"Term {index} ({name}): {exc}") from exc
+        grid = cube["volume"]
+        if result is None:
+            result = cube
+            template = grid
+            total = np.zeros(grid["nres"], dtype=np.float64)
+        elif (grid["nres"] != template["nres"]
+              or not np.allclose(grid["origin"], template["origin"], atol=1e-5, rtol=0)
+              or not np.allclose((grid["axes"] - template["axes"]) * (np.array(grid["nres"]) - 1)[:, None],
+                                 0, atol=1e-5, rtol=0)):
+            raise ValueError(f"Term {index} ({name}) has a different grid shape, origin or axes")
+        total += np.multiply(grid["data"], weight, dtype=np.float64)
+        # Only geometry and grid metadata are needed from the first term.
+        del grid["data"], grid["datasets"]
+    if not np.all(np.isfinite(total)) or np.max(np.abs(total)) > np.finfo(np.float32).max:
+        raise ValueError("Linear combination exceeds the finite cube value range")
+    values = total.astype(np.float32)
+    template.update(data=values, datasets=values[..., None], labels=[0], dataset_index=0,
+                    field_type="signed", units=units, linear_combination=terms)
+    return result
 
 
 def molecule_from_json(filename, options):
@@ -689,19 +736,22 @@ def molecule_from_json(filename, options):
             if len(entries) > 1 or "frame" in entry:
                 child_options.update(plot_type="frame", frame_start=0, frame_end=-1, frame_step=1)
             directory = os.path.dirname(filename)
-            if not isinstance(entry.get("filename"), str) or not entry["filename"].strip():
-                raise ValueError("Expected a filename")
-            path = os.path.join(directory, entry["filename"])
-            label += " (" + entry["filename"] + ")"
-            if file_format(path) == "json":
-                raise ValueError("A trajectory cannot reference another json manifest")
-            if "sdf_record" in entry:
-                if file_format(path) != "sdf":
-                    raise ValueError("sdf_record requires an SDF/MOL file")
-                child_options["sdf_record"] = entry["sdf_record"]
-            current = molecule_from_file(path, child_options)
-            if "polar" in entry:
-                current["polar"] = read_turbomole_polarizability(os.path.join(directory, entry["polar"]))
+            if "linear_combination" in entry:
+                current = _linear_combination(entry, directory, child_options)
+            else:
+                if not isinstance(entry.get("filename"), str) or not entry["filename"].strip():
+                    raise ValueError("Expected a filename")
+                path = os.path.join(directory, entry["filename"])
+                label += " (" + entry["filename"] + ")"
+                if file_format(path) == "json":
+                    raise ValueError("A trajectory cannot reference another json manifest")
+                if "sdf_record" in entry:
+                    if file_format(path) != "sdf":
+                        raise ValueError("sdf_record requires an SDF/MOL file")
+                    child_options["sdf_record"] = entry["sdf_record"]
+                current = molecule_from_file(path, child_options)
+                if "polar" in entry:
+                    current["polar"] = read_turbomole_polarizability(os.path.join(directory, entry["polar"]))
             if len(entries) == 1 and "frame" not in entry:
                 if "plot_type" in child_options:
                     options["plot_type"] = child_options["plot_type"]

@@ -113,6 +113,34 @@ class TestCubeDatasets(unittest.TestCase):
         np.testing.assert_array_equal(molecule.volume.datasets[..., 0], 0)
 
 
+    def test_zero_difference_and_first_nonzero_reference_frame(self):
+        try:
+            import bpy
+        except ImportError:
+            self.skipTest('requires Blender')
+        import json
+        from molecular_blender.importers import molecule_from_json
+        from molecular_blender.plotter import compute_surface_vertex_sets, default_options
+        from molecular_blender.molecule import Molecule
+        path = self.path.with_suffix('.json')
+        plus = dict(filename=self.path.name, cube_dataset=1, coefficient=1.)
+        zero = dict(units='e/bohr^3', linear_combination=[plus, dict(plus, coefficient=-1.)])
+        options = default_options(dict(isovalues=[.5, -.5], cumulative=True))
+        path.write_text(json.dumps({'molecules': [zero]}))
+        model = Molecule.from_dict('zero', molecule_from_json(path, {}))
+        self.assertEqual(compute_surface_vertex_sets(model, options), ([], {}))
+        path.write_text(json.dumps({'molecules': [zero, dict(zero, linear_combination=[plus])]}))
+        model = Molecule.from_dict('two', molecule_from_json(path, {}))
+        options.update(cumulative=False, isovalues=[1., -1.])
+        surfaces, frames = compute_surface_vertex_sets(model, options)
+        self.assertEqual(frames, {1: [], 2: [surfaces[0]['name']]})
+        self.assertEqual([s['isovalue'] for s in surfaces], [1.])
+        options.update(cumulative=True, isovalues=[.5])
+        # The initial zero field must not prevent containment on subsequent frames.
+        _, frames = compute_surface_vertex_sets(model, options)
+        self.assertEqual(frames[1], [])
+        self.assertIn(2, frames)
+
     def test_explicit_containment_semantics_and_voxel_volume(self):
         try:
             import bpy
