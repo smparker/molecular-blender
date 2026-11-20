@@ -80,20 +80,24 @@ class TestGetSphToCart(unittest.TestCase):
                 np.testing.assert_allclose(actual, reference, rtol=6e-6, atol=1e-6)
                 np.testing.assert_allclose(grid[indices], reference, rtol=6e-6, atol=1e-6)
 
-    def test_pyscf_spherical_orbitals_and_total_density(self):
+    def test_pyscf_spherical_and_cartesian_orbitals_and_total_density(self):
         from molecular_blender.importers import molecule_from_molden
         from molecular_blender.orbitals import MOData
         root = Path(__file__).resolve().parents[1]
-        samples = np.loadtxt(root / 'test/fixtures/pyscf_water/samples.dat')
-        model = MOData.from_dict(molecule_from_molden(root / 'examples/water_esp/water.molden', {'orca_fix': False}))
-        axes = [np.unique(col).astype(np.float32) for col in samples[:, :3].T]
-        self.assertEqual(len(model.occupations), 28)
-        fields = [model.get_density()] + [model.get_orbital(i) for i in range(1, 29)]
-        for index, (field, reference) in enumerate(zip(fields, samples[:, 3:].T)):
-            with self.subTest(field='density' if index == 0 else index):
-                values = [field.value(*p) for p in samples[:, :3]]
-                np.testing.assert_allclose(values, reference, rtol=2e-6, atol=2e-7)
-                np.testing.assert_allclose(field.box_values(*axes).ravel(), reference, rtol=2e-6, atol=2e-7)
+        fixture = root / 'test/fixtures/pyscf_water'
+        for source, table, count in ((root / 'examples/water_esp/water.molden', 'samples.dat', 28),
+                                     (fixture / 'cartesian.molden', 'cartesian.dat', 38)):
+            samples = np.loadtxt(fixture / table)
+            model = MOData.from_dict(molecule_from_molden(source, {}))
+            axes = [np.unique(col).astype(np.float32) for col in samples[:, :3].T]
+            self.assertEqual(samples.shape, (64, count + 4))
+            self.assertEqual(len(model.occupations), count)
+            fields = [model.get_density()] + [model.get_orbital(i) for i in range(1, count + 1)]
+            for index, (field, reference) in enumerate(zip(fields, samples[:, 3:].T)):
+                with self.subTest(source=source.name, field='density' if index == 0 else index):
+                    values = [field.value(*p) for p in samples[:, :3]]
+                    np.testing.assert_allclose(values, reference, rtol=2e-6, atol=2e-7)
+                    np.testing.assert_allclose(field.box_values(*axes).ravel(), reference, rtol=2e-6, atol=2e-7)
 
     def test_ethene_pi_orbital_against_orca_cube(self):
         from molecular_blender.importers import molecule_from_molden

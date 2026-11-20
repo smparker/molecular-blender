@@ -673,8 +673,7 @@ shells it also converts ORCA’s radial factors and the phases of components wit
 calculation](test/fixtures/orca_water_fg/README.md) checks signed amplitudes for
 all 23 orbitals.
 
-The spherical Molden reference from PySCF uses the standard convention. A
-[PySCF 2.11 water reference](test/fixtures/pyscf_water/generate.py) checks all
-28 signed orbitals and total density at 64 off-axis grid points, including
-contracted d, f and g functions on oxygen. Running the generator with PySCF
-recreates the reference samples and both figure inputs from the same calculation.
+The [PySCF 2.11 water references](test/fixtures/pyscf_water/generate.py) check
+standard Molden with contracted d, f and g functions on oxygen. They cover all
+28 spherical and 38 Cartesian orbitals, plus total density, at 64 off-axis
+points in each calculation. The generator also recreates the ESP figure inputs.
