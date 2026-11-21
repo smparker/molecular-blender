@@ -1,0 +1,14 @@
+name: Set up Blender
+description: Install a checksum-pinned release and expose its executable as BLENDER_BIN
+inputs:
+  version:
+    description: Blender patch release
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      working-directory: ${{ runner.temp }}
+      env:
+        BLENDER_VERSION: ${{ inputs.version }}
+      run: python "$GITHUB_ACTION_PATH/download.py" "$BLENDER_VERSION"

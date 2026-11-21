@@ -1,23 +1,17 @@
-# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
-
 name: Build
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, main ]
   pull_request:
-    branches: [ master ]
-
-env:
-  BLENDER_VERSION: "3.6.7"
-  BLENDER_MAJOR_VERSION: "3.6"
+    branches: [ master, main ]
 
 jobs:
   bond-reference:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v5
+    - uses: actions/checkout@v6
+    - uses: actions/setup-python@v7
       with:
         python-version: "3.12"
     - name: Compare bond orders with RDKit
@@ -27,34 +21,30 @@ jobs:
         python -m unittest discover -v -s test -p test_bond_perception.py
 
   build:
-    runs-on: ubuntu-latest
+    name: Source suite in Blender ${{ matrix.blender }}
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
-
+      matrix:
+        include:
+          - blender: '3.6.7'
+            python: '3.10'
+          - blender: '4.3.2'
+            python: '3.11'
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v3
-      with:
-        python-version: "3.10"
-    - name: Install Linux Dependences
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y clang gcc blender tar xz-utils
-    - name: Install Python Dependences
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip install -q pytest cython numpy
-    - name: Install Blender 3.6
-      run: |
-        echo "Installing Blender ${BLENDER_VERSION}"
-        wget -q "https://mirror.clarkson.edu/blender/release/Blender3.6/blender-${BLENDER_VERSION}-linux-x64.tar.xz"
-        tar -xf blender-${BLENDER_VERSION}-linux-x64.tar.xz
-    - name: Install molecular-blender addon
-      run: |
-        mkdir -p ${HOME}/.config/blender/${BLENDER_MAJOR_VERSION}/scripts/addons
-        python setup.py build
-        python setup.py install
-    - name: Test Blender
-      run: |
-        bash run_test.sh -b blender-${BLENDER_VERSION}-linux-x64/blender
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: ./.github/actions/setup-blender
+        with:
+          version: ${{ matrix.blender }}
+      - name: Build all kernels for the running Blender ABI
+        run: |
+          python -m pip install -r requirements.txt
+          python blender_setup.py build --blender "$BLENDER_BIN"
+      - name: Verify native selection and run the complete suite
+        run: |
+          "$BLENDER_BIN" -b --factory-startup --python-exit-code 1 --python-expr \
+            "import sys; sys.path.insert(0, '.'); from molecular_blender import compute_ao_cy, esp_kernel, marching_cube_cy"
+          bash run_test.sh -b "$BLENDER_BIN"

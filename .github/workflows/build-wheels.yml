@@ -23,8 +23,8 @@ jobs:
     name: Test pure Python fallback without compiled extensions
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.11'
       - run: python -m pip install numpy
@@ -58,67 +58,73 @@ jobs:
 
   build_wheels:
     name: Build wheels on ${{ matrix.os }}
+    needs: build_sdist
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120  # 2 hours max per platform
+    timeout-minutes: 120
     strategy:
-      fail-fast: false  # Don't cancel other jobs if one fails
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-15-intel, macos-15]
-        # macos-15-intel is Intel, macos-15 is Apple Silicon
-
+        os: [ubuntu-22.04, windows-2022, macos-15-intel, macos-15]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
         with:
-          fetch-depth: 0  # Full history for proper versioning
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+          python-version: '3.12'
+      - uses: actions/download-artifact@v8
         with:
-          python-version: '3.11'
-
-      - name: Install cibuildwheel
-        run: python -m pip install cibuildwheel==2.16.5
-
-      - name: Build wheels
-        env:
-          # On macOS, only build for the native architecture to avoid duplicates
-          # macos-15-intel is Intel (x86_64), macos-15 is Apple Silicon (arm64)
-          CIBW_ARCHS_MACOS: ${{ matrix.os == 'macos-15-intel' && 'x86_64' || matrix.os == 'macos-15' && 'arm64' || 'auto' }}
-        run: python -m cibuildwheel --output-dir wheelhouse
+          name: sdist
+          path: dist
+      - run: python -m pip install cibuildwheel==3.2.1
+      - name: Build and clean-install wheels from the release sdist
+        shell: bash
+        run: python -m cibuildwheel dist/*.tar.gz --output-dir wheelhouse
+      - name: Require every supported standalone ABI
+        shell: python
+        run: |
+          from pathlib import Path
+          import sys
+          families = {'linux': ['manylinux', 'musllinux'], 'darwin': ['macosx'], 'win32': ['win_amd64']}
+          expected = sorted(['cp39', 'cp310', 'cp311', 'cp312', 'cp313', 'cp314'])
+          wheels = Path('wheelhouse')
+          for family in families[sys.platform]:
+              tags = sorted(w.name.split('-')[2] for w in wheels.glob(f'*-{family}*.whl'))
+              if tags != expected:
+                  raise SystemExit(f'Expected {expected} on {family}, built {tags}')
 
       - name: Upload wheels
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wheels-${{ matrix.os }}
           path: ./wheelhouse/*.whl
+          if-no-files-found: error
           retention-days: 30
 
   build_sdist:
     name: Build source distribution
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install build numpy cython
+          pip install build
 
       - name: Build sdist
         run: python -m build --sdist
 
       - name: Upload sdist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sdist
           path: dist/*.tar.gz
+          if-no-files-found: error
           retention-days: 30
 
   build_blender_addon:
@@ -127,153 +133,80 @@ jobs:
     needs: [build_wheels]  # Build after wheels so we can collect all compiled extensions
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
       - name: Download all wheel artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: wheels-*
           path: all-wheels
           merge-multiple: true
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install cython numpy wheel
-
       - name: Assemble the release ZIP
         shell: bash
         run: |
-          python blender_setup.py export
-          mkdir -p universal_addon mac-slices/{arm64,x86_64}
-          unzip -q molecular_blender_*.zip -d universal_addon
-          package=universal_addon/molecular_blender
-          for wheel in all-wheels/*.whl; do
-            case "$wheel" in
-              *macosx*arm64.whl)  unzip -jq "$wheel" 'molecular_blender/*.so' -d mac-slices/arm64 ;;
-              *macosx*x86_64.whl) unzip -jq "$wheel" 'molecular_blender/*.so' -d mac-slices/x86_64 ;;
-              *win_amd64.whl)     unzip -joq "$wheel" 'molecular_blender/*.pyd' -d "$package" ;;
-              *linux*.whl)        unzip -joq "$wheel" 'molecular_blender/*.so' -d "$package" ;;
-              *) echo "Unexpected wheel platform in $wheel" >&2; exit 1 ;;
-            esac
+          for platform in 'manylinux*x86_64' 'win_amd64' 'macosx*arm64' 'macosx*x86_64'; do
+            test "$(find all-wheels -name "*-${platform}.whl" | wc -l)" -eq 6
           done
-          # Both Mac wheels use the same Darwin extension filenames for each Python ABI.
-          diff <(ls mac-slices/arm64) <(ls mac-slices/x86_64)
-          for arm in mac-slices/arm64/*.so; do
-            name=${arm##*/}
-            lipo -create "$arm" "mac-slices/x86_64/$name" -output "$package/$name"
-            lipo "$package/$name" -verify_arch arm64
-            lipo "$package/$name" -verify_arch x86_64
-          done
-          (cd universal_addon && zip -qr ../molecular_blender.zip molecular_blender/)
+          python -m pip install patchelf==0.19.3.0
+          python blender_setup.py export --wheel-dir all-wheels --output molecular_blender.zip
 
       - name: Upload universal Blender addon
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: blender-addon-universal
           path: molecular_blender.zip
+          if-no-files-found: error
           retention-days: 90
 
   test_blender_zip:
-    name: Install release ZIP and render in Blender 4.3.2 (${{ matrix.platform }})
+    name: Install ZIP and render in Blender ${{ matrix.version }} on ${{ matrix.os }}
     needs: build_blender_addon
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: Linux x64
-            runner: ubuntu-22.04
-            archive: blender-4.3.2-linux-x64.tar.xz
-            sha256: 4da1c956673c0485e63054e563ee69198cc8f80d8157dd7592dffc8a6a5592e6
-          - platform: macOS Apple Silicon
-            runner: macos-15
-            archive: blender-4.3.2-macos-arm64.dmg
-            sha256: 32297d20fae74683052267b9171945712c0aeb8a499d8e677e44740d3e30a034
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: blender-addon-universal
-          path: ${{ runner.temp }}/addon
-      - name: Download and verify Blender 4.3.2
-        working-directory: ${{ runner.temp }}
-        env:
-          ARCHIVE: ${{ matrix.archive }}
-          SHA256: ${{ matrix.sha256 }}
-        run: |
-          base=https://download.blender.org/release/Blender4.3
-          curl --fail --location --retry 3 -O "$base/$ARCHIVE"
-          echo "$SHA256  $ARCHIVE" | shasum -a 256 --check
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            test "$(uname -m)" = arm64
-            hdiutil attach -readonly -nobrowse -mountpoint "$RUNNER_TEMP/blender-dmg" "$ARCHIVE"
-            echo "BLENDER_BIN=$RUNNER_TEMP/blender-dmg/Blender.app/Contents/MacOS/Blender" >> "$GITHUB_ENV"
-          else
-            tar -xf "$ARCHIVE"
-            echo "BLENDER_BIN=$RUNNER_TEMP/blender-4.3.2-linux-x64/blender" >> "$GITHUB_ENV"
-          fi
-      - name: Install and exercise the downloaded add-on
-        working-directory: ${{ runner.temp }}
-        env:
-          BLENDER_USER_SCRIPTS: ${{ runner.temp }}/profile/scripts
-          BLENDER_USER_CONFIG: ${{ runner.temp }}/profile/config
-        run: |
-          mkdir -p "$BLENDER_USER_SCRIPTS/addons" "$BLENDER_USER_CONFIG"
-          "$BLENDER_BIN" -b --factory-startup --python-exit-code 1 \
-            --python "$GITHUB_WORKSPACE/test/blender_release_zip.py" -- "$RUNNER_TEMP/addon/molecular_blender.zip"
-
-  test_wheels:
-    name: Test wheels on ${{ matrix.os }} with Python ${{ matrix.python }}
-    needs: [build_wheels]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-latest, macos-latest]
-        python: ['3.9', '3.10', '3.11', '3.12']
-        # Limit test matrix to avoid excessive CI time
-        exclude:
-          - os: macos-latest
-            python: '3.9'
-          - os: windows-latest
-            python: '3.9'
-
+        version: ['3.6.7', '4.3.2']
+        os: [ubuntu-22.04, macos-15, windows-2022]
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python }}
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v7
         with:
-          python-version: ${{ matrix.python }}
-
-      - name: Download wheels
-        uses: actions/download-artifact@v4
+          python-version: '3.12'
+      - uses: ./.github/actions/setup-blender
         with:
-          pattern: wheels-*
-          path: wheelhouse
-          merge-multiple: true
-
-      - name: Install wheel
+          version: ${{ matrix.version }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: blender-addon-universal
+          path: ${{ runner.temp }}/addon
+      - name: Verify native extensions, water ESP, materials and orbital render
+        shell: python
+        env:
+          BLENDER_VERSION: ${{ matrix.version }}
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install numpy
-          # Find and install the appropriate wheel for this platform/python
-          python -m pip install --find-links=wheelhouse --no-index molecular_blender
-
-      - name: Run wheel tests
-        run: |
-          # Run comprehensive test suite that tests Cython extensions
-          # without requiring bpy (which is only available in Blender)
-          python test/test_wheel.py
-
+          import os
+          from pathlib import Path
+          import subprocess
+          import tempfile
+          root = Path(os.environ['GITHUB_WORKSPACE'])
+          archive = Path(os.environ['RUNNER_TEMP']) / 'addon/molecular_blender.zip'
+          with tempfile.TemporaryDirectory() as tmp:
+              scripts = Path(tmp) / 'scripts'
+              (scripts / 'addons').mkdir(parents=True)
+              config = Path(tmp) / 'config'
+              config.mkdir()
+              env = dict(os.environ, BLENDER_USER_SCRIPTS=str(scripts), BLENDER_USER_CONFIG=str(config))
+              subprocess.run([env['BLENDER_BIN'], '-b', '--factory-startup', '--python-exit-code', '1',
+                              '--python', root / 'test/blender_release_zip.py', '--', archive,
+                              env['BLENDER_VERSION']], cwd=tmp, env=env, check=True)
 
   create_release_assets:
     name: Create release with wheels and Blender addons
@@ -283,7 +216,7 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -291,11 +224,13 @@ jobs:
         run: ls -R artifacts
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           files: |
+            artifacts/wheels-*/*.whl
             artifacts/sdist/*.tar.gz
             artifacts/blender-addon-universal/*.zip
+          fail_on_unmatched_files: true
           draft: false
           prerelease: false
           body: |

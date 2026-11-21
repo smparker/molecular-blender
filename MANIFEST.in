@@ -5,15 +5,15 @@ include COPYING
 include setup.py
 include pyproject.toml
 # cibuildwheel runs this standalone test from both checkouts and sdists.
-include test/test_wheel.py
+include test/test_wheel.py test/installed_esp.py
+include test/fixtures/wavefunction_esp/water.dat
 
 # Include Cython source files
 recursive-include molecular_blender *.pyx
 recursive-include molecular_blender *.pxd
 
-# Include generated C/C++ files (for sdist)
-recursive-include molecular_blender *.c
-recursive-include molecular_blender *.cpp
+# Regenerate Cython C++ against the target Python and NumPy headers.
+global-exclude *.cpp
 
 # Include Python files
 recursive-include molecular_blender *.py
@@ -36,6 +36,7 @@ prune _setuputils
 
 # Exclude examples and tests
 prune examples
+include examples/water_esp/water.molden
 prune util
 exclude test.py
 exclude run_test.sh

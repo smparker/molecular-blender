@@ -54,10 +54,9 @@ class TestWheelInstallation(unittest.TestCase):
         self.assertEqual(np.asarray(result[0]).shape, (8, 3, 3))
         self.assertTrue(np.isfinite(result[0]).all())
 
-    def test_numpy_compatibility(self):
-        import numpy as np
-        arr = np.array([1.0, 2.0, 3.0], dtype=np.float32)
-        self.assertAlmostEqual(float(np.sum(arr)), 6.0)
+    def test_reference_esp(self):
+        from installed_esp import check_water_esp
+        check_water_esp()
 
 
 def main():
