@@ -352,7 +352,7 @@ class MB_PT_molecule(bpy.types.Panel):
                              depress=owner.get(SOLO_GROUP) == key).group = key
                 obj = group['objects'][0]
                 mapped = BASE_MESH in obj
-                if (orbitals and molden and not mapped) or summary['cube_recompute']:
+                if (orbitals and molden) or summary['cube_recompute']:
                     action = row.row(align=True)
                     action.enabled = available
                     action.operator('molecular_blender.recompute_surface', text='', icon='FILE_REFRESH').group = key

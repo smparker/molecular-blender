@@ -20,6 +20,7 @@ Imports retain their settings and object identities in the blend file. The sideb
 - [x] **Style selected atoms and bonds.** Apply an accent to a fragment or individual bonds and restore the current element palette.
 - [x] **Add an orbital and surface browser.** Browse saved orbital metadata, jump to HOMO/LUMO by spin, and show, hide, style or remove a surface calculation. Single-frame Molden imports can add orbitals and densities after import. [Sidebar action tests](test/test_scene_surfaces.py)
 - [x] **Replace a surface calculation in place.** Single-frame Molden surfaces can change levels and grid spacing. Cube contours reuse the selected dataset and grid. Both preserve lobe styling and placement. Mapped cubes resample their field colors.
+- [x] **Recontour a mapped Molden density.** Changing levels or grid spacing resamples the supplied field on the replacement mesh with the edited ramp and limits.
 - [x] **Expose bond editing tools.** Set an order, add/delete a bond, lock a manual assignment against reperception, and adjust strand tilt. Split bonds update both halves. Order changes update junction sizes, and profile rebuilds preserve manual tilt.
 - [x] **Inspect and select atoms.** Inspect element, index, and charges. Select visible atoms by element, direct neighbor, or connected fragment using the current bond graph. [Panel tests](test/test_scene_panel.py) and [selection tests](test/test_scene_surfaces.py)
 - [x] **Select atoms by index.** Select individual saved indices and inclusive ranges on the active molecule.

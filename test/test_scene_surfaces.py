@@ -10,6 +10,16 @@ except ImportError:
     bpy = None
 
 
+def finish_surface_job(op, context, model, styler, options, *, select_surfaces):
+    """Exercise the worker's source loading and the operator's normal publication path."""
+    from molecular_blender.plotter import compute_surface_vertex_sets
+    op._molecule, op._owner, op._styler, op._options = model, model.scene_owner, styler, options
+    op._select_surfaces = select_surfaces
+    defs, frames = compute_surface_vertex_sets(model.surface_input.load(options), options, indexed=True)
+    op.apply_surface_result(context, [d for d in defs if len(d['faces'])], frames)
+    return {'FINISHED'}
+
+
 @unittest.skipUnless(bpy, 'requires Blender')
 class TestSidebarActions(unittest.TestCase):
     def setUp(self):
@@ -319,6 +329,45 @@ class TestSidebarActions(unittest.TestCase):
         path.write_text(header.replace('2 7 23', '2 23 7') + values)
         with self.assertRaisesRegex(ValueError, 'datasets'):
             surface_model(owner, record, cube=True).surface_input.load(options)
+
+    def test_recontour_mapped_molden_density_and_retain_edited_ramp(self):
+        import numpy as np
+        from molecular_blender import scene_esp
+        from molecular_blender.esp import sample_cube
+        from molecular_blender.importers import molecule_from_cube
+        from molecular_blender.plotter import BlendMoleculeSetup, draw_surfaces
+        from molecular_blender.scene_state import read_record
+        from molecular_blender.scene_surfaces import surface_groups
+        from molecular_blender.surface_operator import SurfaceJobOperator
+        inputs = Path('examples/water_esp')
+        model, styler, opts = BlendMoleculeSetup(bpy.context, str(inputs / 'water.molden'),
+            volume='density', isovalues='.02', cumulative=False, resolution=.19, remesh=4)
+        draw_surfaces(model, styler, bpy.context, opts)
+        owner = model.scene_owner
+        self.select(owner)
+        record = read_record(owner)
+        (key, group), = surface_groups(owner, record).items()
+        field = str((inputs / 'potential.cube').resolve())
+        scene_esp.map_esp(bpy.context, record, group, field, 0, 'Hartree/e', -.1, .1)
+        obj, = group['objects']
+        mat = obj.active_material
+        ramp, scale = scene_esp.scale_nodes(mat)
+        ramp.color_ramp.elements[0].color = (.9, .1, .3, 1.)
+        scale.inputs['From Max'].default_value = .2
+        with patch.object(SurfaceJobOperator, 'start_surface_job', finish_surface_job):
+            bpy.ops.molecular_blender.recompute_surface(group=key, isovalues='.025,.03', resolution=.15)
+        updated = surface_groups(owner, read_record(owner))[key]
+        self.assertEqual(updated['levels'], {.025, .03})
+        grid = molecule_from_cube(field, {})['volume']
+        for surface in updated['objects']:
+            self.assertEqual(surface.active_material, mat)
+            self.assertAlmostEqual(scene_esp.field_map_settings(mat)['limits'][1], .2)
+            coords = np.array([tuple(v.co) for v in surface.data.vertices])
+            np.testing.assert_allclose([v.value for v in surface.data.attributes[scene_esp.ATTRIBUTE].data],
+                                       sample_cube(grid, coords), atol=1.e-6)
+        bases = [o[scene_esp.BASE_MESH] for o in updated['objects']]
+        scene_esp.clear_esp(updated)
+        self.assertEqual([o.data for o in updated['objects']], bases)
 
     def test_frontier_jumps_use_saved_populations_spin_and_import_order(self):
         from molecular_blender.scene_state import read_record, write_record

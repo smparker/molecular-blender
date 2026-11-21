@@ -492,6 +492,9 @@ changes its levels or grid spacing using the original file. The current
 surface stays visible or hidden as you set it, including during calculation.
 The replacement keeps its lobe colors and opacity. For surfaces saved by older
 versions, the dialog starts from their stored absolute isovalues.
+On a field-mapped density it resamples the original scalar field on the new
+vertices and keeps the edited ramp and limits. If the grid is missing or too
+small for the requested contour, the previous surface and map stay in place.
 
 On a single-frame cube surface, **Recompute Surface** changes the contour
 levels on the original dataset and grid. **Include both signs** mirrors each
