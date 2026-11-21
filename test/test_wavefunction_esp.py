@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import numpy as np
 
+from molecular_blender import _HAS_BPY
 from molecular_blender import wavefunction_esp as esp
 from molecular_blender.esp_jobs import ESPRequest
 from molecular_blender.importers import molecule_from_molden
@@ -82,3 +83,76 @@ class TestWavefunctionESP(unittest.TestCase):
             path.write_text(path.read_text()+'\n[Core]\n1 : 2\n')
             with self.assertRaisesRegex(ValueError, 'core or ECP'):
                 req.calculate({})
+
+
+@unittest.skipUnless(_HAS_BPY, 'requires Blender')
+class TestWavefunctionMap(unittest.TestCase):
+    def test_preview_to_final_remap_palette_and_legend(self):
+        import bpy
+        from molecular_blender import scene_panel
+        from molecular_blender.field_legend import write_field_legend
+        from molecular_blender.plotter import BlendMoleculeSetup, draw_surfaces
+        from molecular_blender.scene_esp import BASE_MESH, clear_esp, mesh_points, remap_contour, scale_nodes
+        from molecular_blender.scene_state import read_record
+        from molecular_blender.scene_surfaces import surface_groups
+        scene_panel.register()
+        self.addCleanup(scene_panel.unregister)
+        import xml.etree.ElementTree as ET
+        ids = set(bpy.data.objects) | set(bpy.data.collections)
+        self.addCleanup(lambda: bpy.data.batch_remove((set(bpy.data.objects) | set(bpy.data.collections)) - ids))
+        model, styler, options = BlendMoleculeSetup(bpy.context, str(WATER), volume='density', remesh=4,
+                                                  resolution=.23, cumulative=False, isovalues='.01')
+        draw_surfaces(model, styler, bpy.context, options)
+        owner = model.scene_owner
+        record = read_record(owner)
+        key, group = next(iter(surface_groups(owner, record).items()))
+        obj, = group['objects']
+        bpy.context.view_layer.objects.active = owner
+        op = bpy.ops.molecular_blender.compute_esp
+        self.assertEqual(op(group=key, quality='preview', palette='viridis'), {'FINISHED'})
+        self.assertEqual(obj.active_material['mb_esp_quality'], 'preview')
+        self.assertEqual(op(group=key), {'FINISHED'})
+        self.assertEqual(obj.active_material['mb_esp_quality'], 'final')
+        self.assertEqual(len(scale_nodes(obj.active_material)[0].color_ramp.elements), 32)
+        field = esp.WavefunctionESP(molecule_from_molden(WATER, {}))
+        points = mesh_points(obj.data)
+        expected = field.batch(points[::19])
+        np.testing.assert_allclose([v.value for v in obj.data.attributes['mb_esp'].data][::19], expected, atol=1e-6)
+        with tempfile.TemporaryDirectory() as tmp:
+            legend = Path(tmp)/'ramp.svg'
+            for palette, start, end in [('viridis', '#440154', '#fde725'), ('magma', '#000004', '#fcfdbf')]:
+                self.assertEqual(bpy.ops.molecular_blender.edit_field_scale(group=key, palette=palette), {'FINISHED'})
+                write_field_legend(obj.active_material, legend)
+                stops = ET.parse(legend).findall('.//{*}stop')
+                self.assertEqual((stops[0].get('stop-color'), stops[-1].get('stop-color')), (start, end))
+        remapped = remap_contour(bpy.context, record, obj, obj[BASE_MESH], {})
+        try:
+            self.assertIs(remapped.materials[0], obj.active_material)
+            np.testing.assert_allclose([v.value for v in remapped.attributes['mb_esp'].data][::19], expected, atol=1e-6)
+        finally:
+            bpy.data.meshes.remove(remapped)
+        from molecular_blender.esp_jobs import ContourESPRequests
+        from molecular_blender.scene_surfaces import _contour_requests, replace_surface_geometry
+        from molecular_blender.surface_jobs import SurfaceJob
+        from molecular_blender.surface_calculation import compute_surface_vertex_sets
+        options['isovalues'] = [.015]
+        definitions, _ = compute_surface_vertex_sets(model, options, indexed=True)
+        requests = _contour_requests(bpy.context, record, group, definitions, options['resolution'])
+        old = obj.data
+        cancelled = SurfaceJob(bpy.app.binary_path, ContourESPRequests(requests), {})
+        cancelled.cancel()
+        self.assertEqual(obj.data, old)
+        job = SurfaceJob(bpy.app.binary_path, ContourESPRequests(requests), {})
+        try:
+            job.process.wait(timeout=60)
+            results = job.result()
+            ready = {level: (req, results[level]) for level, req in requests.items()}
+            replace_surface_geometry(bpy.context, owner, record, key, group, definitions, options, styler, ready)
+        finally:
+            job.close()
+        self.assertNotEqual(obj.data, old)
+        expected = field.batch(mesh_points(obj.data)[::19])
+        np.testing.assert_allclose([v.value for v in obj.data.attributes['mb_esp'].data][::19], expected, atol=1e-6)
+        base = obj[BASE_MESH]
+        clear_esp(group)
+        self.assertEqual(obj.data, base)

@@ -129,20 +129,27 @@ class SurfaceJobOperator:
                 self._job.check_finished()
                 self._stage.finish(context)
             else:
-                vertex_sets, trajectory_map = self._job.result()
-                if not self._select_surfaces:
-                    vertex_sets = [v for v in vertex_sets if len(v["faces"] if "faces" in v else v["triangles"])]
-                    if not vertex_sets:
-                        self._cleanup(context)
-                        self.report({'INFO'}, 'No surface at the requested levels')
-                        return {'CANCELLED'}
-                self.apply_surface_result(context, vertex_sets, trajectory_map)
+                status = self.receive_surface_result(context)
+                if status == {'RUNNING_MODAL'}:
+                    return status
+                if status == {'CANCELLED'}:
+                    self._cleanup(context)
+                    return status
         except Exception as exc:
             self._cleanup(context)
             report_exception(self, exc)
             return {'CANCELLED'}
         self._cleanup(context)
         return {'FINISHED'}
+
+    def receive_surface_result(self, context):
+        vertex_sets, trajectory_map = self._job.result()
+        if not self._select_surfaces:
+            vertex_sets = [v for v in vertex_sets if len(v["faces"] if "faces" in v else v["triangles"])]
+            if not vertex_sets:
+                self.report({'INFO'}, 'No surface at the requested levels')
+                return {'CANCELLED'}
+        return self.apply_surface_result(context, vertex_sets, trajectory_map)
 
     def apply_surface_result(self, context, vertex_sets, trajectory_map):
         create_surface_meshes(self._molecule, self._styler, context, self._options,

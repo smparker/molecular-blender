@@ -476,30 +476,55 @@ def recompute_settings(record, group):
                 orbital=field if field not in DENSITY_LABELS else 'homo', orbital_spin=group['spin'])
 
 
-def replace_surface_geometry(context, owner, record, key, group, definitions, options, styler):
+def _match_contours(entries, group, definitions):
+    # Match unchanged levels first to preserve object names and external references.
+    remaining = set(group['objects'])
+    for item in sorted(definitions, key=lambda v: (v['isovalue'] not in group['levels'], -abs(v['isovalue']))):
+        level = item['isovalue']
+        phase = group['phases'].get(level >= 0, [])
+
+        def distance(obj):
+            return abs(entries[obj[ID]]['isovalue'] - level)
+
+        obj = min((o for o in phase if o in remaining), key=distance, default=None)
+        template = obj or min(phase, key=distance, default=group['objects'][0])
+        remaining.discard(obj)
+        yield item, obj, template, phase
+
+
+def _contour_requests(context, record, group, definitions, resolution):
+    from .scene_esp import _display_mesh, contour_esp_request, mesh_points
+    if not any(obj.active_material and obj.active_material.get('mb_wavefunction_esp') for obj in group['objects']):
+        return {}
+    entries = {entry['id']: entry for entry in record['surfaces']}
+    requests = {}
+    for item, _, template, _ in _match_contours(entries, group, definitions):
+        material = template.active_material
+        if material and material.get('mb_wavefunction_esp'):
+            base = create_surface_mesh_data('ESP sampling', *field_geometry(item, resolution), weld_distance=None)
+            try:
+                mesh = _display_mesh(context, template, replacement=base)
+                try:
+                    requests[item['isovalue']] = contour_esp_request(record, material, mesh_points(mesh))
+                finally:
+                    bpy.data.meshes.remove(mesh)
+            finally:
+                bpy.data.meshes.remove(base)
+    return requests
+
+
+def replace_surface_geometry(context, owner, record, key, group, definitions, options, styler, computed=None):
     """Prepare the complete replacement before swapping any existing mesh."""
     from .scene_esp import BASE_MESH, remap_contour
     entries = {entry['id']: entry for entry in record['surfaces'] if entry['id'] in group['ids']}
-    old_objects = group['objects']
-    remaining = set(old_objects)
+    remaining = set(group['objects'])
     sampling = surface_sampling(options, cube=group['field'] == 'cube')
     staged, clones, new_meshes, new_materials = [], [], [], []
     replacements = []
     grids, backups = {}, []
     try:
-        # Match unchanged levels first so named objects and external references survive.
-        def match_order(item):
+        for item, obj, template, phase in _match_contours(entries, group, definitions):
             level = item['isovalue']
-            return (level not in group['levels'], -abs(level))
-        for item in sorted(definitions, key=match_order):
-            level = item['isovalue']
-            phase = group['phases'].get(level >= 0, [])
-
-            def distance(obj):
-                return abs(entries[obj[ID]]['isovalue'] - level)
-
-            obj = min((o for o in phase if o in remaining), key=distance, default=None)
-            template = obj or min(phase, key=distance, default=old_objects[0])
             mesh = create_surface_mesh_data(template.data.name, *field_geometry(item, options['resolution']),
                                             weld_distance=None)
             new_meshes.append(mesh)
@@ -517,7 +542,8 @@ def replace_surface_geometry(context, owner, record, key, group, definitions, op
                 remaining.remove(obj)
             if old_base is not None:
                 base = mesh
-                mesh = remap_contour(context, record, template, base, grids)
+                ready = computed[level] if computed is not None and template.active_material.get('mb_wavefunction_esp') else None
+                mesh = remap_contour(context, record, template, base, grids, ready)
                 new_meshes.append(mesh)
                 backups.append((obj, old_base, base))
             elif not phase:
@@ -623,9 +649,33 @@ class MB_OT_recompute_surface(MoldenSurfaceProperties, SurfaceJobOperator, bpy.t
             report_exception(self, exc)
             return {'CANCELLED'}
 
-    def apply_surface_result(self, context, vertex_sets, trajectory_map):
+    def _current_group(self):
         record, group, _ = self._group_settings(self._owner)
         if {o.data.as_pointer() for o in group['objects']} != self._original_meshes:
             raise ValueError('The surface changed while it was being calculated')
+        return record, group
+
+    def receive_surface_result(self, context):
+        if getattr(self, '_esp_requests', None):
+            record, group = self._current_group()
+            values = self._job.result()
+            computed = {level: (request, values[level]) for level, request in self._esp_requests.items()}
+            replace_surface_geometry(context, self._owner, record, self.group, group,
+                                     self._definitions, self._options, self._styler, computed)
+            return {'FINISHED'}
+        return super().receive_surface_result(context)
+
+    def apply_surface_result(self, context, vertex_sets, trajectory_map):
+        record, group = self._current_group()
+        if getattr(self, '_job', None) is not None:
+            from .esp_jobs import ContourESPRequests
+            from .surface_jobs import SurfaceJob
+            self._esp_requests = _contour_requests(context, record, group, vertex_sets, self._options['resolution'])
+            if self._esp_requests:
+                self._definitions = vertex_sets
+                self._job.close()
+                self._job = SurfaceJob(bpy.app.binary_path, ContourESPRequests(self._esp_requests), {})
+                context.workspace.status_text_set('Computing ESP on the new contour…  Esc to cancel')
+                return {'RUNNING_MODAL'}
         replace_surface_geometry(context, self._owner, record, self.group, group,
                                  vertex_sets, self._options, self._styler)

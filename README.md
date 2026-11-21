@@ -664,6 +664,26 @@ visible until its length exceeds the formation cutoff by the chosen percentage.
 The default is 5%. Set `bond_break_margin=0` for a single cutoff. The rule is
 evaluated on the sampled snapshots and applies only to distance-inferred bonds.
 
+### Compute wavefunction ESP on a density surface
+
+Import a Molden wavefunction and add a **Total Density** surface. In the
+viewport sidebar, open **Molecule → Surfaces → Compute Wavefunction ESP…**.
+Enter the net molecular charge (zero for a neutral molecule) and choose
+**Coarse Preview** or **Final**. Preview evaluates one surface vertex per
+0.45 Å cell. Final evaluates every distinct displayed vertex after remeshing.
+Use Material Preview or Rendered shading to see the result. Esc cancels an
+interactive calculation and preserves the previous map.
+
+The potential combines the nuclear charges and the Coulomb integral of the
+total occupied density. You can also map that potential onto an alpha or beta
+density surface. Choose Hartree/e or volts for both the values and the scale.
+Calculations require an all-electron basis, full nuclear charges and a complete
+occupied space. Virtual orbitals are optional. The add-on checks the electron
+count against the charge and checks the occupied orbital overlaps analytically.
+Ghost centers and ECP inputs need an externally computed potential cube.
+For TURBOMOLE, `tm2molden norm` writes standard-normalized Cartesian shells.
+[TURBOMOLE export options](https://manual.turbomole.org/v8.0/preface-and-general-information/tools/).
+
 ### Color a density surface with a cube or a JSON field combination
 
 Import a density cube or add a **Total**, **Alpha**, or **Beta Density** surface

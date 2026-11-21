@@ -7,7 +7,7 @@ Keep the current curve-extrusion approach for bonds as the baseline. Keep bond-o
 ## Suggested starting points
 
 - **Extend post-import editing.** The sidebar already supports restyling, bond edits and surface management. Reloading coordinates and orbitals from a changed source is open.
-- **Extend field maps.** External scalar cubes can color density surfaces. The sidebar exports field legends for compositing. Direct wavefunction ESP evaluation remains open.
+- **Extend field maps.** External scalar cubes can color density surfaces. The sidebar exports field legends for compositing. Molden wavefunctions also supply all-electron ESP directly on the displayed vertices.
 - **Extend bond perception.** Diagnostics and manual overrides are available. Solver scaling and per-frame bond-order assignment remain open.
 
 ## 1. Post-import editing and scene interaction
@@ -37,7 +37,7 @@ Imports retain their settings and object identities in the blend file. The sideb
 
 ## 2. Electrostatic-potential maps
 
-External potential cubes can color single-frame density surfaces. [Sampling](molecular_blender/esp.py) and [Blender mapping](molecular_blender/scene_esp.py).
+Single-frame density surfaces can display an external potential cube or a potential calculated from a Molden wavefunction. [Sampling](molecular_blender/esp.py) and [Blender mapping](molecular_blender/scene_esp.py).
 
 - [x] **Map supplied ESP grids.** Sample a selected cube dataset on the final displayed density mesh, with atom alignment and coverage checks. Save per-vertex values, declared potential units, editable diverging colors and explicit limits. Removing the map restores the original surface.
 - [x] **Generalize field-mapped materials.** Single-frame density surfaces support signed and unsigned scalar cubes with named fields, explicit units and editable color ramps.
@@ -46,11 +46,11 @@ External potential cubes can color single-frame density surfaces. [Sampling](mol
 - [x] **Edit and reuse field scales.** The mapped surface dialog edits the ramp and limits and copies compatible scales across molecules using the saved scene.
 - [x] **Export legends with a surface series.** The sidebar and headless renderer can write a matching SVG beside each mapped PNG.
 
-- [ ] **Implement a wavefunction ESP evaluator.** In atomic units, evaluate `V(r) = Σ_A Z_A / |r-R_A| - ∫ ρ(r') / |r-r'| dr'`. Reuse the AO density matrix, but add the electron–point Coulomb integrals; existing pointwise density evaluation does not supply this integral. Compare a native Gaussian-integral backend with an optional external calculation path. [PySCF's MEP example](https://github.com/pyscf/pyscf/blob/master/examples/1-advanced/031-MEP.py) is a useful implementation/reference calculation.
-- [ ] **Define the scientific input contract before claiming general Molden ESP support.** Check occupations, orbital completeness, normalization, nuclear charges, ghost centers, and effective-core-potential treatment. Preserve needed atom metadata; require missing core-charge information or explicitly restrict the first implementation to validated all-electron inputs. See the [Molden format](https://www.theochem.ru.nl/molden/molden_format.html).
-- [ ] **Keep exact and approximate electrostatics distinct.** A quick map from supplied partial charges could be useful, but label it as a point-charge approximation and retain its charge source. Do not substitute it silently for a wavefunction-derived ESP.
-- [ ] **Validate ESP numerically.** Compare selected points and surface values for neutral and ionic reference molecules against an independent code; test the nuclear/electronic sign convention, unit conversion, distance from nuclear singularities, and far-field total-charge behavior.
-- [ ] **Make ESP computation practical.** Evaluate surface points in cancellable batches, screen negligible shell pairs where justified, cache the density matrix and evaluated values, and allow coarse preview followed by a final calculation. Benchmark both time and peak memory before optimizing kernels.
+- [x] **Compute ESP from the wavefunction.** The native Gaussian Coulomb kernel and NumPy fallback contract the total occupied density. Existing external ESP cubes provide a separate calculation path. [Evaluator](molecular_blender/wavefunction_esp.py).
+- [x] **Check all-electron Molden inputs.** Retain nuclear charges and check element identity, occupied electron count, integrated density and occupied-orbital overlaps against the chosen convention and net charge. Report ghost centers and explicit core/ECP data.
+- [x] **Validate ESP numerically.** Independent PySCF references cover point values, density-surface samples, signs, units, nuclear singularities and far-field behavior in water and HeH⁺, including standard Cartesian, spherical and ORCA water inputs. [Fixtures](test/fixtures/wavefunction_esp).
+- [x] **Sample ESP on the displayed mesh.** Cancellable worker batches share cached contracted densities and vertex values. Coarse preview samples a surface vertex per 0.45 Å cell. Final sampling evaluates every distinct vertex. [Time and peak RSS benchmark](benchmarks/wavefunction_esp.py).
+- [x] **Choose a field color map.** Viridis and Magma populate editable shader ramps for external and calculated fields, with matching SVG legends.
 
 ## 3. Other scientific visualization features
 
@@ -172,7 +172,7 @@ There is already useful coverage for readers, numerical routines, geometry, bond
 - [x] **Compare final Python/Cython mesh geometry.** Both evaluator/mesher pairs produce closed signed lobes with matching component and face counts and vertices within 0.00002 Å on diffuse orbital and open-shell spin-density fixtures. The check exposed an absolute interpolation tolerance that distorted weak fields. Both meshers now interpolate independently of field scale.
 - [x] **Fix the empty orbital surface in the pure-Python fallback.** Discovered on 2026-11-15: with compiled `.so`/`.pyd` extensions excluded from an isolated checkout, `TestMoldenIsosurface.test_small_orbital` in `test/test_isosurfaces.py` fails because orbital 1 of `examples/fake-atom.molden`, at isovalue `0.05` and resolution `0.3`, produces no triangles. Reproduced with Python 3.14 and NumPy 2.5.3; the full Blender 4.3.2 suite with compiled extensions passes. Fixed the shell-bound formula (`l` → `l + 1`), which collapsed s-shell bounds to zero. Added analytic and s–g backend-parity bounds checks; the complete isolated fallback suite passes, and fallback CI now runs full test discovery. Commit `614be0b`.
 - [x] **Validate against analytic surfaces and electron counts.** Tests check the radius of a Gaussian isosurface, the location of a rotated cube plane, and integrated densities with fractional occupations. [Gaussian surface](test/test_isosurfaces.py), [cube plane](test/test_cube_datasets.py) and [density tests](test/test_orbitals.py)
-- [ ] **Grow independent scientific references.** Add ESP reference values and expand fixtures for distorted geometry. The bond-perception suite already covers ions, resonance and invalid chemistry. Add a dedicated environment for its optional RDKit comparison.
+- [ ] **Grow independent scientific references.** Expand fixtures for distorted geometry. Neutral and ionic ESP reference values are covered above. The bond-perception suite already covers ions, resonance and invalid chemistry. Add a dedicated environment for its optional RDKit comparison.
 - [x] **Test the installed artifacts, not just the checkout.** Standalone wheel tests require both compiled extensions from the installed package and exercise known Gaussian/surface results independently of test ordering. Missing installations/binaries fail; a separate CI job verifies Python fallback. Commit `9f085b1`.
 - [ ] **Finish test isolation and performance baselines.** The test runner handles external working directories and paths with spaces. Reader tests exercise malformed Molden, SDF and cube input. Verify scene/datablock cleanup across the suite and add peak-memory and runtime baselines.
 
@@ -258,7 +258,7 @@ Entry points: [pyproject.toml](pyproject.toml), [setup.py](setup.py), [blender_s
 
 ## Scope notes
 
-The first post-import editing increment does not require replacing the renderer. External ESP cubes provide field maps without a Gaussian Coulomb integral evaluator. Full aromaticity, metal chemistry, periodic systems, and native ESP evaluation each deserve separate designs and validation datasets before implementation.
+The first post-import editing increment does not require replacing the renderer. External ESP cubes provide field maps without a Gaussian Coulomb integral evaluator. Full aromaticity, metal chemistry and periodic systems each deserve separate designs and validation datasets before implementation.
 
 Visualization defaults approved 2026-11-16: infer occupation scale 1/2 from the maximum; classify occupied strictly above half (half is empty). Spatial populations fill the majority spin first; missing labels default to alpha. Preserve actual fractional populations for density calculations.
 

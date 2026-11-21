@@ -17,6 +17,7 @@ from .scene_surfaces import (SOLO_GROUP, can_recompute_cube, MB_OT_add_surface, 
 from .surface_export import MB_ExportSurface, MB_OT_export_surface_series, MB_OT_transparent_png, draw_png_preset
 from .scene_esp import BASE_MESH, MB_OT_map_esp, MB_OT_clear_esp, density_group, field_map_settings
 from .field_legend import MB_OT_export_field_legend
+from .scene_wavefunction_esp import MB_OT_compute_esp
 from .field_scale import MB_OT_edit_field_scale, MB_ScaleSource
 from .scene_view import MB_OT_frame_molecule, MB_OT_view_face_on, MB_OT_view_principal_axes, draw_atom_indices
 from .surface_operator import DENSITIES, ORBITAL_SPINS
@@ -416,6 +417,10 @@ class MB_PT_molecule(bpy.types.Panel):
                         if phase:
                             colors.prop(phase[0], 'mb_surface_color', text=label)
                 if density_group(group):
+                    if molden and orbitals:
+                        action = entry.row()
+                        action.enabled = available
+                        action.operator('molecular_blender.compute_esp', text='Compute Wavefunction ESP…').group = key
                     controls = entry.row(align=True)
                     controls.operator('molecular_blender.map_esp',
                                       text='Change Field Map…' if mapped else 'Map Field…').group = key
@@ -448,7 +453,7 @@ class MB_PT_molecule(bpy.types.Panel):
 
 _CLASSES = (MB_OT_select_atoms, MB_OT_select_atom_indices, MB_OT_surface_visibility, MB_OT_solo_surface,
             MB_ExportSurface, MB_OT_export_surface_series, MB_OT_transparent_png, MB_OT_locate_source,
-            MB_ScaleSource, MB_OT_edit_field_scale, MB_OT_export_field_legend, MB_OT_map_esp, MB_OT_clear_esp,
+            MB_ScaleSource, MB_OT_edit_field_scale, MB_OT_export_field_legend, MB_OT_map_esp, MB_OT_clear_esp, MB_OT_compute_esp,
             MB_OT_add_surface, MB_OT_recompute_surface, MB_OT_remove_surface,
             vibrations.MB_OT_preview_mode, vibrations.MB_OT_clear_mode,
             MB_OT_jump_orbital, MB_OT_frame_molecule, MB_OT_view_face_on, MB_OT_view_principal_axes,

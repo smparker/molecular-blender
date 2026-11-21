@@ -161,26 +161,49 @@ def _mapping_grid(record, path, dataset):
     return cube['volume']
 
 
-def _sample_mesh(mesh, grid, name):
+def mesh_points(mesh):
     points = np.empty(len(mesh.vertices) * 3, dtype=np.float32)
     mesh.vertices.foreach_get('co', points)
+    return points.reshape(-1, 3)
+
+
+def _write_values(mesh, values, name):
     mesh['mb_generated'] = True
     attr = mesh.attributes.get(name) or mesh.attributes.new(name, 'FLOAT', 'POINT')
-    attr.data.foreach_set('value', CubeField(grid).batch(points.reshape(-1, 3)))
+    attr.data.foreach_set('value', np.ascontiguousarray(values, dtype=np.float32))
 
 
-def remap_contour(context, record, template, base, grids):
+def contour_esp_request(record, material, points):
+    from .esp_jobs import ESPRequest
+    return ESPRequest.from_record(record, points, material['mb_esp_convention'], material['mb_esp_charge'],
+                                  material['mb_esp_quality'], material['mb_esp_units'])
+
+
+def remap_contour(context, record, template, base, grids, computed=None):
     """Resample the original map on a new displayed mesh, using the edited material."""
     material = template.active_material
     settings = field_map_settings(material)
     if not settings:
         raise ValueError('Cannot find the source field for the mapped surface')
-    key = (settings['path'], settings['dataset'])
-    if key not in grids:
-        grids[key] = _mapping_grid(record, *key)
     mesh = _display_mesh(context, template, replacement=base)
     try:
-        _sample_mesh(mesh, grids[key], ATTRIBUTE if settings['kind'] == 'esp' else 'mb_field')
+        points = mesh_points(mesh)
+        if material.get('mb_wavefunction_esp'):
+            request = contour_esp_request(record, material, points)
+            if computed is None:
+                values = request.calculate({})
+            else:
+                original, values = computed
+                if ((original.source, original.convention, original.charge, original.units, original.quality)
+                        != (request.source, request.convention, request.charge, request.units, request.quality)
+                        or not np.array_equal(points, original.points)):
+                    raise ValueError('The ESP settings or displayed geometry changed. Recompute the surface again.')
+        else:
+            key = (settings['path'], settings['dataset'])
+            if key not in grids:
+                grids[key] = _mapping_grid(record, *key)
+            values = CubeField(grids[key]).batch(points)
+        _write_values(mesh, values, ATTRIBUTE if settings['kind'] == 'esp' else 'mb_field')
         mesh.materials.clear()
         mesh.materials.append(material)
         return mesh
@@ -205,6 +228,13 @@ def map_esp(context, record, group, path, dataset, units, low, high, *, kind='es
     grid = _mapping_grid(record, path, dataset)
     if source_format == 'json':
         units = grid['units']
+    field = CubeField(grid)
+    _map_values(context, group, lambda obj, mesh: field.batch(mesh_points(mesh)),
+                path, dataset, units, low, high, kind, label, palette)
+
+
+def _map_values(context, group, sample, path, dataset, units, low, high, kind, label, palette,
+                metadata=None, scale_source=None):
     staged, meshes, materials = [], [], {}
     try:
         for obj in group['objects']:
@@ -217,10 +247,16 @@ def map_esp(context, record, group, path, dataset, units, low, high, *, kind='es
                 previous = ATTRIBUTE if obj.active_material.get('mb_field_kind', 'esp') == 'esp' else 'mb_field'
                 if previous != name and mesh.attributes.get(previous):
                     mesh.attributes.remove(mesh.attributes[previous])
-            _sample_mesh(mesh, grid, name)
+            _write_values(mesh, sample(obj, mesh), name)
             opacity = surface_opacity(obj)
             if opacity not in materials:
                 materials[opacity] = _field_material(path, dataset, units, low, high, opacity, kind, label, palette)
+                if metadata:
+                    for key, value in metadata.items():
+                        materials[opacity][key] = value
+                if scale_source is not None:
+                    from .field_scale import copy_ramp
+                    copy_ramp(materials[opacity], scale_source, low, high)
             staged.append((obj, mesh, materials[opacity]))
         if not any(len(mesh.vertices) for mesh in meshes):
             raise ValueError('The selected density surface has no vertices')
@@ -309,7 +345,7 @@ class MB_OT_map_esp(bpy.types.Operator):
         if not group:
             return {'CANCELLED'}
         saved = field_map_settings(group['objects'][0].active_material)
-        if saved:
+        if saved and not group['objects'][0].active_material.get('mb_wavefunction_esp'):
             self.filepath, self.dataset, self.field_kind = saved['path'], saved['dataset'], saved['kind']
             if self.field_kind == 'esp':
                 self.units = saved['units']
