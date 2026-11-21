@@ -6,7 +6,7 @@ import bpy
 import numpy as np
 from bpy.props import EnumProperty, FloatProperty, IntProperty, StringProperty
 
-from .field_palettes import PALETTES, apply_palette
+from .field_palettes import KEEP_PALETTE, PALETTES, apply_palette
 from .diagnostics import report_exception
 from .scalar_fields import CubeField
 from .import_dialog import browser_path
@@ -50,7 +50,7 @@ def scale_nodes(material):
     raise ValueError('Field scale needs a Color Ramp connected to Base Color with a linear Map Range from 0 to 1')
 
 
-def field_map_settings(mat):
+def field_map_settings(mat, *, require_ramp=False):
     if mat is None:
         return None
     kind = mat.get('mb_field_kind', 'esp')
@@ -61,6 +61,8 @@ def field_map_settings(mat):
         _, scale = scale_nodes(mat)
         limits = tuple(scale.inputs[key].default_value for key in ('From Min', 'From Max'))
     except ValueError:
+        if require_ramp:
+            return None
         limits = mat[prefix + 'limits']
     return dict(kind=kind, label=mat.get('mb_field_label', 'ESP'),
                 path=mat[prefix + 'path'], dataset=mat[prefix + 'dataset'],
@@ -212,7 +214,7 @@ def remap_contour(context, record, template, base, grids, computed=None):
         raise
 
 
-def map_esp(context, record, group, path, dataset, units, low, high, *, kind='esp', label=None, palette='default'):
+def map_esp(context, record, group, path, dataset, units, low, high, *, kind='esp', label=None, palette='current'):
     if not density_group(group):
         raise ValueError('Select a single-frame density surface')
     source_format = file_format(path)
@@ -234,7 +236,7 @@ def map_esp(context, record, group, path, dataset, units, low, high, *, kind='es
 
 
 def _map_values(context, group, sample, path, dataset, units, low, high, kind, label, palette,
-                metadata=None, scale_source=None):
+                metadata=None, allow_unit_change=False):
     staged, meshes, materials = [], [], {}
     try:
         for obj in group['objects']:
@@ -249,15 +251,24 @@ def _map_values(context, group, sample, path, dataset, units, low, high, kind, l
                     mesh.attributes.remove(mesh.attributes[previous])
             _write_values(mesh, sample(obj, mesh), name)
             opacity = surface_opacity(obj)
-            if opacity not in materials:
-                materials[opacity] = _field_material(path, dataset, units, low, high, opacity, kind, label, palette)
+            source = None
+            if palette == 'current' and BASE_MESH in obj:
+                old = field_map_settings(obj.active_material, require_ramp=True)
+                if (old and (old['kind'] == 'unsigned') == (kind == 'unsigned')
+                        and (allow_unit_change or units == old['units'])):
+                    source = obj.active_material
+            material_key = (opacity, source)
+            if material_key not in materials:
+                preset = 'default' if palette == 'current' else palette
+                mat = _field_material(path, dataset, units, low, high, opacity, kind, label, preset)
+                materials[material_key] = mat
                 if metadata:
                     for key, value in metadata.items():
-                        materials[opacity][key] = value
-                if scale_source is not None:
+                        mat[key] = value
+                if source is not None:
                     from .field_scale import copy_ramp
-                    copy_ramp(materials[opacity], scale_source, low, high)
-            staged.append((obj, mesh, materials[opacity]))
+                    copy_ramp(mat, source, low, high)
+            staged.append((obj, mesh, materials[material_key]))
         if not any(len(mesh.vertices) for mesh in meshes):
             raise ValueError('The selected density surface has no vertices')
     except Exception:
@@ -328,7 +339,7 @@ class MB_OT_map_esp(bpy.types.Operator):
         ('signed', 'Signed Field', 'Red for negative, white at zero, blue for positive'),
         ('unsigned', 'Unsigned Field', 'White at the lower limit and blue at the upper limit')),
         update=_update_kind)
-    palette: EnumProperty(name='Color map', items=PALETTES)
+    palette: EnumProperty(name='Color map', items=(*PALETTES, KEEP_PALETTE), default='current', options={'SKIP_SAVE'})
     field_label: StringProperty(name='Field name', default='Scalar field')
     field_units: StringProperty(name='Scalar units', description='Units of the supplied data, or 1 for dimensionless')
     units: EnumProperty(name='Potential values in', items=(
@@ -345,8 +356,12 @@ class MB_OT_map_esp(bpy.types.Operator):
         if not group:
             return {'CANCELLED'}
         saved = field_map_settings(group['objects'][0].active_material)
-        if saved and not group['objects'][0].active_material.get('mb_wavefunction_esp'):
-            self.filepath, self.dataset, self.field_kind = saved['path'], saved['dataset'], saved['kind']
+        if not self.properties.is_property_set('palette'):
+            self.palette = 'current' if saved else 'default'
+        if saved:
+            if not group['objects'][0].active_material.get('mb_wavefunction_esp'):
+                self.filepath, self.dataset = saved['path'], saved['dataset']
+            self.field_kind = saved['kind']
             if self.field_kind == 'esp':
                 self.units = saved['units']
             else:

@@ -7,7 +7,7 @@ from .diagnostics import report_exception
 from .esp_jobs import ESPRequest
 from .field_palettes import KEEP_PALETTE, PALETTES
 from .importers import file_format
-from .scene_esp import BASE_MESH, _display_mesh, _map_values, density_group, field_map_settings, mesh_points, validate_limits
+from .scene_esp import _display_mesh, _map_values, density_group, field_map_settings, mesh_points, validate_limits
 from .scene_state import read_record, resolve_owner
 from .scene_surfaces import surface_groups
 from .surface_jobs import SurfaceJob
@@ -127,15 +127,12 @@ class MB_OT_compute_esp(bpy.types.Operator):
                 raise ValueError('Displayed vertices changed during the ESP calculation. Compute it again.')
             return batch
 
-        mat = current[0][2]
-        keep = self.palette == 'current' and BASE_MESH in current[0][0] and mat.get('mb_field_kind', 'esp') != 'unsigned'
         quality = self.quality
         metadata = dict(mb_wavefunction_esp=True, mb_esp_charge=self.charge,
                         mb_esp_quality=quality, mb_esp_convention=self._request.convention)
         label = 'Wavefunction ESP' + (' (preview)' if quality == 'preview' else '')
         _map_values(context, group, sample, record['source'], 0, self.units, self.minimum, self.maximum,
-                    'esp', label, 'default' if self.palette == 'current' else self.palette,
-                    metadata, mat if keep else None)
+                    'esp', label, self.palette, metadata, allow_unit_change=True)
 
     def modal(self, context, event):
         if event.type == 'ESC' or self._job.cancelled:

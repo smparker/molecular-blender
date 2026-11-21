@@ -35,6 +35,67 @@ class TestInterpolation(unittest.TestCase):
 
 @unittest.skipUnless(bpy, 'requires Blender')
 class TestMappedDensity(unittest.TestCase):
+    def test_replacing_field_maps_keeps_compatible_ramps_per_contour(self):
+        from molecular_blender import scene_panel
+        from molecular_blender.field_scale import scale_values
+        from molecular_blender.plotter import BlendMoleculeSetup, draw_surfaces
+        from molecular_blender.scene_esp import scale_nodes
+        from molecular_blender.scene_state import read_record
+        from molecular_blender.scene_surfaces import surface_groups
+        scene_panel.register()
+        self.addCleanup(scene_panel.unregister)
+        blocks = set(bpy.data.objects) | set(bpy.data.collections)
+        self.addCleanup(lambda: bpy.data.batch_remove((set(bpy.data.objects) | set(bpy.data.collections)) - blocks))
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            density, first, second = (directory / name for name in ('density.cube', 'x.cube', 'y.cube'))
+            x, y, z = .5 * np.indices((9, 9, 9)) - 2
+            write_cube(density, np.exp(-(x*x + y*y + z*z)))
+            write_cube(first, x)
+            write_cube(second, y)
+            model, styler, options = BlendMoleculeSetup(bpy.context, str(density), volume='density',
+                isovalues='.35,.6', cumulative=False, remesh=0)
+            draw_surfaces(model, styler, bpy.context, options)
+            owner = model.scene_owner
+            bpy.context.view_layer.objects.active = owner
+            key, group = next(iter(surface_groups(owner, read_record(owner)).items()))
+            members = group['objects']
+            a, b = members
+            op = bpy.ops.molecular_blender.map_esp
+            args = dict(group=key, field_kind='signed', field_units='e/bohr³', minimum=-2., maximum=2.)
+            self.assertEqual(op(filepath=str(first), palette='magma', **args), {'FINISHED'})
+            b.active_material = a.active_material.copy()
+            ramp = scale_nodes(b.active_material)[0].color_ramp
+            ramp.elements[5].color = (.2, .7, .3, 1.)
+            ramp.elements[5].position = .17
+            ramp.interpolation = 'EASE'
+            edited = [scale_values(obj.active_material) for obj in members]
+            self.assertNotEqual(*edited)
+            self.assertEqual(op(filepath=str(second), **args), {'FINISHED'})
+            for obj, expected in zip(members, edited):
+                self.assertEqual(scale_values(obj.active_material), expected)
+                np.testing.assert_allclose([v.value for v in obj.data.attributes['mb_field'].data],
+                                           [v.co.y for v in obj.data.vertices], atol=1e-6)
+            manifest = directory / 'sum.json'
+            entry = dict(units='e/bohr³', linear_combination=[
+                dict(filename=first.name, coefficient=1.), dict(filename=second.name, coefficient=-1.)])
+            manifest.write_text(json.dumps(dict(molecules=[entry])))
+            self.assertEqual(op(filepath=str(manifest), **dict(args, field_units='ignored')), {'FINISHED'})
+            self.assertEqual([scale_values(o.active_material) for o in members], edited)
+            self.assertEqual(op(filepath=str(second), palette='viridis', **args), {'FINISHED'})
+            self.assertEqual(scale_nodes(b.active_material)[0].label, 'Viridis')
+            # A custom shader without a usable ramp can still receive another map.
+            node, _ = scale_nodes(b.active_material)
+            b.active_material.node_tree.links.remove(node.inputs['Fac'].links[0])
+            self.assertEqual(op(filepath=str(second), **args), {'FINISHED'})
+            self.assertEqual(len(scale_nodes(b.active_material)[0].color_ramp.elements), 3)
+            self.assertEqual(op(filepath=str(second), palette='magma', **args), {'FINISHED'})
+            self.assertEqual(op(filepath=str(second), **dict(args, field_units='V')), {'FINISHED'})
+            self.assertEqual(len(scale_nodes(b.active_material)[0].color_ramp.elements), 3)
+            self.assertEqual(op(filepath=str(second), **dict(args, field_kind='unsigned', field_units='V',
+                                                              minimum=0.)), {'FINISHED'})
+            self.assertEqual(len(scale_nodes(b.active_material)[0].color_ramp.elements), 2)
+
     def test_cube_contour_resamples_edited_map_and_restores_new_base(self):
         from molecular_blender.plotter import BlendMoleculeSetup, compute_surface_vertex_sets, draw_surfaces
         from molecular_blender.scene_state import read_record

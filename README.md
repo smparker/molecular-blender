@@ -714,6 +714,10 @@ Use **Edit Color Scale…** on a mapped surface to adjust its limits, colors
 and ramp stops. Choose **Viridis** or **Magma** under **Color map** here or
 when creating the map. Both create editable 32-stop ramps from the original
 sRGB colors. **Field Default** restores the default colors for that field.
+**Change Field Map…** defaults to **Current Ramp**. Replacing a cube or JSON
+combination preserves each contour's edited stops and interpolation when the
+units and signedness match. Other replacements start with the field default.
+You can choose a preset to replace the ramp explicitly.
 To match another panel, choose it under **Copy scale from**
 and confirm. The picker includes maps in the same scene with matching units
 and signed or unsigned ranges. The edit uses the saved mesh values and works

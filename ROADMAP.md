@@ -51,6 +51,7 @@ Single-frame density surfaces can display an external potential cube or a potent
 - [x] **Validate ESP numerically.** Independent PySCF references cover point values, density-surface samples, signs, units, nuclear singularities and far-field behavior in water and HeH⁺, including standard Cartesian, spherical and ORCA water inputs. [Fixtures](test/fixtures/wavefunction_esp).
 - [x] **Sample ESP on the displayed mesh.** Cancellable worker batches share cached contracted densities and vertex values. Coarse preview samples a surface vertex per 0.45 Å cell. Final sampling evaluates every distinct vertex. [Time and peak RSS benchmark](benchmarks/wavefunction_esp.py).
 - [x] **Choose a field color map.** Viridis and Magma populate editable shader ramps for external and calculated fields, with matching SVG legends.
+- [x] **Preserve edited ramps when replacing a field map.** Each contour keeps its ramp when the replacement cube or JSON field has matching units and signedness.
 
 ## 3. Other scientific visualization features
 
