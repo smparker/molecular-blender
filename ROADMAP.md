@@ -4,9 +4,12 @@ An editable menu of possible work, based on the 2026-11-15 code review. Status w
 
 Keep the current curve-extrusion approach for bonds as the baseline. Keep bond-order drawing and perception opt-in until their behavior has broader validation.
 
-## Suggested starting points
+## Remaining topics
 
-- **Extend field maps.** External scalar cubes can color density surfaces. The sidebar exports field legends for compositing. Molden wavefunctions also supply all-electron ESP directly on the displayed vertices.
+- **Builds and releases (4).** Share compiler settings between build tools, define the supported Blender/Python/NumPy combinations, and test the remaining release packages in clean Blender installations. The fourth item, comparing a water ESP value from the installed wheel and add-on ZIP, is deferred. [Packaging and compatibility](#11-packaging-compatibility-and-user-workflows)
+- **Numerical reliability and test isolation (2).** Audit native allocations, pointer lifetimes, array layouts and screening. Check for Blender objects and data left behind by tests, and establish runtime and peak-memory baselines. [Numerical implementation](#9-performance-and-numerical-implementation) and [tests](#10-tests-and-scientific-validation)
+- **Input formats and writer examples (2).** Choose among PDB/mmCIF, MOL2 and periodic inputs when a concrete workflow calls for one. Add runnable figure examples for more quantum-chemistry writers using formats the importer already reads. [Input formats](#5-import-export-and-data-fidelity) and [workflow examples](#11-packaging-compatibility-and-user-workflows)
+- **Publication output (1 placeholder).** Field legends are implemented and scale bars belong in compositing. The open entry has no further figure feature specified. [Scientific visualization](#3-other-scientific-visualization-features)
 
 ## 1. Post-import editing and scene interaction
 
