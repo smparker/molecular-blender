@@ -123,7 +123,7 @@ jobs:
 
   build_blender_addon:
     name: Build universal Blender addon zip
-    runs-on: ubuntu-latest
+    runs-on: macos-15
     needs: [build_wheels]  # Build after wheels so we can collect all compiled extensions
 
     steps:
@@ -148,74 +148,31 @@ jobs:
           python -m pip install --upgrade pip
           pip install cython numpy wheel
 
-      - name: Extract compiled extensions from wheels
+      - name: Assemble the release ZIP
         shell: bash
         run: |
-          mkdir -p compiled_extensions
-
-          echo "Available wheels:"
-          ls -lh all-wheels/*.whl || echo "No wheels found!"
-
-          # Extract .so and .pyd files from all wheels
-          for wheel in all-wheels/*.whl; do
-            if [ -f "$wheel" ]; then
-              echo "Extracting from $wheel"
-              unzip -q "$wheel" "molecular_blender/*.so" -d compiled_extensions/ 2>/dev/null || true
-              unzip -q "$wheel" "molecular_blender/*.pyd" -d compiled_extensions/ 2>/dev/null || true
-            fi
-          done
-
-          # Show what we extracted (grouped by extension name for clarity)
-          echo ""
-          echo "=== Extracted extensions by Python version and platform ==="
-          find compiled_extensions -name "*.so" -o -name "*.pyd" | sort
-          echo ""
-          echo "Total extensions: $(find compiled_extensions -name "*.so" -o -name "*.pyd" | wc -l)"
-
-      - name: Build base addon (no compilation)
-        run: |
-          # Build addon without compiling (we'll add compiled extensions separately)
           python blender_setup.py export
-
-      - name: Create universal addon with all platform extensions
-        shell: bash
-        run: |
-          # Find the created zip
-          BASE_ZIP=$(ls molecular_blender_*.zip | head -n 1)
-          echo "Base zip: $BASE_ZIP"
-
-          # Create a temp directory to assemble the universal addon
-          mkdir -p universal_addon
-
-          # Extract base zip
-          unzip -q "$BASE_ZIP" -d universal_addon/
-
-          # Copy all compiled extensions into the addon
-          if [ -d "compiled_extensions/molecular_blender" ]; then
-            cp compiled_extensions/molecular_blender/*.so universal_addon/molecular_blender/ 2>/dev/null || true
-            cp compiled_extensions/molecular_blender/*.pyd universal_addon/molecular_blender/ 2>/dev/null || true
-          fi
-
-          # Show what's included
-          echo ""
-          echo "=== Universal addon compiled extensions ==="
-          find universal_addon/molecular_blender/ -name "*.so" -o -name "*.pyd" | sort || echo "No compiled extensions found (will use pure Python fallback)"
-          echo ""
-          echo "Total extensions in universal zip: $(find universal_addon/molecular_blender/ -name "*.so" -o -name "*.pyd" | wc -l)"
-          echo ""
-          echo "Python versions covered:"
-          find universal_addon/molecular_blender/ -name "*.so" -o -name "*.pyd" | sed -E 's/.*cpython-([0-9]+).*/Python 3.\1/' | sort -u || true
-
-          # Create the universal zip
-          cd universal_addon
-          zip -q -r "../molecular_blender.zip" molecular_blender/
-          cd ..
-
-          # Clean up
-          rm -rf universal_addon "$BASE_ZIP"
-
-          echo "Created universal addon: molecular_blender.zip"
-          ls -lh molecular_blender.zip
+          mkdir -p universal_addon mac-slices/{arm64,x86_64}
+          unzip -q molecular_blender_*.zip -d universal_addon
+          package=universal_addon/molecular_blender
+          for wheel in all-wheels/*.whl; do
+            case "$wheel" in
+              *macosx*arm64.whl)  unzip -jq "$wheel" 'molecular_blender/*.so' -d mac-slices/arm64 ;;
+              *macosx*x86_64.whl) unzip -jq "$wheel" 'molecular_blender/*.so' -d mac-slices/x86_64 ;;
+              *win_amd64.whl)     unzip -joq "$wheel" 'molecular_blender/*.pyd' -d "$package" ;;
+              *linux*.whl)        unzip -joq "$wheel" 'molecular_blender/*.so' -d "$package" ;;
+              *) echo "Unexpected wheel platform in $wheel" >&2; exit 1 ;;
+            esac
+          done
+          # Both Mac wheels use the same Darwin extension filenames for each Python ABI.
+          diff <(ls mac-slices/arm64) <(ls mac-slices/x86_64)
+          for arm in mac-slices/arm64/*.so; do
+            name=${arm##*/}
+            lipo -create "$arm" "mac-slices/x86_64/$name" -output "$package/$name"
+            lipo "$package/$name" -verify_arch arm64
+            lipo "$package/$name" -verify_arch x86_64
+          done
+          (cd universal_addon && zip -qr ../molecular_blender.zip molecular_blender/)
 
       - name: Upload universal Blender addon
         uses: actions/upload-artifact@v4
@@ -225,9 +182,21 @@ jobs:
           retention-days: 90
 
   test_blender_zip:
-    name: Install release ZIP and render in Blender 4.3.2 (Linux x64)
+    name: Install release ZIP and render in Blender 4.3.2 (${{ matrix.platform }})
     needs: build_blender_addon
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Linux x64
+            runner: ubuntu-22.04
+            archive: blender-4.3.2-linux-x64.tar.xz
+            sha256: 4da1c956673c0485e63054e563ee69198cc8f80d8157dd7592dffc8a6a5592e6
+          - platform: macOS Apple Silicon
+            runner: macos-15
+            archive: blender-4.3.2-macos-arm64.dmg
+            sha256: 32297d20fae74683052267b9171945712c0aeb8a499d8e677e44740d3e30a034
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -236,12 +205,21 @@ jobs:
           path: ${{ runner.temp }}/addon
       - name: Download and verify Blender 4.3.2
         working-directory: ${{ runner.temp }}
+        env:
+          ARCHIVE: ${{ matrix.archive }}
+          SHA256: ${{ matrix.sha256 }}
         run: |
           base=https://download.blender.org/release/Blender4.3
-          archive=blender-4.3.2-linux-x64.tar.xz
-          curl --fail --location --retry 3 -O "$base/$archive"
-          echo "4da1c956673c0485e63054e563ee69198cc8f80d8157dd7592dffc8a6a5592e6  $archive" | sha256sum --check
-          tar -xf "$archive"
+          curl --fail --location --retry 3 -O "$base/$ARCHIVE"
+          echo "$SHA256  $ARCHIVE" | shasum -a 256 --check
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            test "$(uname -m)" = arm64
+            hdiutil attach -readonly -nobrowse -mountpoint "$RUNNER_TEMP/blender-dmg" "$ARCHIVE"
+            echo "BLENDER_BIN=$RUNNER_TEMP/blender-dmg/Blender.app/Contents/MacOS/Blender" >> "$GITHUB_ENV"
+          else
+            tar -xf "$ARCHIVE"
+            echo "BLENDER_BIN=$RUNNER_TEMP/blender-4.3.2-linux-x64/blender" >> "$GITHUB_ENV"
+          fi
       - name: Install and exercise the downloaded add-on
         working-directory: ${{ runner.temp }}
         env:
@@ -249,7 +227,7 @@ jobs:
           BLENDER_USER_CONFIG: ${{ runner.temp }}/profile/config
         run: |
           mkdir -p "$BLENDER_USER_SCRIPTS/addons" "$BLENDER_USER_CONFIG"
-          ./blender-4.3.2-linux-x64/blender -b --factory-startup --python-exit-code 1 \
+          "$BLENDER_BIN" -b --factory-startup --python-exit-code 1 \
             --python "$GITHUB_WORKSPACE/test/blender_release_zip.py" -- "$RUNNER_TEMP/addon/molecular_blender.zip"
 
   test_wheels:
