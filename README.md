@@ -731,6 +731,22 @@ shells it also converts ORCA’s radial factors and the phases of components wit
 calculation](test/fixtures/orca_water_fg/README.md) checks signed amplitudes for
 all 23 orbitals.
 
+### Render an ORCA π orbital
+
+From the repository root, render the occupied ethene π orbital to a transparent
+PNG using the bundled ORCA calculation.
+
+```sh
+blender -b --factory-startup --python-exit-code 1 --python examples/render_orca_ethene.py -- /tmp/ethene-figure
+```
+
+To regenerate the input, run `orca ethene.inp > ethene.out` followed by
+`orca_2mkl ethene -molden` in a scratch directory containing the
+[ethene input](test/fixtures/orca_ethene/ethene.inp). Pass the resulting
+`ethene.molden.input` as a second argument after the output directory.
+ORCA's zero-based orbital 7 is orbital 8 in the add-on. The script uses
+**Auto** and checks that it recognized the `orca_2mkl` title.
+
 The [PySCF 2.11 water references](test/fixtures/pyscf_water/generate.py) check
 standard Molden with contracted d, f and g functions on oxygen. They cover all
 28 spherical and 38 Cartesian orbitals, plus total density, at 64 off-axis

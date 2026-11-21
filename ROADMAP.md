@@ -192,6 +192,7 @@ Entry points: [pyproject.toml](pyproject.toml), [setup.py](setup.py), [blender_s
 - [x] **Add post-import and trajectory examples.** [Edit and export water orbitals](examples/edit_orbitals.py) and [animate an SDF record sequence](examples/water_bend.json).
 - [x] **Add a runnable ESP figure workflow.** The [water example](examples/render_water_esp.py) maps a supplied PySCF potential cube onto its Molden density surface and exports a transparent PNG and matching SVG legend.
 - [ ] **Add workflow examples for additional quantum-chemistry writers.**
+- [x] **Render an ORCA orbital figure.** The [ethene example](examples/render_orca_ethene.py) renders ORCA orbital 7 from the supplied wavefunction as Molden orbital 8 with automatic convention detection.
 
 ## Bugs found during implementation
 
