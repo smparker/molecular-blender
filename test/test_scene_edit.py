@@ -13,6 +13,58 @@ except ImportError:
 
 @unittest.skipUnless(bpy, 'requires Blender')
 class TestRestyle(unittest.TestCase):
+    def test_switch_representation_keeps_surface_edits_atoms_and_bond_topology(self):
+        from molecular_blender.bond_edit import set_manual_bond
+        from molecular_blender.plotter import BlendMoleculeSetup, draw_surfaces
+        from molecular_blender.representation import MB_OT_representation
+        from molecular_blender.scene_state import ID, owned_objects, read_record
+        bpy.utils.register_class(MB_OT_representation)
+        self.addCleanup(bpy.utils.unregister_class, MB_OT_representation)
+        model, styler, options = BlendMoleculeSetup(
+            bpy.context, 'examples/water-sto-3g.molden', plot_style='sticks', hook_atoms='on',
+            ignore_hydrogen=False, isovalues='.07', cumulative=False, orbital='5', resolution=.25)
+        draw_surfaces(model, styler, bpy.context, options)
+        root = model.scene_owner
+        root.location.x += 2
+        bpy.context.view_layer.objects.active = root
+        topology = read_record(root)['bonds']
+        set_manual_bond(root, 2, bond_id=topology[0]['id'])
+        saved = read_record(root)
+        atoms = owned_objects(root, 'atom')
+        atoms[0]['mb_accent_color'] = (.2, .3, .4)
+        atoms[0].location.y += .2
+        positions = [atom.location.copy() for atom in atoms]
+        sizes = [atom.scale.copy() for atom in atoms]
+        original_atom_material = atoms[0].active_material
+        surfaces = [(s, s.data, s.active_material) for s in owned_objects(root, 'surface')]
+        self.assertTrue(surfaces)
+        surfaces[0][0].hide_render = True
+        for style, count in [('bs', 1), ('sticks', 2)]:
+            self.assertEqual(bpy.ops.molecular_blender.change_representation(style=style), {'FINISHED'})
+            record = read_record(root)
+            self.assertEqual(record['settings']['plot_style'], style)
+            self.assertEqual((record['bonds'], record['surfaces']), (saved['bonds'], saved['surfaces']))
+            for bond in record['bonds']:
+                parts = [obj for obj in owned_objects(root, 'bond') if obj[ID] == bond['id']]
+                self.assertEqual(len(parts), count)
+                bounds = sorted((part.data.bevel_factor_start, part.data.bevel_factor_end) for part in parts)
+                self.assertEqual(bounds, [(0., .5), (.5, 1.)] if style == 'sticks' else [(0., 1.)])
+                for obj in parts:
+                    self.assertEqual(obj['mb_order'], bond['order'])
+                    self.assertEqual(len(obj.modifiers), 2)
+                    self.assertEqual('mb_element' in obj, style == 'sticks')
+                    self.assertIsNotNone(obj.active_material)
+            if style == 'bs':
+                self.assertTrue(any((a.scale - s).length > .01 for a, s in zip(atoms, sizes)))
+            self.assertEqual([a.location for a in atoms], positions)
+            self.assertIn('mb_accent_color', atoms[0])
+            self.assertEqual(atoms[0].active_material, original_atom_material)
+            self.assertTrue(surfaces[0][0].hide_render)
+            for surface, mesh, mat in surfaces:
+                self.assertEqual((surface.data, surface.active_material), (mesh, mat))
+        for atom, original in zip(atoms, sizes):
+            self.assertLess((atom.scale - original).length, 1e-5)
+
     def test_make_independent_preserves_internal_sharing_and_detaches_bevel_sources(self):
         from molecular_blender.plotter import BlendMoleculeSetup
         from molecular_blender.scene_edit import make_molecule_independent

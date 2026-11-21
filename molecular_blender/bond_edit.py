@@ -54,10 +54,15 @@ def _find_bond(record, atom_ids=None, bond_id=None):
 
 def _remove_curve(obj):
     curve = obj.data
-    profile = curve.bevel_object
     bpy.data.objects.remove(obj, do_unlink=True)
-    if curve.users == 0:
-        bpy.data.curves.remove(curve)
+    _remove_unused_curve(curve)
+
+
+def _remove_unused_curve(curve):
+    if curve.users:
+        return
+    profile = curve.bevel_object
+    bpy.data.curves.remove(curve)
     if (profile is not None and profile.get('molecular_blender_bond_profile')
             and not any(c.bevel_object == profile for c in bpy.data.curves)
             and profile.users == int(profile.use_fake_user)):

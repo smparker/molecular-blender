@@ -29,7 +29,8 @@ Imports retain their settings and object identities in the blend file. The sideb
 - [ ] **Refresh source data while preserving presentation.** Reload coordinates or orbitals and retain user colors, visibility, transforms, and locked edits where atom identities still match. Report incompatible atom lists rather than silently rebinding objects.
 - [x] **Support undo and redo for sidebar edits.** Molecule restyling, manual bond edits, and surface removal support Blender Undo/Redo. Moving atoms changes the displayed geometry. Wavefunction surfaces use the original calculation coordinates.
 - [x] **Reset atom and bond style.** The sidebar restores the original atom size, bond thickness and palette, and clears accents for the selected molecule. Older scene records use their saved settings as the baseline.
-- [ ] **Add a Rebuild Geometry action.** Scope cleanup to the owning molecule. Surface recomputation is tracked above.
+- [x] **Switch sticks and ball-and-stick after import.** The sidebar converts single-frame molecules using their current geometry, preserving atom accents, manual bond edits, and existing surfaces.
+- [ ] **Add a general Rebuild Geometry action.** Scope cleanup to the owning molecule. The stick and ball-and-stick switch covers single-frame representation changes.
 - [x] **Make a molecule independent.** Detach shared geometry, multiple-bond bevel sources and materials while retaining sharing within the molecule.
 
 ## 2. Electrostatic-potential maps

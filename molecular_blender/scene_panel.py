@@ -6,6 +6,7 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, IntProperty, StringProperty
 
 from . import vibrations
+from .representation import MB_OT_representation, can_switch
 from .importers import file_format
 from .orbitals import frontier_index
 from .scene_state import ID, RECORD, ROLE, read_record, resolve_owner, owned_objects
@@ -43,6 +44,7 @@ def molecule_summary(obj):
                 bonds=len(record['bonds']), surfaces=sum(len(g['objects']) for g in groups.values()),
                 groups=groups,
                 representation=REPRESENTATIONS[settings['plot_style']],
+                can_switch=can_switch(settings),
                 object_type=settings['object_type'], charge=settings['molecular_charge'],
                 orbitals=record['orbitals'], fields=record['fields'])
 
@@ -293,6 +295,8 @@ class MB_PT_molecule(bpy.types.Panel):
         box.label(text='Coordinates: ' + summary['units'])
         box.label(text='Molecular charge setting: {:+d}'.format(summary['charge']))
         box.label(text='{} ({})'.format(summary['representation'], summary['object_type']))
+        if summary['can_switch']:
+            box.operator('molecular_blender.change_representation', text='Change Representation…')
         if summary['visible_atoms']:
             box.operator('molecular_blender.select_atom_indices', text='Select Atoms by Index…')
             box.prop(owner, 'mb_show_atom_indices')
@@ -401,7 +405,8 @@ _CLASSES = (MB_OT_select_atoms, MB_OT_select_atom_indices, MB_OT_surface_visibil
             MB_ScaleSource, MB_OT_edit_field_scale, MB_OT_export_field_legend, MB_OT_map_esp, MB_OT_clear_esp,
             MB_OT_add_surface, MB_OT_recompute_surface, MB_OT_remove_surface,
             vibrations.MB_OT_preview_mode, vibrations.MB_OT_clear_mode,
-            MB_OT_jump_orbital, MB_OT_frame_molecule, MB_OT_view_face_on, MB_OT_view_principal_axes, MB_PT_molecule)
+            MB_OT_jump_orbital, MB_OT_frame_molecule, MB_OT_view_face_on, MB_OT_view_principal_axes,
+            MB_OT_representation, MB_PT_molecule)
 
 
 def register():

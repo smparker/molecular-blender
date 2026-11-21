@@ -489,6 +489,13 @@ opacity wraps the existing shader without recomputing the field or mesh.
 Individual atom/bond restyling is available for mesh, NURBS, and metaball imports;
 wireframe imports remain inspectable. Use positive bond thickness when restyling.
 
+On single-frame stick and ball-and-stick imports, choose **Change Representation…**
+below the current representation in the Molecule sidebar. Switching to sticks
+splits a bond between different elements into two colored halves. Switching to
+ball-and-stick restores element-sized spheres and single-color bonds. The action
+uses the displayed atoms and saved bond graph, including manual orders and tilt.
+Existing orbital and density surfaces keep their placement and materials.
+
 For manual topology edits, select exactly two atoms in one molecule and click
 **Single**, **Double**, or **Triple**. These buttons add a missing bond or update
 an existing one. You can also select one bond (either colored half, or both) to
