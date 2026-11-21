@@ -1,5 +1,5 @@
 ---
-title: "home"
+title: Home
 bg: white
 color: black
 style: center
@@ -9,7 +9,7 @@ style: center
 
 <div class="text-purple">
   <span class="icon">
-    <svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+    <svg aria-hidden="true" focusable="false" version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
        width="256px" height="256px" viewBox="0 0 64 64" enable-background="new 0 0 64 64" xml:space="preserve">
       <circle fill="#FFFFFF" stroke="#545456" stroke-miterlimit="10" cx="-32.246" cy="44.371" r="12.371"/>
       <circle fill="#ED2024" stroke="#545456" stroke-miterlimit="10" cx="-52.287" cy="26.31" r="19.052"/>
@@ -38,15 +38,13 @@ style: center
   </span>
   <br>
 
-  <h2>a blender plug-in for quantum chemists</h2>
+  <h2>a Blender add-on for quantum chemists</h2>
 </div>
 
-Making beautifully rendered molecular images easy! <br><br>
+<p class="intro-copy">Turn molecular structures, orbitals, and trajectories into figures and animations in Blender.</p>
+<p class="intro-actions">
+  <a class="download" href="{{ site.source_link }}/releases/download/{{ site.release_tag }}/molecular_blender.zip">Download {{ site.release_tag | remove_first: 'v' }} for Blender</a>
+  <a href="./#usage">Installation and first import</a>
+</p>
 
-Want to contribute? Go <a href="https://github.com/smparker/molecular-blender">fork me on github!</a>
-
-<span id="forkongithub">
-  <a href="{{ site.source_link }}" class="bg-blue">
-    Fork me on GitHub
-  </a>
-</span>
+<span id="forkongithub"><a href="{{ site.source_link }}" class="bg-blue">View on GitHub</a></span>

@@ -1,5 +1,8 @@
 - src: pulling.png
   doi: 10.1021/nl501629c
-
+  caption: Pulling on a molecular junction
+  alt: A molecule suspended between two gold contacts.
 - src: tio2.png
   doi: 10.1039/C6SC04378J
+  caption: Water oxidation on titania nanoparticles
+  alt: Electron, hole, and proton transfers at the surface of a titanium dioxide particle.

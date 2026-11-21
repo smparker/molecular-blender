@@ -170,7 +170,7 @@ nav ul li:hover, nav ul li.active {
   display:block;
   width:100%;
   min-height:300px;
-  padding:210px 0;
+  padding:165px 0 175px;
   background:url(img/bgnoise.png);
   /* generated noise from noisetexturegenerator.com */
 }
@@ -223,13 +223,13 @@ nav ul li:hover, nav ul li.active {
 }
 .sectiondivider .fa-circle { color: #fff; }
 
-.sectiondivider h5 {
+.sectiondivider .icon-title {
   font-size:15px;
   font-weight:700;
   text-transform:uppercase;
   position:absolute;
   bottom:50px;
-  left:auto;
+  left:15px;
   text-align:center;
   display:block;
   z-index:6;
@@ -339,7 +339,7 @@ nav ul li:hover, nav ul li.active {
     font-size: 100px;
     margin-top: -14px;
   }
-  .sectiondivider h5 {
+  .sectiondivider .icon-title {
     font-size:15px;
     bottom:30px;
     width:170px
@@ -354,7 +354,7 @@ nav ul li:hover, nav ul li.active {
 
 /* tiny size (phones) */
 @media only screen and (max-width: 380px) {
-  nav ul li { min-width:90px; line-height:20px; }
+  nav ul li { min-width:0; width:25%; line-height:40px; }
 
   .columned {
     -webkit-column-count: 1;
@@ -362,4 +362,36 @@ nav ul li:hover, nav ul li.active {
     column-count:         1;
 
   }
+}
+
+/* The original section colors, textured backgrounds and circular dividers. */
+.section { scroll-margin-top: 205px; }
+.sectiondivider { pointer-events: none; }
+.sectiondivider .icon-title { color: #333; }
+.container p, .container li, figcaption { line-height: 1.55; }
+#intro .intro-copy { margin: 18px auto; max-width: 640px; }
+#intro .intro-actions { display: flex; justify-content: center; align-items: center; gap: 16px 24px; flex-wrap: wrap; }
+#intro a.download { background: #2e2e2e; color: white; padding: 10px 22px; border-radius: 3px; font-weight: 700; text-decoration: none; }
+#intro a.download:hover { background: #484048; }
+#intro .text-purple { color: #98468f !important; }
+#why .container > p, #usage .container { max-width: 760px; margin-inline: auto; }
+#usage ol { list-style: decimal outside; }
+#usage li { margin-bottom: .65em; }
+.formats { text-align: center; }
+.examples, .publication-art { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; margin: 28px 5%; }
+.examples figure, .publication-art figure { margin: 0; }
+.examples img { display: block; width: 100%; height: 210px; object-fit: contain; }
+.examples figcaption, .publication-art figcaption { margin-top: 12px; font-size: 17px; }
+.examples figcaption h3 { margin-bottom: 6px; text-align: left; padding: 0; }
+.examples figcaption a { display: block; width: fit-content; margin-top: 6px; }
+.publication-art { max-width: 720px; margin-inline: auto; padding: 0 5%; text-align: center; }
+.publication-art img { width: 100%; height: auto; }
+#footer a { color: white; }
+a:focus-visible { outline: 3px solid currentColor; outline-offset: 3px; }
+
+@media (max-width: 679px) {
+  .section { scroll-margin-top: 148px; }
+  .examples, .publication-art { grid-template-columns: 1fr; gap: 30px; }
+  .examples img { height: 175px; }
+  .publication-art { max-width: 380px; }
 }

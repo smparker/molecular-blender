@@ -11,6 +11,7 @@ markdown: kramdown
 title:       "molecular blender - blender for quantum chemistry"
 keywords:    "molecular blender, quantum chemistry"
 description: "A plugin for importing molecules into blender and making publication quality images"
+release_tag: v0.7.0
 source_link: "https://github.com/smparker/molecular-blender"
 favicon:     "img/favicon.ico"
 touch_icon:  "img/apple-touch-icon.png"
