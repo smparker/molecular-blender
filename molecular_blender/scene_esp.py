@@ -6,6 +6,7 @@ import bpy
 import numpy as np
 from bpy.props import EnumProperty, FloatProperty, IntProperty, StringProperty
 
+from .field_palettes import PALETTES, apply_palette
 from .diagnostics import report_exception
 from .scalar_fields import CubeField
 from .import_dialog import browser_path
@@ -75,7 +76,7 @@ def validate_limits(kind, low, high):
         raise ValueError('Signed color limits must span zero')
 
 
-def _field_material(path, dataset, units, low, high, opacity, kind, label):
+def _field_material(path, dataset, units, low, high, opacity, kind, label, palette):
     mat = bpy.data.materials.new(label + ' · ' + os.path.basename(path))
     try:
         mat['mb_surface_material'] = True
@@ -100,14 +101,7 @@ def _field_material(path, dataset, units, low, high, opacity, kind, label):
         limits.clamp = True
         ramp = tree.nodes.new('ShaderNodeValToRGB')
         ramp.location = (-260, 260)
-        ramp.color_ramp.elements[1].color = (.025, .12, .85, 1)
-        if kind == 'unsigned':
-            ramp.label = 'Low to high'
-            ramp.color_ramp.elements[0].color = (1., 1., 1., 1.)
-        else:
-            ramp.label = 'Negative · zero · positive'
-            ramp.color_ramp.elements[0].color = (0.8, .025, .015, 1)
-            ramp.color_ramp.elements.new(-low / (high - low)).color = (1., 1., 1., 1.)
+        apply_palette(ramp, palette, kind, low, high)
         tree.links.new(attr.outputs['Fac'], limits.inputs['Value'])
         tree.links.new(limits.outputs['Result'], ramp.inputs['Fac'])
         tree.links.new(ramp.outputs['Color'], shader.inputs['Base Color'])
@@ -195,7 +189,7 @@ def remap_contour(context, record, template, base, grids):
         raise
 
 
-def map_esp(context, record, group, path, dataset, units, low, high, *, kind='esp', label=None):
+def map_esp(context, record, group, path, dataset, units, low, high, *, kind='esp', label=None, palette='default'):
     if not density_group(group):
         raise ValueError('Select a single-frame density surface')
     source_format = file_format(path)
@@ -226,7 +220,7 @@ def map_esp(context, record, group, path, dataset, units, low, high, *, kind='es
             _sample_mesh(mesh, grid, name)
             opacity = surface_opacity(obj)
             if opacity not in materials:
-                materials[opacity] = _field_material(path, dataset, units, low, high, opacity, kind, label)
+                materials[opacity] = _field_material(path, dataset, units, low, high, opacity, kind, label, palette)
             staged.append((obj, mesh, materials[opacity]))
         if not any(len(mesh.vertices) for mesh in meshes):
             raise ValueError('The selected density surface has no vertices')
@@ -298,6 +292,7 @@ class MB_OT_map_esp(bpy.types.Operator):
         ('signed', 'Signed Field', 'Red for negative, white at zero, blue for positive'),
         ('unsigned', 'Unsigned Field', 'White at the lower limit and blue at the upper limit')),
         update=_update_kind)
+    palette: EnumProperty(name='Color map', items=PALETTES)
     field_label: StringProperty(name='Field name', default='Scalar field')
     field_units: StringProperty(name='Scalar units', description='Units of the supplied data, or 1 for dimensionless')
     units: EnumProperty(name='Potential values in', items=(
@@ -332,7 +327,7 @@ class MB_OT_map_esp(bpy.types.Operator):
             self.layout.prop(self, 'field_kind')
             self.layout.prop(self, 'dataset')
             fields = ('units',) if self.field_kind == 'esp' else ('field_label', 'field_units')
-        for key in (*fields, 'minimum', 'maximum'):
+        for key in (*fields, 'palette', 'minimum', 'maximum'):
             self.layout.prop(self, key)
 
     def execute(self, context):
@@ -347,7 +342,7 @@ class MB_OT_map_esp(bpy.types.Operator):
             units = self.units if esp else self.field_units.strip()
             label = 'ESP' if esp else self.field_label.strip()
             map_esp(context, record, group, path, self.dataset, units, self.minimum, self.maximum,
-                    kind=self.field_kind, label=label)
+                    kind=self.field_kind, label=label, palette=self.palette)
         except (ValueError, OSError, EOFError, KeyError, RuntimeError, ReferenceError) as exc:
             report_exception(self, exc)
             return {'CANCELLED'}

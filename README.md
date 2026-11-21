@@ -671,7 +671,7 @@ to a Molden molecule. In **Molecule → Surfaces**, choose **Map Field…** on
 the single-frame density surface. Select the cube, dataset and color limits.
 Use **Electrostatic Potential** for an ESP cube in Hartree/e or volts. For other
 quantities, enter a field name and units (`1` for dimensionless values).
-**Signed Field** and ESP use red for negative values, white at zero and blue
+By default, **Signed Field** and ESP use red for negative values, white at zero and blue
 for positive values. **Unsigned Field** runs from white at the lower limit to
 blue at the upper limit. Use the same units and limits across figures.
 Use Material Preview or Rendered shading to see the colors.
@@ -690,10 +690,13 @@ the supplied values onto the displayed vertices after remeshing and saves
 them as a point attribute (`mb_esp` for ESP or `mb_field` for a custom field).
 The material's Color Ramp is editable in the Shader Editor.
 Use **Edit Color Scale…** on a mapped surface to adjust its limits, colors
-and ramp stops. To match another panel, choose it under **Copy scale from**
+and ramp stops. Choose **Viridis** or **Magma** under **Color map** here or
+when creating the map. Both create editable 32-stop ramps from the original
+sRGB colors. **Field Default** restores the default colors for that field.
+To match another panel, choose it under **Copy scale from**
 and confirm. The picker includes maps in the same scene with matching units
 and signed or unsigned ranges. The edit uses the saved mesh values and works
-after the source files move. A stop at zero follows zero when the limits change.
+after the source files move. A zero stop in the default signed ramp follows zero when the limits change.
 **Change Field Map…** reopens the file, field and range settings.
 **Remove Map** restores the original geometry, material, and Remesh settings.
 

@@ -2,8 +2,9 @@
 import math
 
 import bpy
-from bpy.props import CollectionProperty, FloatProperty, StringProperty
+from bpy.props import CollectionProperty, EnumProperty, FloatProperty, StringProperty
 
+from .field_palettes import PALETTES, KEEP_PALETTE, apply_palette
 from .scene_esp import BASE_MESH, field_map_settings, scale_nodes, validate_limits
 from .scene_state import RECORD, read_record, resolve_owner
 from .scene_surfaces import surface_groups
@@ -48,14 +49,22 @@ def _write_scale(material, values, low, high, signed):
     _set_limits(ramp, scale, low, high, signed)
 
 
-def apply_scale(group, source, low, high):
+def copy_ramp(material, source, low, high):
+    node, _ = scale_nodes(material)
+    source_node, _ = scale_nodes(source)
+    node['mb_anchor_zero'] = source_node.get('mb_anchor_zero', True)
+    node.label = source_node.label
+    signed = source.get('mb_field_kind', 'esp') != 'unsigned'
+    _write_scale(material, scale_values(source), low, high, signed and node['mb_anchor_zero'])
+
+
+def apply_scale(group, source, low, high, palette='current'):
     """Copy only scale settings, keeping each destination shader and its mesh."""
     settings = field_map_settings(source)
     if not settings:
         raise ValueError('Choose a mapped surface as the scale source')
     signed = settings['kind'] != 'unsigned'
     validate_limits(settings['kind'], low, high)
-    values = scale_values(source)
     slots = {}
     for obj in group['objects']:
         material = obj.active_material
@@ -74,7 +83,9 @@ def apply_scale(group, source, low, high):
             replacements[original] = material
             material.use_fake_user = False
             material['mb_style_material'] = True
-            _write_scale(material, values, low, high, signed)
+            copy_ramp(material, source, low, high)
+            if palette != 'current':
+                apply_palette(scale_nodes(material)[0], palette, settings['kind'], low, high)
             prefix = 'mb_esp_' if material.get('mb_field_kind', 'esp') == 'esp' else 'mb_field_'
             material[prefix + 'limits'] = (low, high)
         for original, members in slots.items():
@@ -103,6 +114,7 @@ class MB_OT_edit_field_scale(bpy.types.Operator):
     group: StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
     sources: CollectionProperty(type=MB_ScaleSource, options={'HIDDEN', 'SKIP_SAVE'})
 
+    palette: EnumProperty(name='Color map', items=(KEEP_PALETTE, *PALETTES), options={'SKIP_SAVE'})
     copy_from: StringProperty(name='Copy scale from', options={'SKIP_SAVE'})
     minimum: FloatProperty(name='Minimum', precision=6, options={'SKIP_SAVE'})
     maximum: FloatProperty(name='Maximum', precision=6, options={'SKIP_SAVE'})
@@ -125,12 +137,25 @@ class MB_OT_edit_field_scale(bpy.types.Operator):
         except ValueError:
             return False
         node, scale = scale_nodes(self._preview)
+        if self.palette != self._loaded_palette:
+            self._loaded_palette = self.palette
+            if self.palette != 'current':
+                _set_limits(node.color_ramp, scale, self.minimum, self.maximum, False)
+                apply_palette(node, self.palette, kind, self.minimum, self.maximum)
+            else:
+                choice = self.sources.get(self.copy_from)
+                obj = context.scene.objects.get(choice.object_name) if choice else self._group(context)['objects'][0]
+                if obj is None:
+                    raise ValueError('The selected scale source is unavailable')
+                copy_ramp(self._preview, obj.active_material, self.minimum, self.maximum)
+            return True
         if (self.minimum, self.maximum) == tuple(scale.inputs[k].default_value for k in ('From Min', 'From Max')):
             return False
-        _set_limits(node.color_ramp, scale, self.minimum, self.maximum, kind != 'unsigned')
+        _set_limits(node.color_ramp, scale, self.minimum, self.maximum, kind != 'unsigned' and node.get('mb_anchor_zero', True))
         return True
 
     def _start_preview(self, material):
+        self.palette = self._loaded_palette = 'current'
         _, scale = scale_nodes(material)
         self.minimum = scale.inputs['From Min'].default_value
         self.maximum = scale.inputs['From Max'].default_value
@@ -139,8 +164,7 @@ class MB_OT_edit_field_scale(bpy.types.Operator):
             self._preview.use_fake_user = False
         else:
             # Keep the node displayed by the open ramp widget alive.
-            signed = material.get('mb_field_kind', 'esp') != 'unsigned'
-            _write_scale(self._preview, scale_values(material), self.minimum, self.maximum, signed)
+            copy_ramp(self._preview, material, self.minimum, self.maximum)
 
     def _clear_preview(self):
         preview = getattr(self, '_preview', None)
@@ -191,6 +215,7 @@ class MB_OT_edit_field_scale(bpy.types.Operator):
     def draw(self, context):
         if self.sources:
             self.layout.prop_search(self, 'copy_from', self, 'sources', icon='EYEDROPPER')
+        self.layout.prop(self, 'palette')
         row = self.layout.row(align=True)
         row.prop(self, 'minimum')
         row.prop(self, 'maximum')
@@ -220,7 +245,7 @@ class MB_OT_edit_field_scale(bpy.types.Operator):
             _, scale = scale_nodes(source)
             low = self.minimum if self.properties.is_property_set('minimum') else scale.inputs['From Min'].default_value
             high = self.maximum if self.properties.is_property_set('maximum') else scale.inputs['From Max'].default_value
-            apply_scale(group, source, low, high)
+            apply_scale(group, source, low, high, self.palette if getattr(self, '_preview', None) is None else 'current')
         except (ValueError, KeyError, ReferenceError, RuntimeError) as exc:
             self.report({'ERROR'}, str(exc))
             return {'CANCELLED'}
