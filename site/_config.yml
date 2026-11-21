@@ -5,6 +5,7 @@ permalink: /:title ## disables post output
 timezone: null
 lsi: false
 markdown: kramdown
+theme: null
 
 
 ### content configuration ###
