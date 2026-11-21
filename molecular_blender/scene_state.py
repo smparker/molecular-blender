@@ -95,7 +95,8 @@ def atom_bond_style(settings):
     return {key: settings[key] for key in ('atom_scale', 'bond_thickness', 'colors')}
 
 
-def persist_molecule(molecule, source, settings):
+def persist_molecule(molecule, source, settings, created=None):
+    """Write the scene record and tag drawn geometry using the import's live object references."""
     owner = molecule.scene_owner
     atoms = []
     atom_ids = {}
@@ -137,8 +138,11 @@ def persist_molecule(molecule, source, settings):
             if value is not None:
                 record["fields"][key] = value
     write_record(owner, record)
+    objects = bpy.data.objects if created is None else {
+        block.name: block for block in created if block.as_pointer() and isinstance(block, bpy.types.Object)
+    }
     for atom, entry in zip(molecule.atoms, atoms):
-        obj = bpy.data.objects.get(atom.name)
+        obj = objects.get(atom.name)
         if obj is not None and resolve_owner(obj) == owner:
             tag(obj, owner, 'atom', entry['id'])
             obj['mb_atom_index'] = entry['index']
@@ -146,7 +150,7 @@ def persist_molecule(molecule, source, settings):
             obj['mb_base_scale'] = list(obj.scale)
     for bond, entry in zip(molecule.bonds, bonds):
         for name in bond.name if isinstance(bond.name, list) else []:
-            obj = bpy.data.objects.get(name)
+            obj = objects.get(name)
             if obj is not None:
                 tag(obj, owner, 'bond', entry['id'])
                 obj['mb_endpoints'] = entry['atoms']

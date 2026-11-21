@@ -92,9 +92,16 @@ def measure(path, hooks, atom_count):
     assert len(model.atoms) == atom_count and len(bonds) > atom_count
     phases["bonds"] = len(bonds)
     assert count == (2 * len(bonds) if hooks == 'on' else 0)
-    for atom in model.atoms:
-        assert (bpy.data.objects[atom.name].matrix_world.translation - atom.position).length < 1.e-5
-    for bond, curve in zip(model.bonds, bonds):
+    record = scene_state.read_record(model.scene_owner)
+    assert len(record['atoms']) == atom_count and len(record['bonds']) == len(bonds)
+    for atom, entry in zip(model.atoms, record['atoms']):
+        obj = bpy.data.objects[atom.name]
+        assert obj[scene_state.ID] == entry['id'] and obj['mb_atom_index'] == atom.index
+        assert obj[scene_state.MOLECULE_ID] == record['id'] and obj[scene_state.ROLE] == 'atom'
+        assert (obj.matrix_world.translation - atom.position).length < 1.e-5
+    for bond, curve, entry in zip(model.bonds, bonds, record['bonds']):
+        assert curve[scene_state.ID] == entry['id'] and list(curve['mb_endpoints']) == entry['atoms']
+        assert curve[scene_state.MOLECULE_ID] == record['id'] and curve[scene_state.ROLE] == 'bond'
         for point, atom in zip(curve.data.splines[0].bezier_points, (bond.iatom, bond.jatom)):
             assert (curve.matrix_world @ point.co - atom.position).length < 1.e-5
     return phases

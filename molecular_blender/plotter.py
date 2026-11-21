@@ -79,7 +79,7 @@ def BlendMoleculeSetup(context, filename, **options):
             plot_rings(context, molecule, options)
 
         from .scene_state import persist_molecule
-        persist_molecule(molecule, filename, molecule.settings)
+        persist_molecule(molecule, filename, molecule.settings, created)
         if modes:
             from .vibrations import store_modes
             store_modes(molecule.scene_owner, modes)
