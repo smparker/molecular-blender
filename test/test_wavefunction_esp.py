@@ -37,6 +37,23 @@ class TestWavefunctionESP(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'singular'):
                     field.potential_bohr(field.nuclei[:1])
 
+    @unittest.skipUnless(esp.coulomb_sum, 'requires compiled ESP kernel')
+    def test_native_workspace_rejects_uninitialized_dependencies_and_invalid_points(self):
+        points = np.zeros((1, 3))
+        exponents = np.ones(1)
+        _, rules, counts = esp._indices(1)
+        args = [points, 1, exponents, points, np.ones((1, 4)), rules.copy(), counts, esp._boys_table()]
+        args[5][2, 1] = 1  # In bounds, but unavailable in the first recurrence step.
+        with self.assertRaisesRegex(ValueError, 'indices'):
+            esp.coulomb_sum(*args)
+        args[5] = rules
+        for point, exponent in [(np.inf, 1.), (np.nan, 1.), (0., -1.)]:
+            with self.subTest(point=point, exponent=exponent):
+                args[0] = np.full((1, 3), point)
+                args[2] = np.array([exponent])
+                with self.assertRaisesRegex(ValueError, 'finite'):
+                    esp.coulomb_sum(*args)
+
     def test_overlapping_occupied_orbitals_in_one_spin_channel(self):
         data = molecule_from_molden(REF/'heh.molden', {})
         orbital = dict(data['mo'][0], occup='1')

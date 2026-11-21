@@ -465,3 +465,92 @@ class TestFractionalDensity(unittest.TestCase):
             results.append(calculator.box_values(xyz, xyz, xyz))
         np.testing.assert_allclose(results[0], results[1], atol=1e-6)
         self.assertAlmostEqual(float(np.sum(results[1]) * (xyz[1]-xyz[0])**3), 0.5, places=4)
+
+
+class TestDensityScreening(unittest.TestCase):
+    def test_one_sided_coupling_in_signed_density(self):
+        # A response matrix can couple a shell only through its column.
+        matrix = np.array([[0., -3.], [0., 0.]], dtype=np.float32)
+        x = np.array([0., 2., 4., 8.], dtype=np.float32)
+        zero = np.zeros(1, dtype=np.float32)
+        for backend in ([ao_py, ao_cy] if HAS_CYTHON_AO else [ao_py]):
+            shells = [backend.Shell([0., 0., 0.], 0, [a], [1.], i, denorm=False)
+                      for i, a in enumerate([.06, .12])]
+            density = backend.DensityCalculater(shells, matrix, 0.)
+            expected = -3 * np.exp(-.18 * x**2)
+            with self.subTest(backend=backend.__name__):
+                np.testing.assert_allclose(density.box_values(x, zero, zero)[:, 0, 0], expected, rtol=2.e-6)
+                np.testing.assert_allclose(density.plane_values(x, zero, 0.)[:, 0], expected, rtol=2.e-6)
+                np.testing.assert_allclose([density.value(v, 0., 0.) for v in x], expected, rtol=2.e-6)
+
+
+@unittest.skipUnless(HAS_CYTHON_AO, 'requires compiled AO backend')
+class TestNativeBuffers(unittest.TestCase):
+    def test_strided_unsorted_and_empty_axes(self):
+        x = np.array([30., 99., 1., 99., -1., 99., 30.], dtype=np.float32)[::2]
+        y = np.arange(4, dtype=np.float32)[::-1]
+        z = np.array([0., 2.], dtype=np.float32)
+        for axes in (x, y, z):
+            axes.flags.writeable = False
+        for field in diffuse_fields(ao_cy):
+            ref = np.array([[[field.value(i, j, k) for k in z] for j in y] for i in x])
+            np.testing.assert_allclose(field.box_values(x, y, z), ref, atol=2.e-7)
+            np.testing.assert_allclose(field.plane_values(x, y, z[0]), ref[:, :, 0], atol=2.e-7)
+            self.assertEqual(field.box_values(x, y[:0], z).shape, (4, 0, 2))
+            self.assertEqual(field.plane_values(x[:0], y, 0.).shape, (0, 4))
+            with self.assertRaises((TypeError, ValueError)):
+                field.box_values(None, y, z)
+
+    def test_shell_storage_survives_caller_reuse(self):
+        coefficients = np.array([2.], dtype=np.float32)
+        shell = ao_cy.Shell([0., 0., 0.], 0, [.5], coefficients, 0, denorm=False)
+        shells = [shell]
+        orb = ao_cy.OrbitalCalculater(shells, coefficients)
+        den = ao_cy.DensityCalculater(shells, coefficients.reshape(1, 1), 2.)
+        shells.clear()
+        coefficients.fill(0.)
+        del shell
+        zero = np.zeros(1, dtype=np.float32)
+        for field, expected in [(orb, 4.), (den, 8.)]:
+            self.assertEqual(field.value(0., 0., 0.), expected)
+            self.assertEqual(field.box_values(zero, zero, zero).item(), expected)
+
+    def test_reject_inconsistent_shell_and_output_sizes(self):
+        for exps, coeff in [([], []), ([0.], [1.]), ([np.inf], [1.]), ([1., .5], [1.])]:
+            with self.subTest(exps=exps), self.assertRaises(ValueError):
+                ao_cy.Shell([0.] * 3, 1, exps, coeff, 0)
+        sh = ao_cy.Shell([0.] * 3, 1, [1.], [1.], 0)
+        two = np.ones(2, dtype=np.float32)
+        with self.assertRaises(ValueError):
+            ao_cy.OrbitalCalculater([sh], two)
+        with self.assertRaises(ValueError):
+            ao_cy.DensityCalculater([sh], np.eye(2, dtype=np.float32), 2.)
+        with self.assertRaises(ValueError):
+            sh.value(0., 0., 0., two)
+        with self.assertRaises(ValueError):
+            sh.add_plane_values(two, two, 0., np.ones(3, dtype=np.float32), two.reshape(1, 2))
+        with self.assertRaises(ValueError):
+            sh.compute_chi_plane(two, two, 0., np.zeros((1, 2, 2), dtype=np.float32))
+
+    def test_density_tiles_preserve_xyz_and_signs(self):
+        from unittest.mock import patch
+        _, density = diffuse_fields(ao_cy)
+        axes = [np.linspace(-3., 3., n, dtype=np.float32) for n in (5, 4, 7)]
+        expected = density.box_values(*axes)
+        for capacity in (3, 9, 64):
+            with self.subTest(capacity=capacity), patch.object(ao_cy, '_DENSITY_WORKSPACE_BYTES', 2 * 4 * 4 * capacity):
+                np.testing.assert_allclose(density.box_values(*axes), expected, atol=1.e-7)
+
+    def test_workspace_allocation_failure_and_retry(self):
+        from unittest.mock import patch
+        axes = (np.array([-.1, .1], dtype=np.float32),) * 3
+        allocate = np.empty
+        def fail_scratch(shape, *args, **kwargs):
+            if isinstance(shape, tuple) and len(shape) == 2:
+                raise MemoryError('Gaussian scratch')
+            return allocate(shape, *args, **kwargs)
+        for field in diffuse_fields(ao_cy):
+            expected = field.box_values(*axes)
+            with patch.object(np, 'empty', fail_scratch), self.assertRaisesRegex(MemoryError, 'Gaussian scratch'):
+                field.box_values(*axes)
+            np.testing.assert_array_equal(field.box_values(*axes), expected)

@@ -351,9 +351,9 @@ ctypedef vector[triangle_vec] iso_triangles
 @cython.wraparound(CYDEBUG)
 @cython.initializedcheck(CYDEBUG)
 @cython.nonecheck(CYDEBUG)
-cdef void polygonise(triangle_vec* tri_list, const DTYPE_t* cornervalues,
+cdef int polygonise(triangle_vec* tri_list, const DTYPE_t* cornervalues,
         const DTYPE_t* cornerpos,
-        float isolevel) noexcept nogil:
+        float isolevel) except -1 nogil:
     global edgetable, tritable
 
     cdef point[12] vertlist
@@ -371,7 +371,7 @@ cdef void polygonise(triangle_vec* tri_list, const DTYPE_t* cornervalues,
     if cornervalues[7] < isolevel: cubeindex = cubeindex | 128
 
     # Cube is entirely in/out of the surface
-    if edgetable[cubeindex] == 0: return
+    if edgetable[cubeindex] == 0: return 0
 
     if (edgetable[cubeindex] & 1):    vertex_interp(&vertlist[ 0], isolevel, &cornerpos[0*3], &cornerpos[1*3], cornervalues[0], cornervalues[1])
     if (edgetable[cubeindex] & 2):    vertex_interp(&vertlist[ 1], isolevel, &cornerpos[1*3], &cornerpos[2*3], cornervalues[1], cornervalues[2])
@@ -395,6 +395,7 @@ cdef void polygonise(triangle_vec* tri_list, const DTYPE_t* cornervalues,
         tri_dummy.p2 = vertlist[tritable[cubeindex][i+2]]
         tri_list.push_back(tri_dummy)
         i+=3
+    return 0
 
 
 @cython.boundscheck(CYDEBUG)
@@ -447,10 +448,16 @@ cdef bint active_box(const DTYPE_t* cornervalues, const int niso, const DTYPE_t*
 @cython.wraparound(CYDEBUG)
 @cython.initializedcheck(CYDEBUG)
 @cython.nonecheck(CYDEBUG)
-cpdef marching_cube_box(ndarray[DTYPE_t, ndim=3, mode="c"] data, object isovalues):
-    cdef int nx = data.shape[0]
-    cdef int ny = data.shape[1]
-    cdef int nz = data.shape[2]
+def marching_cube_box(data, isovalues):
+    """Legacy list-of-triangles interface."""
+    return [triangles.tolist() for triangles in marching_cube_arrays(data, isovalues)]
+
+
+def marching_cube_arrays(ndarray[DTYPE_t, ndim=3, mode="c"] data not None, object isovalues):
+    """Return one contiguous (triangles, corners, xyz) array per contour."""
+    cdef Py_ssize_t nx = data.shape[0]
+    cdef Py_ssize_t ny = data.shape[1]
+    cdef Py_ssize_t nz = data.shape[2]
 
     cdef int niso = len(isovalues)
     cdef int iiso
@@ -463,8 +470,8 @@ cpdef marching_cube_box(ndarray[DTYPE_t, ndim=3, mode="c"] data, object isovalue
 
     cdef iso_triangles c_triangles = iso_triangles(niso)
 
-    cdef int ix, iy, iz
-    cdef int ix2, iy2, iz2
+    cdef Py_ssize_t ix, iy, iz
+    cdef Py_ssize_t ix2, iy2, iz2
     cdef float x, y, z
     cdef float x2, y2, z2
 
@@ -527,19 +534,19 @@ cpdef marching_cube_box(ndarray[DTYPE_t, ndim=3, mode="c"] data, object isovalue
                 for iiso in range(niso):
                     polygonise(&c_triangles[iiso], &cornervalues[0], &cornerpos[0], isovals[iiso])
 
-    # now repackage in a python friendly format
-    tri_list = [[] for iso in isovalues]
-    cdef int ntriangles
-    cdef int itri
+    tri_list = []
+    cdef Py_ssize_t ntriangles, itri
+    cdef ndarray[DTYPE_t, ndim=3] coords
+    cdef triangle t
     for iiso in range(niso):
         ntriangles = c_triangles[iiso].size()
+        coords = np.empty((ntriangles, 3, 3), dtype=DTYPE)
         for itri in range(ntriangles):
-            tri_tmp = c_triangles[iiso][itri]
-            tri_list[iiso].append( [
-                [ tri_tmp.p0.x, tri_tmp.p0.y, tri_tmp.p0.z ],
-                [ tri_tmp.p1.x, tri_tmp.p1.y, tri_tmp.p1.z ],
-                [ tri_tmp.p2.x, tri_tmp.p2.y, tri_tmp.p2.z ] ] )
-
+            t = c_triangles[iiso][itri]
+            coords[itri,0,0], coords[itri,0,1], coords[itri,0,2] = t.p0.x, t.p0.y, t.p0.z
+            coords[itri,1,0], coords[itri,1,1], coords[itri,1,2] = t.p1.x, t.p1.y, t.p1.z
+            coords[itri,2,0], coords[itri,2,1], coords[itri,2,2] = t.p2.x, t.p2.y, t.p2.z
+        tri_list.append(coords)
     return tri_list
 
 
@@ -547,19 +554,19 @@ cpdef marching_cube_box(ndarray[DTYPE_t, ndim=3, mode="c"] data, object isovalue
 @cython.wraparound(CYDEBUG)
 @cython.initializedcheck(CYDEBUG)
 @cython.nonecheck(CYDEBUG)
-def marching_cube_outline(ndarray[DTYPE_t, ndim=3, mode="c"] data,
-        ndarray[DTYPE_t, ndim=1, mode="c"] xvals,
-        ndarray[DTYPE_t, ndim=1, mode="c"] yvals,
-        ndarray[DTYPE_t, ndim=1, mode="c"] zvals,
+def marching_cube_outline(ndarray[DTYPE_t, ndim=3, mode="c"] data not None,
+        ndarray[DTYPE_t, ndim=1, mode="c"] xvals not None,
+        ndarray[DTYPE_t, ndim=1, mode="c"] yvals not None,
+        ndarray[DTYPE_t, ndim=1, mode="c"] zvals not None,
         object isovalues):
     """
     Return [ (pp0, pp1) ] where pp0 and pp1 are lower and upper bounds
     of active boxes.
     """
 
-    cdef int nx = data.shape[0]
-    cdef int ny = data.shape[1]
-    cdef int nz = data.shape[2]
+    cdef Py_ssize_t nx = data.shape[0]
+    cdef Py_ssize_t ny = data.shape[1]
+    cdef Py_ssize_t nz = data.shape[2]
 
     cdef int niso = len(isovalues)
     cdef int iiso
@@ -569,9 +576,12 @@ def marching_cube_outline(ndarray[DTYPE_t, ndim=3, mode="c"] data,
 
     cdef DTYPE_t cornervalues[8]
 
-    outlines = []
+    if nx != len(xvals) or ny != len(yvals) or nz != len(zvals):
+        raise ValueError("Outline axes must match the data dimensions")
+    if niso == 0:
+        return []
 
-    cdef int ix, iy, iz, ix2, iy2, iz2
+    cdef Py_ssize_t ix, iy, iz, ix2, iy2, iz2
     cdef float x, y, z, x2, y2, z2
 
     cdef vector[box] active_boxes
@@ -612,8 +622,8 @@ def marching_cube_outline(ndarray[DTYPE_t, ndim=3, mode="c"] data,
                     active_boxes.push_back(box_tmp)
 
     outlines = []
-    cdef int nboxes = active_boxes.size()
-    cdef int ibox
+    cdef Py_ssize_t nboxes = active_boxes.size()
+    cdef Py_ssize_t ibox
     for ibox in range(nboxes):
         outlines.append( (
             (

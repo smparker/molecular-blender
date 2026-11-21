@@ -34,14 +34,18 @@ import math
 
 from .scalar_fields import CubeField, ScalarField
 from .constants import ang2bohr, bohr2ang
-from .marching_cube import marching_cube_box, marching_cube_outline
+from . import marching_cube
+
+# Older binaries and the Python mesher expose the list-returning interface.
+marching_cube_box = getattr(marching_cube, 'marching_cube_arrays', marching_cube.marching_cube_box)
+marching_cube_outline = marching_cube.marching_cube_outline
 
 DTYPE = np.float32
 
 def transform_triangles(triangles, origin, axes):
     """Transforms and translates set of triangles to match input origin/axes"""
-    if not triangles:
-        return triangles
+    if not len(triangles):
+        return []
     coords = np.array(triangles, dtype=DTYPE)
     out = np.dot(coords, axes) + origin
     if np.linalg.det(axes) < 0:
@@ -125,7 +129,7 @@ def isosurface_tiled(p0, p1, counts, isovalues, box_func, axes, name):
 
 def _mesh_tile(surfaces, values, levels, start, origin, step, axes):
     for surface, triangles in zip(surfaces, marching_cube_box(values, levels)):
-        if triangles:
+        if len(triangles):
             points = origin + (np.asarray(triangles) + start) * step
             surface["triangles"].extend((points @ axes).astype(DTYPE))
 

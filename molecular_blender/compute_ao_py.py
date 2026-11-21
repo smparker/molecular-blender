@@ -359,6 +359,13 @@ class OrbitalCalculater(object):
         return isovalue_containing_proportion(values, boxvalues, dV)
 
 
+def density_shell_weights(shells, density):
+    """Largest coupling of each shell on either side of the density contraction."""
+    magnitude = np.abs(density)
+    ao_max = np.maximum(magnitude.max(axis=0), magnitude.max(axis=1))
+    return np.array([ao_max[sh.start:sh.start + sh.size].max() for sh in shells], dtype=np.float32)
+
+
 class DensityCalculater(object):
     """Computes value of densities at real space points"""
 
@@ -366,26 +373,10 @@ class DensityCalculater(object):
         self.shells = shells
         self.density = density
         self.nelec = nelec
-        self.nao = np.sum([sh.size for sh in shells])
+        self.nao = density.shape[0]
 
-        # use very small number to replace zeros
-        nshl = len(self.shells)
-        # shellmxdens[i, j] is the maximum value in density of shell i, j
-        self.shellmxdens = np.zeros([nshl, nshl], dtype=np.float32)
-        for i in range(nshl):
-            istart = shells[i].start
-            iend = istart + shells[i].size
-            for j in range(nshl):
-                jstart = shells[j].start
-                jend = jstart + shells[j].size
-                shelldens = np.max(abs(self.density[istart:iend,jstart:jend]))
-                self.shellmxdens[i,j] = shelldens
-        self.logmxdens = np.log(self.shellmxdens + 1e-10)
-
-        # shellmxorb[i] of shell i in entire density
-        self.shellmxorb = np.array([ np.max(self.shellmxdens[i,:]) for i in range(nshl) ], dtype=np.float32)
-        # log(shellmxorb)
-        self.logmxorb = np.log(self.shellmxorb + 1e-10)
+        self.shellmxorb = density_shell_weights(shells, density)
+        self.logmxorb = np.log(np.maximum(self.shellmxorb, 1.e-30))
 
     def bounding_box(self, thr=1.0e-5):
         """returns lower and upper limits of box (in bohr) that should fully contain orbital"""

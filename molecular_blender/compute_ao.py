@@ -23,7 +23,8 @@
 """Evaluate real-space orbitals and densities in atomic units.
 
 Coordinates passed to value(), plane_values() and box_values() are in Bohr.
-Grid axes for the compiled API are contiguous 1-D float32 arrays. Results
+Grid axes for the compiled API are 1-D float32 arrays. Strided axes are
+packed before native grid evaluation. Results
 are indexed [x, y] or [x, y, z] in the same order as the supplied axes.
 """
 

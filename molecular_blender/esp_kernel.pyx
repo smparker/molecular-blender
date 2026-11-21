@@ -5,9 +5,9 @@ from libc.math cimport sqrt
 import numpy as np
 
 
-def coulomb_sum(double[:, ::1] points, int degree, double[::1] p,
-                double[:, ::1] centers, double[:, ::1] coefficients,
-                int[:, ::1] rules, int[::1] counts, double[:, ::1] table):
+def coulomb_sum(const double[:, ::1] points, int degree, const double[::1] p,
+                const double[:, ::1] centers, const double[:, ::1] coefficients,
+                const int[:, ::1] rules, const int[::1] counts, const double[:, ::1] table):
     cdef Py_ssize_t k, pair
     cdef int n, h, j, grid
     cdef double delta[3]
@@ -25,10 +25,16 @@ def coulomb_sum(double[:, ::1] points, int degree, double[::1] p,
     for n in range(degree+1):
         if counts[n] != (n+1)*(n+2)*(n+3)//6:
             raise ValueError('Invalid Gaussian derivative count')
-    for j in range(1, counts[degree]):
-        if (rules[j, 0] < 0 or rules[j, 0] > 2 or rules[j, 1] < 0 or rules[j, 1] >= j
-                or rules[j, 2] < 0 or rules[j, 2] >= j):
-            raise ValueError('Invalid Gaussian derivative indices')
+    for n in range(1, degree+1):
+        for j in range(counts[n-1], counts[n]):
+            # Only derivatives from earlier orders are initialized at this step.
+            if (rules[j, 0] < 0 or rules[j, 0] > 2 or
+                    rules[j, 1] < 0 or rules[j, 1] >= counts[n-1] or
+                    rules[j, 2] < 0 or rules[j, 2] >= counts[n-1]):
+                raise ValueError('Invalid Gaussian derivative indices')
+    if (not np.isfinite(points).all() or not np.isfinite(centers).all()
+            or not np.isfinite(p).all() or np.any(np.asarray(p) <= 0)):
+        raise ValueError('Expected finite Gaussian coordinates and positive finite exponents')
     for pair in range(p.shape[0]):
         for k in range(points.shape[0]):
             for j in range(3):

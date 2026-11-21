@@ -165,3 +165,24 @@ class TestMarchingCubeOutlinePy(_TestMarchingCubeOutlineMixin, unittest.TestCase
 class TestMarchingCubeOutlineCy(_TestMarchingCubeOutlineMixin, unittest.TestCase):
     def setUp(self):
         self.mc = mc_cy
+
+
+@unittest.skipUnless(HAS_CYTHON_MC, 'requires compiled mesher')
+class TestNativeGridBuffers(unittest.TestCase):
+    def test_array_and_list_interfaces_match(self):
+        grid = np.indices((3, 4, 5), dtype=DTYPE)[0].copy()
+        levels = [0.25, 8.]
+        arrays = mc_cy.marching_cube_arrays(grid, levels)
+        self.assertIsInstance(mc_cy.marching_cube_box(grid, levels)[0], list)
+        for array, legacy in zip(arrays, mc_cy.marching_cube_box(grid, levels)):
+            self.assertEqual(array.dtype, np.float32)
+            self.assertTrue(array.flags.c_contiguous)
+            np.testing.assert_array_equal(array, np.asarray(legacy).reshape(-1, 3, 3))
+        self.assertEqual(arrays[1].shape, (0, 3, 3))
+
+    def test_outline_checks_axis_sizes_and_empty_levels(self):
+        grid = np.zeros((2, 2, 2), dtype=DTYPE)
+        axis = np.arange(2, dtype=DTYPE)
+        with self.assertRaisesRegex(ValueError, 'dimensions'):
+            mc_cy.marching_cube_outline(grid, axis, axis[:1], axis, [0.])
+        self.assertEqual(mc_cy.marching_cube_outline(grid, axis, axis, axis, []), [])

@@ -34,16 +34,16 @@ cimport numpy as np
 
 from numpy cimport ndarray
 from libc.math cimport sqrt, exp, fabs, ceil
-from libc.stdlib cimport malloc, free
-from libcpp.vector cimport vector
 
 DTYPE = np.float32
 ctypedef np.float32_t DTYPE_t
 
 DEF CYDEBUG = False
+# The AO values and their density-matrix product coexist during contraction.
+_DENSITY_WORKSPACE_BYTES = 64 * 1024**2
 
 from .constants import ang2bohr
-from .compute_ao_py import shell_screening_parameters
+from .compute_ao_py import density_shell_weights, shell_screening_parameters
 from .containing_isovalues import isovalue_containing_proportion
 
 molden_shorder = [[""],
@@ -70,27 +70,52 @@ cdef gamma2n_impl(i):
     else:
         return (0.5 * i - 1.) * gamma2n_impl(i - 2)
 
+ctypedef struct Interval:
+    float low, high
+
+cdef inline Interval axis_bounds(const DTYPE_t* axis, Py_ssize_t count) noexcept nogil:
+    cdef Interval bounds
+    cdef Py_ssize_t i
+    bounds.low = bounds.high = axis[0]
+    for i in range(1, count):
+        bounds.low = min(bounds.low, axis[i])
+        bounds.high = max(bounds.high, axis[i])
+    return bounds
+
+cdef inline float distance_to_interval(float x, Interval bounds) noexcept nogil:
+    return max(0., bounds.low - x, x - bounds.high)
+
 cdef class Shell:
     """ Fast Cython container for shell data"""
-    cdef public float X, Y, Z
-    cdef public int l, start, size
-    cdef public DTYPE_t[::1] center
-    cdef public object exponents
+    cdef readonly float X, Y, Z
+    cdef readonly int l, start, size
+    cdef readonly const DTYPE_t[::1] center
+    cdef readonly object exponents
     cdef public object prim_coeffs
     cdef public object norms
-    cdef public object denormed_coeffs
+    cdef readonly object denormed_coeffs
     cdef public float mxx
-    cdef public float most_diffuse
+    cdef readonly float most_diffuse
     cdef double log_envelope
-    cdef public float screen_log_weight
-    cdef public float logthr
+    cdef readonly float screen_log_weight
+    cdef readonly float logthr
     cdef public float mxnorm
+
+    cdef const DTYPE_t[::1] exponent_view, radial_view
 
     def __init__(self, center, int l,
             exponents, coeff,
             int start, float thr=1e-6, float mxx=1.0,
             bint denorm=True):
-        self.center = np.array(center, dtype=DTYPE)
+        if self.exponents is not None:
+            raise ValueError("A native shell is already initialized")
+        if not 0 <= l <= 4 or start < 0:
+            raise ValueError("Expected an s through g shell and nonnegative AO offset")
+        center = np.array(center, dtype=DTYPE)
+        if center.shape != (3,) or not np.isfinite(center).all():
+            raise ValueError("Expected three finite shell coordinates")
+        center.flags.writeable = False
+        self.center = center
 
         self.X = center[0]
         self.Y = center[1]
@@ -103,6 +128,12 @@ cdef class Shell:
 
         self.exponents = np.array(exponents, dtype=DTYPE)
         self.prim_coeffs = np.array(coeff, dtype=DTYPE)
+
+        if (self.exponents.ndim != 1 or not self.exponents.size or
+                self.prim_coeffs.shape != self.exponents.shape or
+                not np.isfinite(self.exponents).all() or np.any(self.exponents <= 0) or
+                not np.isfinite(self.prim_coeffs).all() or not np.isfinite(thr) or thr <= 0):
+            raise ValueError("Expected positive finite exponents and threshold, and one finite coefficient per primitive")
 
         self.norms = 1.0 / np.sqrt(self.__norms(), dtype=DTYPE)
         if not denorm:
@@ -117,6 +148,12 @@ cdef class Shell:
         self.mxnorm = np.max(self.norms[:, imin]) * abs(self.prim_coeffs[imin])
         self.log_envelope, self.screen_log_weight = shell_screening_parameters(l, self.most_diffuse, self.denormed_coeffs)
         self.logthr = self.screen_log_weight * (self.log_envelope - math.log(thr))
+
+        # Pin primitive storage for point, plane and grid queries.
+        self.exponents.flags.writeable = False
+        self.denormed_coeffs.flags.writeable = False
+        self.exponent_view = self.exponents
+        self.radial_view = self.denormed_coeffs
 
     def __norms(self):
         """Returns [nL, nexp] array of norms"""
@@ -165,13 +202,15 @@ cdef class Shell:
 
         cdef float logthresh = self.logthr + self.screen_log_weight * logmxcoeff
 
-        cdef int nexp = len(self.exponents)
+        cdef Py_ssize_t nexp = self.exponent_view.shape[0]
         cdef int l = self.l
         cdef int shellsize = self.size
 
-        cdef DTYPE_t[:] exponents = self.exponents
-        cdef DTYPE_t[:] denormed_coeffs = self.denormed_coeffs
+        cdef const DTYPE_t[::1] exponents = self.exponent_view
+        cdef const DTYPE_t[::1] denormed_coeffs = self.radial_view
 
+        if coeff is None or coeff.shape[0] < shellsize:
+            raise ValueError("Too few coefficients for this shell")
         cdef float rr = dx*dx + dy*dy + dz*dz
         if rr >= logthresh:
             return 0.0
@@ -236,9 +275,9 @@ cdef class Shell:
     @cython.wraparound(CYDEBUG)
     @cython.initializedcheck(CYDEBUG)
     @cython.nonecheck(CYDEBUG)
-    cpdef void add_plane_values(self, DTYPE_t[::1] xx,
-            DTYPE_t[::1] yy, float z_a,
-            DTYPE_t[::1] coeff,
+    cpdef void add_plane_values(self, const DTYPE_t[::1] xx,
+            const DTYPE_t[::1] yy, float z_a,
+            const DTYPE_t[::1] coeff,
             DTYPE_t[:,::1] target, float logmxcoeff=0.0):
 
         cdef float X = self.X
@@ -247,26 +286,20 @@ cdef class Shell:
 
         cdef float logthresh = self.logthr + self.screen_log_weight * logmxcoeff
 
-        cdef int nx = len(xx)
-        cdef int ny = len(yy)
+        cdef Py_ssize_t nx = len(xx)
+        cdef Py_ssize_t ny = len(yy)
 
-        cdef int nexp = len(self.exponents)
+        cdef Py_ssize_t nexp = self.exponent_view.shape[0]
 
         cdef int l = self.l
         cdef int shellsize = self.size
 
-        # check the four corners to find a max value
-        cdef float x0 = xx[0] - X
-        cdef float x1 = xx[nx-1] - X
-        cdef float y0 = yy[0] - Y
-        cdef float y1 = yy[ny-1] - Y
-
-        cdef float min_x = min(abs(x0),abs(x1))
-        if (x0*x1 < 0):
-            min_x = 0.0
-        cdef float min_y = min(abs(y0),abs(y1))
-        if (y0*y1 < 0):
-            min_y = 0.0
+        if coeff.shape[0] < shellsize or target.shape[0] != nx or target.shape[1] != ny:
+            raise ValueError("Plane buffer dimensions do not match the shell and grid")
+        if nx == 0 or ny == 0:
+            return
+        cdef float min_x = distance_to_interval(X, axis_bounds(&xx[0], nx))
+        cdef float min_y = distance_to_interval(Y, axis_bounds(&yy[0], ny))
         cdef float min_z = fabs(z_a - Z)
 
         cdef float min_rr = min_x*min_x + min_y*min_y + min_z*min_z
@@ -282,8 +315,8 @@ cdef class Shell:
 
         cdef float dx, dy, dz, radial
 
-        cdef DTYPE_t[::1] denormed_coeffs = self.denormed_coeffs
-        cdef DTYPE_t[::1] exponents = self.exponents
+        cdef const DTYPE_t[::1] denormed_coeffs = self.radial_view
+        cdef const DTYPE_t[::1] exponents = self.exponent_view
 
         cdef ndarray[DTYPE_t, ndim=2] expyy = np.zeros([ny, nexp], dtype=DTYPE)
         cdef ndarray[DTYPE_t, ndim=1] expxx = np.zeros(nexp, dtype=DTYPE)
@@ -361,8 +394,8 @@ cdef class Shell:
     @cython.wraparound(CYDEBUG)
     @cython.initializedcheck(CYDEBUG)
     @cython.nonecheck(CYDEBUG)
-    cpdef bint compute_chi_plane(self, DTYPE_t[::1] xx,
-            DTYPE_t[::1] yy, float z_a,
+    cpdef bint compute_chi_plane(self, const DTYPE_t[::1] xx,
+            const DTYPE_t[::1] yy, float z_a,
             DTYPE_t[:,:,::1] target, float logmxcoeff=0.0):
 
         cdef float x = self.X
@@ -371,26 +404,20 @@ cdef class Shell:
 
         cdef float logthresh = self.logthr + self.screen_log_weight * logmxcoeff
 
-        cdef int nx = len(xx)
-        cdef int ny = len(yy)
+        cdef Py_ssize_t nx = len(xx)
+        cdef Py_ssize_t ny = len(yy)
 
-        cdef int nexp = len(self.exponents)
+        cdef Py_ssize_t nexp = self.exponent_view.shape[0]
 
         cdef int l = self.l
         cdef int shellsize = self.size
 
-        # check the four corners to find a max value
-        cdef float x0 = xx[0] - x
-        cdef float x1 = xx[nx-1] - x
-        cdef float y0 = yy[0] - y
-        cdef float y1 = yy[ny-1] - y
-
-        cdef float min_x = min(abs(x0),abs(x1))
-        if (x0*x1 < 0):
-            min_x = 0.0
-        cdef float min_y = min(abs(y0),abs(y1))
-        if (y0*y1 < 0):
-            min_y = 0.0
+        if target.shape[0] < shellsize or target.shape[1] != nx or target.shape[2] != ny:
+            raise ValueError("Plane buffer dimensions do not match the shell and grid")
+        if nx == 0 or ny == 0:
+            return False
+        cdef float min_x = distance_to_interval(x, axis_bounds(&xx[0], nx))
+        cdef float min_y = distance_to_interval(y, axis_bounds(&yy[0], ny))
         cdef float min_z = fabs(z_a - z)
 
         cdef float min_rr = min_x*min_x + min_y*min_y + min_z*min_z
@@ -406,8 +433,8 @@ cdef class Shell:
 
         cdef float dx, dy, dz, radial
 
-        cdef DTYPE_t[::1] denormed_coeffs = self.denormed_coeffs
-        cdef DTYPE_t[::1] exponents = self.exponents
+        cdef const DTYPE_t[::1] denormed_coeffs = self.radial_view
+        cdef const DTYPE_t[::1] exponents = self.exponent_view
 
         cdef ndarray[DTYPE_t, ndim=2] expyy = np.zeros([ny, nexp], dtype=DTYPE)
         cdef ndarray[DTYPE_t, ndim=1] expxx = np.zeros(nexp, dtype=DTYPE)
@@ -490,65 +517,35 @@ def gaussian_overlap(axyz, aexp, apoly, bxyz, bexp, bpoly):
     return np.prod(fac * gam)
 
 
-ctypedef struct CShell:
-    float X, Y, Z
-    int l
-    int start, size
-    int nexp
-    DTYPE_t* exponents
-    DTYPE_t* prim_coeffs
-    DTYPE_t* norms
-    DTYPE_t* denormed_coeffs
-    float mxx
-    float most_diffuse
-    float logthr
-    float screen_log_weight
-    float mxnorm
-
 @cython.boundscheck(CYDEBUG)
 @cython.wraparound(CYDEBUG)
 @cython.initializedcheck(CYDEBUG)
 @cython.nonecheck(CYDEBUG)
-cdef void add_box_values(CShell* shell,
-        int nx, DTYPE_t* xx,
-        int ny, DTYPE_t* yy,
-        int nz, DTYPE_t* zz,
+cdef void add_box_values(Shell shell,
+        Py_ssize_t nx, const DTYPE_t* xx,
+        Py_ssize_t ny, const DTYPE_t* yy,
+        Py_ssize_t nz, const DTYPE_t* zz,
         DTYPE_t* coeff,
         DTYPE_t* target,
-        float logmxcoeff) noexcept nogil:
+        float logmxcoeff, const Interval* bounds, DTYPE_t* scratch) noexcept nogil:
     cdef float X = shell.X
     cdef float Y = shell.Y
     cdef float Z = shell.Z
 
     cdef float logthresh = shell.logthr + shell.screen_log_weight * logmxcoeff
 
-    cdef int ix
-    cdef int iy
-    cdef int iz
-    cdef int iexp
+    cdef Py_ssize_t ix
+    cdef Py_ssize_t iy
+    cdef Py_ssize_t iz
+    cdef Py_ssize_t iexp
 
-    cdef int nexp = shell.nexp
+    cdef Py_ssize_t nexp = shell.exponent_view.shape[0]
 
     cdef int l = shell.l
 
-    # check the four corners to find a max value
-    cdef float x0 = xx[0] - X
-    cdef float x1 = xx[nx-1] - X
-    cdef float y0 = yy[0] - Y
-    cdef float y1 = yy[ny-1] - Y
-    cdef float z0 = zz[0] - Z
-    cdef float z1 = zz[nz-1] - Z
-
-    cdef float min_x = min(fabs(x0),fabs(x1))
-    if (x0*x1 < 0):
-        min_x = 0.0
-    cdef float min_y = min(fabs(y0),fabs(y1))
-    if (y0*y1 < 0):
-        min_y = 0.0
-    cdef float min_z = min(fabs(z0),fabs(z1))
-    if (z0*z1 < 0):
-        min_z = 0.0
-
+    cdef float min_x = distance_to_interval(X, bounds[0])
+    cdef float min_y = distance_to_interval(Y, bounds[1])
+    cdef float min_z = distance_to_interval(Z, bounds[2])
     cdef float min_rr = min_x*min_x + min_y*min_y + min_z*min_z
     if min_rr >= logthresh:
         return
@@ -560,19 +557,15 @@ cdef void add_box_values(CShell* shell,
     cdef float sqrt_35_3 = sqrt(35.0/3.0)
     cdef float sqrt_35_1 = sqrt(35.0/1.0)
 
-    cdef float dx, dy, dz, rr, radial
-    cdef int ixyz
+    cdef float dx, dy, dz, radial, radial_xy, angular_xy, angular_z
+    cdef Py_ssize_t ixyz
 
-    cdef DTYPE_t* denormed_coeffs = shell.denormed_coeffs
-    cdef DTYPE_t* exponents = shell.exponents
+    cdef const DTYPE_t* denormed_coeffs = &shell.radial_view[0]
+    cdef const DTYPE_t* exponents = &shell.exponent_view[0]
 
-    cdef DTYPE_t* expzz
-    cdef DTYPE_t* expyy
-    cdef DTYPE_t* expxx
-
-    expzz = <DTYPE_t*>malloc(nz*nexp*sizeof(DTYPE_t))
-    expyy = <DTYPE_t*>malloc(ny*nexp*sizeof(DTYPE_t))
-    expxx = <DTYPE_t*>malloc(nexp*sizeof(DTYPE_t))
+    cdef DTYPE_t* expxx = scratch
+    cdef DTYPE_t* expyy = expxx + nexp
+    cdef DTYPE_t* expzz = expyy + ny*nexp
 
     cdef float xthresh, ythresh, zthresh
 
@@ -603,11 +596,23 @@ cdef void add_box_values(CShell* shell,
             if ythresh > logthresh:
                 continue
 
+            # Most outer s and p shells have one primitive. Factor the x/y terms
+            # once per row so the inner loop walks contiguous z samples.
+            if nexp == 1 and l <= 1:
+                radial_xy = expxx[0] * expyy[iy]
+                angular_xy = coeff[0] if l == 0 else coeff[0] * dx + coeff[1] * dy
+                angular_z = 0 if l == 0 else coeff[2]
+                for iz in range(nz):
+                    dz = zz[iz] - Z
+                    if dx * dx + dy * dy + dz * dz < logthresh:
+                        target[(ix*ny + iy)*nz + iz] += (radial_xy * expzz[iz]) * (angular_xy + angular_z * dz)
+                continue
+
             for iz in range(nz):
                 dz = zz[iz] - Z
 
                 zthresh = dx * dx + dy * dy + dz*dz
-                if zthresh > logthresh:
+                if zthresh >= logthresh:
                     continue
 
                 ixyz = iz + iy*nz + ix*nz*ny
@@ -663,66 +668,46 @@ cdef void add_box_values(CShell* shell,
                             + coeff[13] * dy*dy*dx*dz * sqrt_35_1
                             + coeff[14] * dz*dz*dx*dy * sqrt_35_1
                             )
-    free(expxx)
-    free(expyy)
-    free(expzz)
 
 @cython.boundscheck(CYDEBUG)
 @cython.wraparound(CYDEBUG)
 @cython.initializedcheck(CYDEBUG)
 @cython.nonecheck(CYDEBUG)
-cdef bint compute_chi_box_shell(CShell* shell,
-        int nx, DTYPE_t* xx,
-        int ny, DTYPE_t* yy,
-        int nz, DTYPE_t* zz,
+cdef void compute_chi_box_shell(Shell shell,
+        Py_ssize_t nx, const DTYPE_t* xx,
+        Py_ssize_t ny, const DTYPE_t* yy,
+        Py_ssize_t nz, const DTYPE_t* zz,
         DTYPE_t* target,
-        int sx, int sy, int sz,
-        float logmxcoeff) noexcept nogil:
+        Py_ssize_t sx, Py_ssize_t sy, Py_ssize_t sz,
+        float logmxcoeff, const Interval* bounds, DTYPE_t* scratch) noexcept nogil:
     """Computes the value of the shell on a grid
 
     target is a 3D array of shape (nx, ny, nz, shellsize)
     sx, sy, sz are strides, such that target[ix,iy,iz,ishell] is at
     target[ix*sx + iy*sy + iz*sz + ishell]
     """
-    cdef bint out = False
-
     cdef float X = shell.X
     cdef float Y = shell.Y
     cdef float Z = shell.Z
 
     cdef float logthresh = shell.logthr + shell.screen_log_weight * logmxcoeff
 
-    cdef int ix
-    cdef int iy
-    cdef int iz
-    cdef int iexp
-    cdef int target_ixyz
+    cdef Py_ssize_t ix
+    cdef Py_ssize_t iy
+    cdef Py_ssize_t iz
+    cdef Py_ssize_t iexp
+    cdef Py_ssize_t target_ixyz
 
-    cdef int nexp = shell.nexp
+    cdef Py_ssize_t nexp = shell.exponent_view.shape[0]
 
     cdef int l = shell.l
 
-    # check the four corners to find a max value
-    cdef float x0 = xx[0] - X
-    cdef float x1 = xx[nx-1] - X
-    cdef float y0 = yy[0] - Y
-    cdef float y1 = yy[ny-1] - Y
-    cdef float z0 = zz[0] - Z
-    cdef float z1 = zz[nz-1] - Z
-
-    cdef float min_x = min(fabs(x0),fabs(x1))
-    if (x0*x1 < 0):
-        min_x = 0.0
-    cdef float min_y = min(fabs(y0),fabs(y1))
-    if (y0*y1 < 0):
-        min_y = 0.0
-    cdef float min_z = min(fabs(z0),fabs(z1))
-    if (z0*z1 < 0):
-        min_z = 0.0
-
+    cdef float min_x = distance_to_interval(X, bounds[0])
+    cdef float min_y = distance_to_interval(Y, bounds[1])
+    cdef float min_z = distance_to_interval(Z, bounds[2])
     cdef float min_rr = min_x*min_x + min_y*min_y + min_z*min_z
     if min_rr >= logthresh:
-        return out
+        return
 
     cdef float sqrt3 = sqrt(3.0)
     cdef float sqrt5 = sqrt(5.0)
@@ -731,19 +716,14 @@ cdef bint compute_chi_box_shell(CShell* shell,
     cdef float sqrt_35_3 = sqrt(35.0/3.0)
     cdef float sqrt_35_1 = sqrt(35.0/1.0)
 
-    cdef float dx, dy, dz, rr, radial
-    cdef int ixyz
+    cdef float dx, dy, dz, radial
 
-    cdef DTYPE_t* denormed_coeffs = shell.denormed_coeffs
-    cdef DTYPE_t* exponents = shell.exponents
+    cdef const DTYPE_t* denormed_coeffs = &shell.radial_view[0]
+    cdef const DTYPE_t* exponents = &shell.exponent_view[0]
 
-    cdef DTYPE_t* expzz
-    cdef DTYPE_t* expyy
-    cdef DTYPE_t* expxx
-
-    expzz = <DTYPE_t*>malloc(nz*nexp*sizeof(DTYPE_t))
-    expyy = <DTYPE_t*>malloc(ny*nexp*sizeof(DTYPE_t))
-    expxx = <DTYPE_t*>malloc(nexp*sizeof(DTYPE_t))
+    cdef DTYPE_t* expxx = scratch
+    cdef DTYPE_t* expyy = expxx + nexp
+    cdef DTYPE_t* expzz = expyy + ny*nexp
 
     cdef float xthresh, ythresh, zthresh
 
@@ -779,12 +759,8 @@ cdef bint compute_chi_box_shell(CShell* shell,
                 dz = zz[iz] - Z
 
                 zthresh = dx * dx + dy * dy + dz*dz
-                if zthresh > logthresh:
+                if zthresh >= logthresh:
                     continue
-
-                out = True
-
-                ixyz = iz + iy*nz + ix*nz*ny
 
                 radial = 0.0
                 for iexp in range(nexp):
@@ -833,61 +809,39 @@ cdef bint compute_chi_box_shell(CShell* shell,
                     target[target_ixyz+13] = radial * dy*dy*dx*dz * sqrt_35_1
                     target[target_ixyz+14] = radial * dz*dz*dx*dy * sqrt_35_1
 
-    free(expxx)
-    free(expyy)
-    free(expzz)
 
-    return out
+cdef tuple checked_shells(shells, Py_ssize_t nao):
+    owners = tuple(shells)
+    if not owners:
+        raise ValueError("Expected at least one basis shell")
+    for item in owners:
+        if not isinstance(item, Shell):
+            raise TypeError("Expected a native basis shell")
+        if (<Shell>item).radial_view is None or (<Shell>item).start > nao - (<Shell>item).size:
+            raise ValueError("Shell AO range exceeds the coefficient array")
+    return owners
 
 cdef class OrbitalCalculater:
     """Computes value of orbital at real space points"""
-    cdef object shells
+    cdef tuple shells
     cdef object coeff
     cdef DTYPE_t[:] logmxcoeff
-    cdef int nshells
-    cdef vector[CShell] cshells
-    cdef Shell sh
+    cdef Py_ssize_t nshells
+    cdef Py_ssize_t max_primitives
     cdef DTYPE_t[::1] _coeff_c
 
     def __init__(self, shells, coeff):
-        self.shells = shells
-        self.coeff = np.ascontiguousarray(coeff, dtype=DTYPE)
+        self.coeff = np.array(coeff, dtype=DTYPE, order="C", copy=True)
+        if self.coeff.ndim != 1 or not np.isfinite(self.coeff).all():
+            raise ValueError("Expected a finite vector of orbital coefficients")
         self._coeff_c = self.coeff
-
-        cdef ndarray[DTYPE_t, ndim=1] sh_exponents
-        cdef ndarray[DTYPE_t, ndim=1] sh_prim_coeffs
-        cdef ndarray[DTYPE_t, ndim=2] sh_norms
-        cdef ndarray[DTYPE_t, ndim=1] sh_denormed_coeffs
-
-        self.nshells = len(shells)
-        self.cshells.resize(self.nshells)
-        for ish in range(self.nshells):
-            sh = shells[ish]
-            sh_exponents = sh.exponents
-            sh_prim_coeffs = sh.prim_coeffs
-            sh_norms = sh.norms
-            sh_denormed_coeffs = sh.denormed_coeffs
-
-            self.cshells[ish].X = sh.X
-            self.cshells[ish].Y = sh.Y
-            self.cshells[ish].Z = sh.Z
-            self.cshells[ish].l = sh.l
-            self.cshells[ish].start = sh.start
-            self.cshells[ish].size = sh.size
-            self.cshells[ish].nexp = len(sh.exponents)
-            self.cshells[ish].exponents = &sh_exponents[0]
-            self.cshells[ish].prim_coeffs = &sh_prim_coeffs[0]
-            self.cshells[ish].norms = &sh_norms[0,0]
-            self.cshells[ish].denormed_coeffs = &sh_denormed_coeffs[0]
-            self.cshells[ish].mxx = sh.mxx
-            self.cshells[ish].most_diffuse = sh.most_diffuse
-            self.cshells[ish].screen_log_weight = sh.screen_log_weight
-            self.cshells[ish].logthr = sh.logthr
-            self.cshells[ish].mxnorm = sh.mxnorm
+        self.shells = checked_shells(shells, len(self.coeff))
+        self.nshells = len(self.shells)
+        self.max_primitives = max((<Shell>sh).exponent_view.shape[0] for sh in self.shells)
 
         # use very small number to replace zeros
         self.logmxcoeff = np.log(np.array([
-            max(np.max(abs(coeff[sh.start:sh.start + sh.size])), 1e-30)
+            max(np.max(abs(self.coeff[sh.start:sh.start + sh.size])), 1e-30)
             for sh in self.shells], dtype=DTYPE))
 
     def bounding_box(self, thr=1.0e-5):
@@ -912,6 +866,7 @@ cdef class OrbitalCalculater:
 
     cpdef plane_values(self, xvals, yvals, z_a):
         out = np.zeros([len(xvals), len(yvals)], dtype=DTYPE)
+        xvals, yvals = np.ascontiguousarray(xvals, dtype=DTYPE), np.ascontiguousarray(yvals, dtype=DTYPE)
         for sh, lmx in zip(self.shells, self.logmxcoeff):
             sh.add_plane_values(xvals, yvals, z_a, self.coeff[sh.start:sh.start+sh.size],
                     out, logmxcoeff=lmx)
@@ -921,11 +876,13 @@ cdef class OrbitalCalculater:
     @cython.wraparound(CYDEBUG)
     @cython.initializedcheck(CYDEBUG)
     @cython.nonecheck(CYDEBUG)
-    cpdef box_values(self, ndarray[DTYPE_t, ndim=1, mode="c"] xvals,
-            ndarray[DTYPE_t, ndim=1, mode="c"] yvals,
-            ndarray[DTYPE_t, ndim=1, mode="c"] zvals):
-        cdef int nshells = self.nshells
-        cdef int ish, nx, ny, nz
+    cpdef box_values(self, ndarray[DTYPE_t, ndim=1] xvals,
+            ndarray[DTYPE_t, ndim=1] yvals,
+            ndarray[DTYPE_t, ndim=1] zvals):
+        if xvals is None or yvals is None or zvals is None:
+            raise ValueError("Expected three grid axes")
+        cdef Py_ssize_t nshells = self.nshells
+        cdef Py_ssize_t ish, nx, ny, nz
 
         nx = len(xvals)
         ny = len(yvals)
@@ -934,9 +891,21 @@ cdef class OrbitalCalculater:
         cdef ndarray[DTYPE_t, ndim=3, mode="c"] out = np.zeros([nx, ny, nz], dtype=DTYPE)
         cdef DTYPE_t[::1] coeff_view = self._coeff_c
 
+        if not out.size:
+            return out
+        xvals = np.ascontiguousarray(xvals)
+        yvals = np.ascontiguousarray(yvals)
+        zvals = np.ascontiguousarray(zvals)
+        cdef Interval bounds[3]
+        bounds[0] = axis_bounds(&xvals[0], nx)
+        bounds[1] = axis_bounds(&yvals[0], ny)
+        bounds[2] = axis_bounds(&zvals[0], nz)
+        cdef ndarray[DTYPE_t, ndim=2] scratch = np.empty((ny + nz + 1, self.max_primitives), dtype=DTYPE)
+        cdef Shell sh
         for ish in range(nshells):
-            add_box_values(&self.cshells[ish], nx, &xvals[0], ny, &yvals[0], nz, &zvals[0],
-                    &coeff_view[self.cshells[ish].start], &out[0,0,0], self.logmxcoeff[ish])
+            sh = self.shells[ish]
+            add_box_values(sh, nx, &xvals[0], ny, &yvals[0], nz, &zvals[0],
+                           &coeff_view[sh.start], &out[0,0,0], self.logmxcoeff[ish], bounds, &scratch[0,0])
 
         return out
 
@@ -958,77 +927,26 @@ cdef class DensityCalculater:
     """Computes value of densities at real space points"""
 
     cdef:
-        list shells
+        tuple shells
         np.ndarray density
         public double nelec
-        np.ndarray shellmxdens
-        np.ndarray logmxdens
-        np.ndarray shellmxorb
         np.ndarray logmxorb
-        vector[CShell] cshells
-        int nshells
+        Py_ssize_t max_primitives
+        Py_ssize_t nshells
 
     def __init__(self, list shells, np.ndarray[DTYPE_t, ndim=2] density, double nelec):
-        self.shells = shells
-        self.density = density
+        if density is None or density.shape[0] != density.shape[1]:
+            raise ValueError("Expected a square AO density matrix")
+        if not np.isfinite(density).all():
+            raise ValueError("Expected finite AO density coefficients")
+        self.shells = checked_shells(shells, density.shape[0])
+        self.max_primitives = max((<Shell>sh).exponent_view.shape[0] for sh in self.shells)
+        self.density = density.copy(order="C")
         self.nelec = nelec
 
-        # use very small number to replace zeros
         self.nshells = len(self.shells)
-        # shellmxdens[i, j] is the maximum value in density of shell i, j
-        self.shellmxdens = np.zeros([self.nshells, self.nshells], dtype=DTYPE)
-
-        cdef:
-            int i, j
-            int istart, iend, jstart, jend
-            DTYPE_t shelldens
-
-        for i in range(self.nshells):
-            istart = shells[i].start
-            iend = istart + shells[i].size
-            for j in range(self.nshells):
-                jstart = shells[j].start
-                jend = jstart + shells[j].size
-                shelldens = np.max(np.abs(self.density[istart:iend, jstart:jend]))
-                self.shellmxdens[i,j] = shelldens
-
-        self.logmxdens = np.log(self.shellmxdens + 1e-30)
-
-        # shellmxorb[i] of shell i in entire density
-        self.shellmxorb = np.array([np.max(self.shellmxdens[i,:]) for i in range(self.nshells)], dtype=DTYPE)
-        # log(shellmxorb)
-        self.logmxorb = np.log(self.shellmxorb + 1e-30)
-
-        cdef ndarray[DTYPE_t, ndim=1] sh_exponents
-        cdef ndarray[DTYPE_t, ndim=1] sh_prim_coeffs
-        cdef ndarray[DTYPE_t, ndim=2] sh_norms
-        cdef ndarray[DTYPE_t, ndim=1] sh_denormed_coeffs
-
-        self.nshells = len(shells)
-        self.cshells.resize(self.nshells)
-        for ish in range(self.nshells):
-            sh = shells[ish]
-            sh_exponents = sh.exponents
-            sh_prim_coeffs = sh.prim_coeffs
-            sh_norms = sh.norms
-            sh_denormed_coeffs = sh.denormed_coeffs
-
-            self.cshells[ish].X = sh.X
-            self.cshells[ish].Y = sh.Y
-            self.cshells[ish].Z = sh.Z
-            self.cshells[ish].l = sh.l
-            self.cshells[ish].start = sh.start
-            self.cshells[ish].size = sh.size
-            self.cshells[ish].nexp = len(sh.exponents)
-            self.cshells[ish].exponents = &sh_exponents[0]
-            self.cshells[ish].prim_coeffs = &sh_prim_coeffs[0]
-            self.cshells[ish].norms = &sh_norms[0,0]
-            self.cshells[ish].denormed_coeffs = &sh_denormed_coeffs[0]
-            self.cshells[ish].mxx = sh.mxx
-            self.cshells[ish].most_diffuse = sh.most_diffuse
-            self.cshells[ish].screen_log_weight = sh.screen_log_weight
-            self.cshells[ish].logthr = sh.logthr
-            self.cshells[ish].mxnorm = sh.mxnorm
+        weights = density_shell_weights(self.shells, self.density)
+        self.logmxorb = np.log(np.maximum(weights, 1.e-30)).astype(DTYPE)
 
     def bounding_box(self, DTYPE_t thr=1.0e-5):
         """returns lower and upper limits of box (in bohr) that should fully contain density"""
@@ -1057,44 +975,48 @@ cdef class DensityCalculater:
     def plane_values(self, np.ndarray[DTYPE_t, ndim=1] xvals,
                     np.ndarray[DTYPE_t, ndim=1] yvals,
                     DTYPE_t z_a):
+        if xvals is None or yvals is None:
+            raise ValueError("Expected two plane axes")
+        if not len(xvals) or not len(yvals):
+            return np.zeros((len(xvals), len(yvals)), dtype=DTYPE)
+        xvals, yvals = np.ascontiguousarray(xvals), np.ascontiguousarray(yvals)
         cdef:
             np.ndarray[DTYPE_t, ndim=2] out = np.zeros([len(xvals), len(yvals)], dtype=DTYPE)
             DTYPE_t[::1] oview = out.reshape(len(xvals) * len(yvals))
-            int i, j, ish, jsh, ixy
-            int nao = sum([sh.size for sh in self.shells])
-            float[:,:,:] chivals = np.zeros([nao, len(xvals), len(yvals)], dtype=DTYPE)
-            float[:,:] chivals_f = (<float[:nao,:len(xvals)*len(yvals)]>(&chivals[0,0,0]))
+            Py_ssize_t i, j, ish, jsh, ixy
+            Py_ssize_t nao = self.density.shape[0]
+            np.ndarray[DTYPE_t, ndim=3, mode="c"] chivals = np.zeros([nao, len(xvals), len(yvals)], dtype=DTYPE)
+            DTYPE_t[:,::1] chivals_f = chivals.reshape(nao, out.size)
             float[:,:] rho = self.density
-            list nonzero_shells = []
-            np.ndarray ivals
+            Shell ishell, jshell
             int nshls = len(self.shells)
-            int nxy = len(xvals) * len(yvals)
-            int istart, iend, jstart, jend
+            Py_ssize_t nxy = len(xvals) * len(yvals)
+            Py_ssize_t istart, iend, jstart, jend
 
-            float[:] xxvals = xvals
-            float[:] yyvals = yvals
             bint[:] contributes = np.zeros([nshls], dtype=np.int32)
             bint cont
 
         for ish in range(nshls):
             ishell = self.shells[ish]
-            istart = self.cshells[ish].start
-            iend = istart + self.cshells[ish].size
-            cont = ishell.compute_chi_plane(xxvals, yyvals, z_a, chivals[istart:iend],
+            istart = ishell.start
+            iend = istart + ishell.size
+            cont = ishell.compute_chi_plane(xvals, yvals, z_a, chivals[istart:iend],
                                   logmxcoeff=self.logmxorb[ish])
             contributes[ish] = cont
 
         for ish in range(nshls):
             if not contributes[ish]:
                 continue
-            istart = self.cshells[ish].start
-            iend = istart + self.cshells[ish].size
+            ishell = self.shells[ish]
+            istart = ishell.start
+            iend = istart + ishell.size
             for jsh in range(nshls):
                 if not contributes[jsh]:
                     continue
 
-                jstart = self.cshells[jsh].start
-                jend = jstart + self.cshells[jsh].size
+                jshell = self.shells[jsh]
+                jstart = jshell.start
+                jend = jstart + jshell.size
                 for i in range(istart, iend):
                     for j in range(jstart, jend):
                         for ixy in range(nxy):
@@ -1108,84 +1030,93 @@ cdef class DensityCalculater:
     cpdef box_values(self, np.ndarray[DTYPE_t, ndim=1] xvals,
                   np.ndarray[DTYPE_t, ndim=1] yvals,
                   np.ndarray[DTYPE_t, ndim=1] zvals):
+        if xvals is None or yvals is None or zvals is None:
+            raise ValueError("Expected three grid axes")
         cdef:
             np.ndarray[DTYPE_t, ndim=3] out = np.zeros([len(xvals), len(yvals), len(zvals)], dtype=DTYPE)
-            int nshells = self.nshells
-            int nx = len(xvals)
-            int ny = len(yvals)
-            int nz = len(zvals)
-            int nxyz = nx * ny * nz
-            int ixyz, ish, i, j, istart, isize, offset
+            Py_ssize_t nshells = self.nshells
+            Py_ssize_t nx = len(xvals)
+            Py_ssize_t ny = len(yvals)
+            Py_ssize_t nz = len(zvals)
+            Py_ssize_t nxyz = out.size
+            Py_ssize_t ixyz, ish, i, j, istart, isize, offset
             float otmp
 
             DTYPE_t[::1] logmxorb = self.logmxorb
             DTYPE_t[::1] oview = out.reshape(nxyz)
 
-            float X, Y, Z, logthresh
-            float x0, x1, y0, y1, z0, z1
-            float min_x, min_y, min_z, min_rr
+            float logthresh, min_x, min_y, min_z, min_rr
+            Interval bounds[3]
+            Shell sh
+            np.ndarray[np.intp_t, ndim=1] active_shells_arr, compact_offs
+            Py_ssize_t n_active = 0
+            Py_ssize_t nactive_ao = 0
 
-            int* active_shells_arr
-            int* compact_offs
-            int n_active = 0
-            int nactive_ao = 0
-
-        active_shells_arr = <int*>malloc(nshells * sizeof(int))
-        compact_offs = <int*>malloc(nshells * sizeof(int))
-
+        if not nxyz:
+            return out
+        xvals = np.ascontiguousarray(xvals)
+        yvals = np.ascontiguousarray(yvals)
+        zvals = np.ascontiguousarray(zvals)
+        bounds[0] = axis_bounds(&xvals[0], nx)
+        bounds[1] = axis_bounds(&yvals[0], ny)
+        bounds[2] = axis_bounds(&zvals[0], nz)
+        active_shells_arr = np.empty(nshells, dtype=np.intp)
+        compact_offs = np.empty(nshells, dtype=np.intp)
         for ish in range(nshells):
-            X = self.cshells[ish].X
-            Y = self.cshells[ish].Y
-            Z = self.cshells[ish].Z
-            logthresh = self.cshells[ish].logthr + self.cshells[ish].screen_log_weight * logmxorb[ish]
-
-            x0 = xvals[0] - X; x1 = xvals[nx-1] - X
-            y0 = yvals[0] - Y; y1 = yvals[ny-1] - Y
-            z0 = zvals[0] - Z; z1 = zvals[nz-1] - Z
-
-            min_x = fabs(x0) if fabs(x0) < fabs(x1) else fabs(x1)
-            if x0 * x1 < 0: min_x = 0.0
-            min_y = fabs(y0) if fabs(y0) < fabs(y1) else fabs(y1)
-            if y0 * y1 < 0: min_y = 0.0
-            min_z = fabs(z0) if fabs(z0) < fabs(z1) else fabs(z1)
-            if z0 * z1 < 0: min_z = 0.0
-
+            sh = self.shells[ish]
+            logthresh = sh.logthr + sh.screen_log_weight * logmxorb[ish]
+            min_x = distance_to_interval(sh.X, bounds[0])
+            min_y = distance_to_interval(sh.Y, bounds[1])
+            min_z = distance_to_interval(sh.Z, bounds[2])
             min_rr = min_x*min_x + min_y*min_y + min_z*min_z
             if min_rr < logthresh:
                 active_shells_arr[n_active] = ish
                 compact_offs[n_active] = nactive_ao
                 n_active += 1
-                nactive_ao += self.cshells[ish].size
+                nactive_ao += sh.size
 
         if nactive_ao == 0:
-            free(active_shells_arr)
-            free(compact_offs)
+            return out
+
+        # Large response/density grids would otherwise materialize two full
+        # (grid points × active AOs) matrices. Keep complete z rows when possible.
+        cdef Py_ssize_t capacity = max(1, _DENSITY_WORKSPACE_BYTES // (2 * sizeof(DTYPE_t) * nactive_ao))
+        cdef Py_ssize_t bx, by, bz, ix, iy, iz
+        if nxyz > capacity:
+            bz = min(nz, capacity)
+            by = min(ny, capacity // bz)
+            bx = min(nx, capacity // (by * bz))
+            for ix in range(0, nx, bx):
+                for iy in range(0, ny, by):
+                    for iz in range(0, nz, bz):
+                        out[ix:ix+bx, iy:iy+by, iz:iz+bz] = self.box_values(
+                            xvals[ix:ix+bx], yvals[iy:iy+by], zvals[iz:iz+bz])
             return out
 
         cdef np.ndarray[DTYPE_t, ndim=4] chivals = np.zeros([nx, ny, nz, nactive_ao], dtype=DTYPE)
 
+        cdef ndarray[DTYPE_t, ndim=2] scratch = np.empty((ny + nz + 1, self.max_primitives), dtype=DTYPE)
         for i in range(n_active):
             ish = active_shells_arr[i]
             offset = compact_offs[i]
-            compute_chi_box_shell(&self.cshells[ish], nx, &xvals[0], ny, &yvals[0], nz, &zvals[0],
-                    &chivals[0,0,0,offset], nactive_ao*ny*nz, nactive_ao*nz, nactive_ao, logmxorb[ish])
+            sh = self.shells[ish]
+            compute_chi_box_shell(sh, nx, &xvals[0], ny, &yvals[0], nz, &zvals[0],
+                    &chivals[0,0,0,offset], nactive_ao*ny*nz, nactive_ao*nz, nactive_ao, logmxorb[ish], bounds, &scratch[0,0])
 
         active_ao_list = []
         for i in range(n_active):
             ish = active_shells_arr[i]
-            istart = self.cshells[ish].start
-            isize = self.cshells[ish].size
+            sh = self.shells[ish]
+            istart = sh.start
+            isize = sh.size
             for j in range(istart, istart + isize):
                 active_ao_list.append(j)
-
-        free(active_shells_arr)
-        free(compact_offs)
 
         idx = np.array(active_ao_list, dtype=np.intp)
         cdef np.ndarray[DTYPE_t, ndim=2] rho_compact = np.ascontiguousarray(
             self.density[np.ix_(idx, idx)])
 
-        cdef DTYPE_t[:,::1] chivals_f = (<float[:nxyz,:nactive_ao]>(&chivals[0,0,0,0]))
+        cdef DTYPE_t[:,::1] chivals_f = chivals.reshape(nxyz, nactive_ao)
         phi = np.dot(chivals_f, rho_compact)
         cdef DTYPE_t[:,::1] phiview = phi
         for ixyz in range(nxyz):
