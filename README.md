@@ -70,8 +70,10 @@ equivalent or ambiguous forms need not have a unique result. Bond lengths guide
 the search rather than proving chemical identity.
 
 For trajectories, only `animate_bonds="staticfirst"` is supported with perception.
-Orders and initial strand orientation then stay fixed; they are not recalculated
-for each frame. Dynamic and union connectivity are rejected for perception.
+Orders stay fixed. With endpoint hooks enabled, double and triple bonds follow
+the molecular plane at each sampled pose. For a ring bond, the smallest ring
+containing it defines the plane. For an open chain, a neighboring atom defines it.
+When the atoms become collinear, the previous orientation follows the bond axis.
 
 To render the same example from XYZ coordinates, with no bond table:
 
@@ -140,9 +142,9 @@ or use order `1` to restore the round profile. Apply this to both halves of a
 split-color bond. Alternatively set `Bond.order` and `Bond.direction` before
 calling `PlotMolecule`.
 
-Endpoint hooks and split colors continue to work. The initial orientation is
-encoded as curve-point tilt; it does not track a changing molecular plane during
-animation. Wireframe rendering does not use these profiles.
+Endpoint hooks and split colors continue to work. Imported trajectories animate
+the curve-point tilt on both halves of a multiple bond. The sampling and
+interpolation settings control the timing of those keys.
 
 Run the manual example from the repository root (this clears the current scene):
 
@@ -493,8 +495,8 @@ All these actions support Undo/Redo and survive saving and reopening the file.
 
 Select a displayed double or triple bond, or its two atoms, and choose
 **Set strand tilt…** to rotate the strands around the bond axis. The dialog
-starts at the current curve tilt. It sets the same angle on both colored halves
-and preserves that angle across restyling and subsequent bond-order changes.
+sets the angle on both colored halves. On a trajectory with animated strand
+orientation, the angle is an offset from the moving plane. Restyling preserves it.
 
 Manual orders are saved as locked assignments. **Perceive unlocked bonds** works
 on the current graph, retaining manual additions/deletions and protecting both

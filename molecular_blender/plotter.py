@@ -25,7 +25,6 @@
 
 from collections import namedtuple
 from itertools import chain
-import math
 import re
 
 import bpy
@@ -35,6 +34,7 @@ import bmesh
 import numpy as np
 
 from .geometry_import import geometry_import, track_new
+from .bond_orientation import strand_tilt, trajectory_tilts
 from .molecule import Molecule
 from .periodictable import elements
 from .stylers import get_styler
@@ -94,21 +94,7 @@ def set_bond_order(obj, order, direction=None):
     if tangent.length < 1e-8:
         raise ValueError("Cannot orient a zero-length bond")
     tangent.normalize()
-    # Blender's Z_UP frame: profile X lies along tangent cross global Z.
-    # At the vertical singularity Blender uses +X for +Z, -X for -Z.
-    xaxis = tangent.cross(mathutils.Vector((0, 0, 1)))
-    if xaxis.length < 1e-8:
-        xaxis = mathutils.Vector((1 if tangent.z > 0 else -1, 0, 0))
-    xaxis.normalize()
-    yaxis = xaxis.cross(tangent)
-    tilt = 0.0
-    if direction is not None and order != 1:
-        separation = mathutils.Vector(direction)
-        separation -= tangent * separation.dot(tangent)
-        if separation.length < 1e-8:
-            raise ValueError("Bond direction must have a component perpendicular to the bond")
-        # Positive Blender tilt rotates profile X towards negative profile Y.
-        tilt = math.atan2(-separation.dot(yaxis), separation.dot(xaxis))
+    tilt = strand_tilt(tangent, direction) if order != 1 else 0.0
 
     old_profile = curve.bevel_object
     if order == 1:
@@ -666,6 +652,9 @@ def AnimateMolecule(context, molecule, options):
                         for point in curve.keyframe_points:
                             point.interpolation = interpolation
 
+    if options["draw_bond_orders"] and options["hook_atoms"]:
+        _animate_strand_tilts(molecule, frame_map, interpolation)
+
     if options["animate_bonds"] == "dynamic" and molecule.explicit_bonds is None:
         bondmask = molecule.bond_mask(options)
         for bond in molecule.bonds:
@@ -679,6 +668,29 @@ def AnimateMolecule(context, molecule, options):
                     bond_obj.keyframe_insert(
                         data_path="hide_render", frame=frame_map(iframe))
     return
+
+
+def _animate_strand_tilts(molecule, frame_map, interpolation):
+    bonds = [bond for bond in molecule.bonds if bond.order > 1 and bond.name]
+    if not bonds:
+        return
+    neighbors = {atom: [] for atom in molecule.atoms}
+    for bond in molecule.bonds:
+        neighbors[bond.iatom].append(bond.jatom)
+        neighbors[bond.jatom].append(bond.iatom)
+    for bond in bonds:
+        curves = [bpy.data.objects[name].data for name in bond.name]
+        for i, tilt in enumerate(trajectory_tilts(bond, neighbors)):
+            for curve in curves:
+                for point in curve.splines[0].bezier_points:
+                    point.tilt = tilt
+                    point.keyframe_insert(data_path='tilt', frame=frame_map(i))
+        for curve in curves:
+            curve['mb_trajectory_tilt'] = True
+            if interpolation:
+                for fcurve in curve.animation_data.action.fcurves:
+                    for key in fcurve.keyframe_points:
+                        key.interpolation = interpolation
 
 
 def field_weld_distance(resolution):

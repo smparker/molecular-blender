@@ -25,7 +25,7 @@ def _private_curve(obj):
 def apply_bond_profile(obj, bond, order):
     """Rebuild a profile with its saved orientation, including older scene records."""
     from .plotter import set_bond_order
-    if 'tilt' not in bond and bond['direction'] is not None:
+    if not obj.data.get('mb_trajectory_tilt') and 'tilt' not in bond and bond['direction'] is not None:
         set_bond_order(obj, order, bond['direction'])
         return
     # Older records with no saved orientation can have native Blender tilt edits.

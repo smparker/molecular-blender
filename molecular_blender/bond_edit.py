@@ -290,9 +290,16 @@ class MB_OT_set_bond_tilt(bpy.types.Operator):
         return True
 
     def invoke(self, context, event):
-        _, _, _, parts = _selected_multiple_bond(context)
-        self.tilt = math.remainder(parts[0].data.splines[0].bezier_points[0].tilt, math.tau)
+        _, _, bond, parts = _selected_multiple_bond(context)
+        curve = parts[0].data
+        self.tilt = (bond.get('tilt_offset', 0.0) if curve.get('mb_trajectory_tilt') else
+                     math.remainder(curve.splines[0].bezier_points[0].tilt, math.tau))
         return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        _, _, _, parts = _selected_multiple_bond(context)
+        label = 'Offset from animated plane' if parts[0].data.get('mb_trajectory_tilt') else 'Strand tilt'
+        self.layout.prop(self, 'tilt', text=label)
 
     def execute(self, context):
         try:
@@ -301,9 +308,27 @@ class MB_OT_set_bond_tilt(bpy.types.Operator):
                 raise ValueError('Strand tilt must be finite')
             for obj in parts:
                 _private_curve(obj)
-                for point in obj.data.splines[0].bezier_points:
-                    point.tilt = self.tilt
-            bond['tilt'] = self.tilt
+                curve = obj.data
+                if curve.get('mb_trajectory_tilt') and curve.animation_data and curve.animation_data.action:
+                    action = curve.animation_data.action
+                    if action.users > 1:
+                        action = curve.animation_data.action = action.copy()
+                    delta = self.tilt - bond.get('tilt_offset', 0.0)
+                    for point in curve.splines[0].bezier_points:
+                        fcurve = action.fcurves.find(point.path_from_id('tilt'))
+                        if fcurve:
+                            for key in fcurve.keyframe_points:
+                                key.co_ui.y += delta
+                            fcurve.update()
+                else:
+                    for point in curve.splines[0].bezier_points:
+                        point.tilt = self.tilt
+            if parts[0].data.get('mb_trajectory_tilt'):
+                bond['tilt_offset'] = self.tilt
+                scene = context.scene
+                scene.frame_set(scene.frame_current, subframe=scene.frame_subframe)
+            else:
+                bond['tilt'] = self.tilt
             write_record(owner, record)
         except (ValueError, KeyError) as exc:
             self.report({'ERROR'}, str(exc))

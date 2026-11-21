@@ -83,6 +83,69 @@ class TestBondOrders(unittest.TestCase):
         self.assertTrue(curves)
         self.assertTrue(all(o.animation_data is None or not o.animation_data.action for o in curves))
 
+    def test_animated_ring_tracks_plane_and_keeps_manual_offset_on_both_halves(self):
+        import json
+        import math
+        import tempfile
+        from mathutils import Matrix
+        from molecular_blender import bond_edit
+        from molecular_blender.scene_edit import restyle_molecule
+        from molecular_blender.scene_state import read_record
+        bond_edit.register()
+        self.addCleanup(bond_edit.unregister)
+        scene = bpy.context.scene
+        self.addCleanup(scene.frame_set, scene.frame_current)
+        # The long out-of-plane substituent would win the static neighbor heuristic.
+        coords = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 0, 2)]
+        rotations = [Matrix.Rotation(a, 3, 'Z') @ Matrix.Rotation(b, 3, 'X')
+                     for a, b in ((0., 0.), (.3, .6), (.7, 1.2))]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'ring.sdf'
+            records = []
+            for rot in rotations:
+                lines = ['Ring', '', '', '  5  5  0  0  0  0            999 V2000']
+                for element, co in zip('CNCCC', coords):
+                    x, y, z = rot @ Vector(co)
+                    lines.append(f'{x:10.4f}{y:10.4f}{z:10.4f} {element:3s} 0  0  0')
+                lines += ['  1  2  2', '  2  3  1', '  3  4  1', '  1  4  1', '  1  5  1', 'M  END', '$$$$']
+                records.extend(lines)
+            path.write_text('\n'.join(records) + '\n')
+            manifest = path.with_suffix('.json')
+            manifest.write_text(json.dumps(dict(molecules=[dict(filename=path.name, sdf_record=i, frame=i*4)
+                                                           for i in range(3)])))
+            model, _, _ = BlendMoleculeSetup(bpy.context, str(manifest), draw_bond_orders=True,
+                trajectory_interpolation='hold', isovalues='')
+        halves = [bpy.data.objects[name] for name in model.bonds[0].name]
+        self.assertEqual(len(halves), 2)
+        bpy.ops.object.select_all(action='DESELECT')
+        halves[0].select_set(True)
+        bpy.context.view_layer.objects.active = halves[0]
+        for offset in (0., .3, -.4):
+            if offset:
+                self.assertEqual(bpy.ops.molecular_blender.set_bond_tilt(tilt=offset), {'FINISHED'})
+                self.assertAlmostEqual(read_record(model.scene_owner)['bonds'][0]['tilt_offset'], offset)
+                restyle_molecule(model.scene_owner, bond_thickness=.15)
+            for frame, sample in ((9, 2), (1, 0), (4, 0), (5, 1), (8, 1)):
+                scene.frame_set(frame)
+                desired = rotations[sample] @ Vector((0, math.cos(offset), math.sin(offset)))
+                for half in halves:
+                    a, b = self.strand_centers(half)
+                    self.assertGreater(abs((b-a).normalized().dot(desired)), .9999)
+
+    def test_near_collinear_neighbor_keeps_previous_strand_plane(self):
+        from molecular_blender.bond_orientation import trajectory_tilts
+        from molecular_blender.molecule import Snapshot
+        first, second, neighbor = [Atom('c', co, i) for i, co in enumerate(
+            ((0, 0, 0), (1, 0, 0), (1, 1, 1)))]
+        for atom in (first, second):
+            atom.trajectory = [Snapshot(atom.position, 0, (0, 0, 0)) for _ in range(4)]
+        neighbor.trajectory = [Snapshot(co, 0, (0, 0, 0)) for co in
+                               ((1, 1, 1), (2, 1e-6, -1e-6), (2, 0, 0), (1, -1, -1))]
+        tilts = list(trajectory_tilts(Bond(first, second, order=2),
+                                     {first: [second], second: [first, neighbor], neighbor: [second]}))
+        for angle in tilts[1:]:
+            self.assertAlmostEqual(angle, tilts[0], places=5)
+
     def setUp(self):
         self.objects = set(bpy.data.objects)
         self.curves = set(bpy.data.curves)

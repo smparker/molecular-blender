@@ -33,8 +33,8 @@ def geometry_import(context):
             bpy.ops.object.mode_set(mode='OBJECT')
         # Conversion and profile replacement can already have freed an ID.
         live = [block for block in blocks if block.as_pointer()]
-        # Keyframe insertion creates actions implicitly on the new objects.
-        actions = {obj.animation_data.action for obj in live if isinstance(obj, bpy.types.Object)
+        # Atom transforms and animated bond curves both allocate actions implicitly.
+        actions = {obj.animation_data.action for obj in live if isinstance(obj, (bpy.types.Object, bpy.types.Curve))
                    and obj.animation_data and obj.animation_data.action}
         if live:
             bpy.data.batch_remove(live)
