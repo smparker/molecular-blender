@@ -40,6 +40,17 @@ class TestAdaptiveImport(unittest.TestCase):
         self.labels = [call.kwargs['text'] for call in box.label.call_args_list]
         return {call.args[1] for call in box.prop.call_args_list}
 
+    def test_phase_control_requires_two_sampled_molden_orbital_frames(self):
+        manifest = self.folder / 'movie.json'
+        manifest.write_text(json.dumps({'molecules': [{'filename': 'wave.molden'}] * 2}))
+        self.assertIn('align_orbital_phase', self.visible(manifest.name))
+        self.assertNotIn('align_orbital_phase', self.visible('wave.molden'))
+        self.op.frame_step = 2
+        self.assertNotIn('align_orbital_phase', self.visible(manifest.name))
+        self.op.frame_step = 1
+        self.op.volume = 'spin'
+        self.assertNotIn('align_orbital_phase', self.visible(manifest.name))
+
     def test_molden_fields_follow_selection(self):
         self.assertIn('orbital_spin', self.visible('ORCA.MOLDEN.INPUT'))
         self.op.orbital_choice = 'custom'

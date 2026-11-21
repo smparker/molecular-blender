@@ -47,6 +47,39 @@ class TestSurfaceJobLifetime(unittest.TestCase):
 
 @unittest.skipUnless(bpy, 'requires Blender')
 class TestSurfaceWorker(unittest.TestCase):
+    def test_phase_alignment_preserves_signed_lobes_and_flags_a_crossing(self):
+        import numpy as np
+        from molecular_blender.importers import molecule_from_file
+        from molecular_blender.molecule import Molecule
+        from molecular_blender.orbitals import MOData
+        from molecular_blender.plotter import default_options, iter_surface_frames, process_options
+        data = molecule_from_file('examples/water-sto-3g.molden', {})
+        model = Molecule.from_dict('phase', data)
+        flipped = MOData.from_dict(data)
+        flipped.coeff = -flipped.coeff
+        crossing = MOData.from_dict(data)
+        crossing.coeff[[3, 4]] = crossing.coeff[[4, 3]]
+        model.orbitals_trajectory = [flipped, flipped, model.orbitals, crossing]
+        model.frame_numbers = [0, 1, 3, 4, 7]
+        options = default_options(dict(orbital='5', cumulative=False, isovalues='.07', resolution=.25))
+        process_options(options)
+        def frames(align):
+            return [fields for fields, _ in iter_surface_frames(
+                model, dict(options, align_orbital_phase=align), indexed=True)]
+        aligned = frames(True)
+        raw = frames(False)
+        for i in (0, 1, 2, 3):
+            for expected, actual in zip(aligned[0], aligned[i]):
+                np.testing.assert_array_equal(actual['vertices'], expected['vertices'])
+                np.testing.assert_array_equal(actual['faces'], expected['faces'])
+                self.assertNotIn('ambiguous_phase_frame', actual)
+        for original, reversed_sign in zip(raw[0], raw[1]):
+            self.assertGreater(np.linalg.norm(original['vertices'].mean(axis=0)
+                                              - reversed_sign['vertices'].mean(axis=0)), .1)
+        for actual, original in zip(aligned[-1], raw[-1]):
+            self.assertEqual(actual['ambiguous_phase_frame'], 8)
+            np.testing.assert_array_equal(actual['vertices'], original['vertices'])
+
     def test_worker_matches_synchronous_result(self):
         import numpy as np
         from molecular_blender.importers import molecule_from_file

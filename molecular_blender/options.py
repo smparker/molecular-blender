@@ -34,6 +34,7 @@ DEFAULTS = {"bonds": True,
                 "cube_field_type": "auto",
                 "orbital": "homo",
                 "orbital_spin": "all",
+                "align_orbital_phase": False,
                 "remesh" : 6,
                 "resolution": 0.05,
                 "colors": "default"

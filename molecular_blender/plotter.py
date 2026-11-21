@@ -40,6 +40,7 @@ from .molecule import Molecule
 from .periodictable import elements
 from .stylers import get_styler
 from .isosurfaces import cube_isosurface, molden_isosurface
+from .orbitals import sampled_orbital_overlap
 
 from .util import stopwatch, Timer, unique_name
 from .importers import molecule_from_file
@@ -903,17 +904,34 @@ def iter_surface_frames(molecule, options, progress_state=None, *, indexed=False
         isovals = options["isovalues"]
         resolution = options["resolution"]
 
-        def field_surface(model, name, label, levels):
+        align_phase = options.get('align_orbital_phase') and molecule.orbitals_trajectory
+        previous = {}
+
+        def field_surface(model, name, label, levels, frame):
+            ambiguous = False
             if model.is_density(name):
                 if not np.any(model.density_matrix(name)[0]):
                     return [], levels
                 field = model.get_density(name)
             else:
-                field = model.get_orbital(model.resolve_orbital(name, channel))
+                index = model.resolve_orbital(name, channel)
+                field = model.get_orbital(index)
+                if align_phase:
+                    spin = model.spins[index - 1] if model.spins else None
+                    if name in previous:
+                        last_field, last_spin = previous[name]
+                        overlap = sampled_orbital_overlap(last_field, field) if spin == last_spin else 0.0
+                        ambiguous = abs(overlap) < 0.5
+                        if overlap <= -0.5:
+                            field = model.get_orbital(index, flip_phase=True)
+                    current[name] = field, spin
             if levels is None:
                 levels = field.isovalue_containing_proportion(isovals) if options['cumulative'] else isovals
             method = 'adaptive' if model.is_density(name) else 'tiled'
             surfaces = molden_isosurface(field, levels, resolution, label, method=method)
+            if ambiguous:
+                for surface in surfaces:
+                    surface['ambiguous_phase_frame'] = frame
             if indexed:
                 for surface in surfaces:
                     surface['vertices'], surface['faces'] = index_field_triangles(surface.pop('triangles'), resolution)
@@ -922,9 +940,10 @@ def iter_surface_frames(molecule, options, progress_state=None, *, indexed=False
         initial_levels = {}
         for i, snapshot in enumerate(chain((orbitals,), molecule.orbitals_trajectory or ())):
             surfaces = []
+            current = {}
             for name in orbnames:
                 label = f"{name}-{i:4d}" if i else name
-                fields, levels = field_surface(snapshot, name, label, initial_levels.get(name))
+                fields, levels = field_surface(snapshot, name, label, initial_levels.get(name), fmap(i))
                 if i == 0:
                     initial_levels[name] = levels
                 if i:
@@ -932,6 +951,7 @@ def iter_surface_frames(molecule, options, progress_state=None, *, indexed=False
                         field['series'] = name
                 surfaces.extend(fields)
                 tick()
+            previous = current
             mapping = {fmap(i): [s['name'] for s in surfaces]} if molecule.orbitals_trajectory is not None else {}
             yield surfaces, mapping
 
@@ -966,6 +986,8 @@ class SurfaceMeshStage:
             mesh = create_surface_mesh_data(name, vertices, faces, weld_distance=None)
             self.definitions.append(dict(name=surface['name'], series=surface.get('series', surface['name']),
                                          isovalue=surface['isovalue'], mesh_data=mesh))
+            if 'ambiguous_phase_frame' in surface:
+                self.definitions[-1]['ambiguous_phase_frame'] = surface['ambiguous_phase_frame']
 
     def finish(self, context):
         from .geometry_import import rollback_new_ids

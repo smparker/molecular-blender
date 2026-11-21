@@ -356,6 +356,12 @@ class MB_PT_molecule(bpy.types.Panel):
                     action.enabled = available
                     action.operator('molecular_blender.recompute_surface', text='', icon='FILE_REFRESH').group = key
                 row.operator('molecular_blender.remove_surface', text='', icon='TRASH').group = key
+                uncertain = sorted(group.get('ambiguous_phase_frames', ()))
+                if uncertain:
+                    frames = ', '.join(map(str, uncertain[:4]))
+                    if len(uncertain) > 4:
+                        frames += f' (+{len(uncertain) - 4} more)'
+                    entry.label(text='Phase uncertain at frame ' + frames, icon='ERROR')
                 if mapped:
                     saved = field_map_settings(obj.active_material)
                     if saved:

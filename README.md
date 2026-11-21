@@ -614,6 +614,16 @@ Cube and Molden trajectory surfaces are built one snapshot at a time. Press
 imported molecular geometry. The finished meshes are stored in the blend file
 for scrubbing and rendering.
 
+For a JSON sequence of Molden files, choose **Molecular orbital** and enable
+**Align orbital phase across frames** to keep lobe colors consistent. In Python,
+use `align_orbital_phase=True`. For each selected orbital, the importer estimates
+its signed spatial overlap with the preceding sampled frame in the supplied
+coordinate system. A normalized overlap of −0.5 or lower reverses the sign for
+display. If the overlap magnitude is below 0.5 or the spin channel changes,
+the importer starts from the file's sign and flags that Blender frame in the
+Molecule sidebar. Orbital indices and frontier selections still resolve separately
+on each frame. An orbital crossing can require a different selection.
+
 With dynamic inferred bonds, **Break margin (%)** keeps an existing bond
 visible until its length exceeds the formation cutoff by the chosen percentage.
 The default is 5%. Set `bond_break_margin=0` for a single cutoff. The rule is

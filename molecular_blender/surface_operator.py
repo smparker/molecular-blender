@@ -47,6 +47,9 @@ class MoldenSurfaceProperties:
         name="Orbital Spin", description="Channel for frontier-orbital names; explicit numbers always use file indices",
         items=ORBITAL_SPINS, default='all')
 
+    align_orbital_phase: BoolProperty(name="Align orbital phase across frames", default=False,
+        description="Use the overlap with the preceding displayed orbital to keep lobe colors consistent")
+
     orbital: StringProperty(
         name="Orbital",
         description="Plot this orbital from molden file. Accepts comma separated list, homo-n, lumo+m. (ignored for other inputs)",

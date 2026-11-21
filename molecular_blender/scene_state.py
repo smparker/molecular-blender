@@ -178,6 +178,8 @@ def persist_surfaces(owner, definitions, options):
         record['surfaces'].append(dict(id=identifier, field=field, group=groups[field],
                                        orbital_spin=options.get('orbital_spin', 'all'),
                                        isovalue=float(definition['isovalue'])))
+        if 'ambiguous_phase_frame' in definition:
+            record['surfaces'][-1]['ambiguous_phase_frame'] = definition['ambiguous_phase_frame']
         if record['orbitals'] and 'isovalues' in options:
             record['surfaces'][-1]['sampling'] = surface_sampling(options)
     write_record(owner, record)

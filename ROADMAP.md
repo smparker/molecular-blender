@@ -101,7 +101,8 @@ Entry points: `AnimateMolecule`, `compute_surface_vertex_sets`, and `create_surf
 - [ ] **Expose physical playback timing.** Add time units and frame rate options.
 - [x] **Stabilize dynamic inferred bonds.** Separate formation and breaking distances with an adjustable break margin.
 - [ ] **Design per-frame bond-order perception.** Handle strand appearance/disappearance and charge conservation.
-- [ ] **Improve orbital animation continuity.** Track orbital overlap/phase across frames and expose the limitations around crossings and near-degenerate orbitals rather than trusting an unchanged index alone.
+- [x] **Align orbital phases across frames.** Molden trajectories can use sampled real-space overlap to stabilize lobe colors. The sidebar identifies frames with ambiguous phase.
+- [ ] **Track orbital identity near crossings.** Follow changes in orbital ordering and handle near-degenerate subspaces.
 - [x] **Stream trajectory surface construction.** Cube and Molden trajectories build Blender meshes a frame at a time. The interactive worker queues at most two completed frames on disk. Escape, worker failure and add-on shutdown discard staged surfaces. A 24-frame signed cube benchmark produced the same 48 meshes and 1,498,176 faces, with peak memory falling from 333 to 307 MiB in Blender and from 341 to 302 MiB in the worker.
 - [ ] **Load trajectory meshes on demand during playback.** Completed scenes currently retain all final meshes for scrubbing, rendering and saving.
 

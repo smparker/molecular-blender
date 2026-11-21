@@ -317,6 +317,7 @@ if _HAS_BPY:
                 cube_field_type=self.cube_field_type,
                 orbital=self.orbital,
                 orbital_spin=self.orbital_spin,
+                align_orbital_phase=self.align_orbital_phase,
                 resolution=self.resolution,
                 remesh=self.remesh,
                 molden_convention=self.molden_convention,

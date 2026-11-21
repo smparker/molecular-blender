@@ -37,6 +37,25 @@ def _spin_weights(occupations, spins):
     return np.where(labels == 'Alpha', occupations, 0.), np.where(labels == 'Beta', occupations, 0.)
 
 
+def sampled_orbital_overlap(previous, current):
+    """Estimate normalized signed spatial overlap on a shared midpoint grid in Bohr."""
+    lo_a, hi_a = previous.bounding_box()
+    lo_b, hi_b = current.bounding_box()
+    if np.any(np.minimum(hi_a, hi_b) <= np.maximum(lo_a, lo_b)):
+        return 0.0
+    lower = np.minimum(lo_a, lo_b)
+    span = np.maximum(hi_a, hi_b) - lower
+    # Bound the cost independently of the render resolution. Each grid cell
+    # has equal volume, which cancels in the normalized inner product.
+    counts = np.clip(np.ceil(span / 0.3), 8, 80).astype(int)
+    axes = [(origin + (np.arange(n) + 0.5) * width / n).astype(np.float32)
+            for origin, width, n in zip(lower, span, counts)]
+    left = previous.box_values(*axes).astype(np.float64).ravel()
+    right = current.box_values(*axes).astype(np.float64).ravel()
+    norm = np.linalg.norm(left) * np.linalg.norm(right)
+    return float(np.clip(np.dot(left, right) / norm, -1, 1)) if norm > 0 else 0.0
+
+
 def frontier_index(occupations, spins, energies, kind, spin=None, offset=0):
     """Resolve a one-based frontier index from orbital metadata alone."""
     if kind not in ('homo', 'lumo') or isinstance(offset, bool) or not isinstance(offset, (int, np.integer)) or offset < 0:
@@ -164,9 +183,10 @@ class MOData:
                 iorb, self.coeff.shape[0]))
         return int(iorb)-1
 
-    def get_orbital(self, iorb, spin=None):
+    def get_orbital(self, iorb, spin=None, *, flip_phase=False):
         """Return a Bohr-coordinate evaluator for a one-based orbital or HOMO-relative index."""
-        return OrbitalCalculator(self.shells, self.coeff[self._orbital_index(iorb, spin), :])
+        coeff = self.coeff[self._orbital_index(iorb, spin), :]
+        return OrbitalCalculator(self.shells, -coeff if flip_phase else coeff)
 
     @property
     def occupation_scale(self):

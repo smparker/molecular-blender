@@ -63,6 +63,19 @@ class TestGamma2n(unittest.TestCase):
 # -- gaussian_overlap (python only) --
 
 class TestGaussianOverlap(unittest.TestCase):
+    def test_phase_overlap_includes_displacement_and_sign(self):
+        from molecular_blender.orbitals import sampled_orbital_overlap
+        exponent = np.array([0.8], dtype=np.float32)
+        coefficient = np.ones(1, dtype=np.float32)
+        for backend in ([ao_py, ao_cy] if HAS_CYTHON_AO else [ao_py]):
+            with self.subTest(backend=backend.__name__):
+                def field(x, sign):
+                    center = np.array([x, 0, 0], dtype=np.float32)
+                    shell = backend.Shell(center, 0, exponent, coefficient, 0)
+                    return backend.OrbitalCalculater([shell], sign * coefficient)
+                overlap = sampled_orbital_overlap(field(0., 1), field(1.2, -1))
+                self.assertAlmostEqual(overlap, -np.exp(-0.8 * 1.2**2 / 2), places=5)
+
     def test_s_overlap(self):
         center = np.array([0.0, 0.0, 0.0])
         olap = ao_py.gaussian_overlap(center, 1.0, [0, 0, 0], center, 1.0, [0, 0, 0])

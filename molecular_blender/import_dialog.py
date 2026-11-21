@@ -30,9 +30,9 @@ def _manifest_source(path, first_frame):
         entries = json.load(stream)['molecules']
     first = entries[0 if len(entries) == 1 else first_frame]
     if 'linear_combination' in first:
-        return 'cube', None
+        return 'cube', None, len(entries)
     child = os.path.join(os.path.dirname(path), first['filename'])
-    return file_format(child), child
+    return file_format(child), child, len(entries)
 
 
 @lru_cache(maxsize=16)
@@ -58,7 +58,7 @@ def surface_source(path, first_frame=0):
     """The first frame supplies a JSON trajectory's field, just as in the reader."""
     kind = file_format(path)
     if kind == 'json':
-        kind, path = _preview(_manifest_source, path, first_frame) or (None, None)
+        kind, path, _ = _preview(_manifest_source, path, first_frame) or (None, None, 0)
         if kind == 'cube' and path is None:
             return 'cube', range(1)
     labels = _preview(cube_dataset_labels, path) if kind == 'cube' else None
@@ -122,12 +122,15 @@ def draw_surfaces(layout, op, context):
         return
     box = layout.box()
     box.label(text='Surfaces')
+    trajectory = False
     if kind == 'molden' and file_format(path) == 'json':
-        _, path = _preview(_manifest_source, path, op.frame_start)
-    draw_surface_controls(box, op, kind, labels, path)
+        _, path, count = _preview(_manifest_source, path, op.frame_start)
+        last = min(count - 1, op.frame_end) if op.frame_end >= 0 else count - 1
+        trajectory = last - op.frame_start >= op.frame_step
+    draw_surface_controls(box, op, kind, labels, path, trajectory=trajectory)
 
 
-def draw_surface_controls(box, op, kind, labels=None, path=None):
+def draw_surface_controls(box, op, kind, labels=None, path=None, *, trajectory=False):
     if kind == 'molden':
         box.prop(op, 'volume')
         if op.volume == 'orbital':
@@ -136,6 +139,8 @@ def draw_surface_controls(box, op, kind, labels=None, path=None):
                 box.prop(op, 'orbital', text='Selection')
             if uses_frontier_spin(op.orbital):
                 box.prop(op, 'orbital_spin')
+            if trajectory:
+                box.prop(op, 'align_orbital_phase')
     elif labels is not None and len(labels) > 1:
         if len(labels) <= MAX_DATASET_MENU:
             box.prop(op, 'dataset_choice')
