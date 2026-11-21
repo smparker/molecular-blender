@@ -7,6 +7,7 @@ Terminating the process interrupts even a compiled numerical loop.
 import atexit
 from dataclasses import dataclass
 import json
+import logging
 from pathlib import Path
 import pickle
 import subprocess
@@ -34,8 +35,8 @@ class SavedSurfaceSource:
 
     def load(self, options):
         from .importers import molecule_from_file
-        from .molecule import Molecule
-        from .scene_state import orbital_metadata, response_metadata
+        from .molecular_data import Molecule
+        from .orbitals import orbital_metadata, response_metadata
 
         data = molecule_from_file(self.path, options)
         model = Molecule.from_dict('surface-worker', data)
@@ -107,6 +108,7 @@ class SurfaceJob:
             raise RuntimeError('Surface calculation is still running')
         error_path = self.directory / 'error.txt'
         if error_path.exists():
+            logging.getLogger(__package__).error("%s", (self.directory / "worker.log").read_text(errors="replace"))
             raise RuntimeError(error_path.read_text())
         if self.process is None or self.process.returncode != 0:
             log = (self.directory / 'worker.log').read_text(errors='replace')

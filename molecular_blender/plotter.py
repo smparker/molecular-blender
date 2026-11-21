@@ -40,7 +40,8 @@ from .molecule import Molecule
 from .periodictable import elements
 from .stylers import get_styler
 from .isosurfaces import cube_isosurface, molden_isosurface
-from .orbitals import sampled_orbital_overlap
+from .surface_calculation import compute_surface_vertex_sets, iter_surface_frames
+from .surface_geometry import field_geometry, field_weld_distance, index_field_triangles
 
 from .util import stopwatch, Timer, unique_name
 from .importers import molecule_from_file
@@ -726,53 +727,6 @@ def _animate_strand_tilts(molecule, frame_map, interpolation):
                         key.interpolation = interpolation
 
 
-def field_weld_distance(resolution):
-    # Intersections are shared to float32 precision. A fixed 0.01 Å weld
-    # also merges distinct vertices on fine grids and can tear a closed mesh.
-    return resolution * 1e-4
-
-
-def index_field_triangles(triangles, resolution):
-    """Share float32 intersections and close sub-grid seams before allocating a Blender mesh."""
-    points = np.ascontiguousarray(triangles, dtype=np.float32).reshape(-1, 3)
-    if not len(points):
-        return points, np.empty((0, 3), dtype=np.int32)
-    # Sort complete XYZ triples as one key. Most shared edges match exactly.
-    keys = points.view(np.dtype((np.void, points.strides[0]))).ravel()
-    _, first, corners = np.unique(keys, return_index=True, return_inverse=True)
-    vertices = points[first]
-    faces = corners.reshape(-1, 3)
-
-    # Adjacent marching cells can interpolate the same edge in opposite directions.
-    # Merge residual roundoff by distance, including points across rounding-bin boundaries.
-    tree = KDTree(len(vertices))
-    for index, point in enumerate(vertices):
-        tree.insert(point, index)
-    tree.balance()
-    representatives = np.arange(len(vertices), dtype=np.int32)
-    tolerance = field_weld_distance(resolution)
-    for index, point in enumerate(vertices):
-        if representatives[index] == index:
-            for _, other, _ in tree.find_range(point, tolerance):
-                if other > index and representatives[other] == other:
-                    representatives[other] = index
-    faces = representatives[faces]
-    a, b, c = faces.T
-    faces = faces[(a != b) & (b != c) & (c != a)]
-    # Collapsing a tiny sliver can also make two faces share all three corners.
-    face_keys = np.sort(faces, axis=1).view(np.dtype((np.void, 3 * faces.itemsize))).ravel()
-    _, first_face = np.unique(face_keys, return_index=True)
-    faces = faces[np.sort(first_face)]
-    used, indices = np.unique(faces, return_inverse=True)
-    return vertices[used], indices.reshape(-1, 3).astype(np.int32)
-
-
-def field_geometry(definition, resolution):
-    if 'faces' in definition:
-        return definition['vertices'], definition['faces']
-    return index_field_triangles(definition['triangles'], resolution)
-
-
 def _write_indexed_triangles(mesh, vertices, faces):
     """Fill Blender's vertex, loop and polygon arrays without a second mesh or weld."""
     mesh.vertices.add(len(vertices))
@@ -843,138 +797,6 @@ def create_geometry(verts):
             faces.append((faceoffset + 0, faceoffset + 1, faceoffset + 2))
             faceoffset += 3
     return list(chain.from_iterable(verts)), faces
-
-
-def iter_surface_frames(molecule, options, progress_state=None, *, indexed=False):
-    """Yield one snapshot's fields and visibility map, including empty trajectory frames."""
-    if molecule.volume is None and molecule.orbitals is None:
-        return
-    fmap = get_frame_mapper(options, getattr(molecule, "frame_numbers", None))
-
-    # Count total tasks for progress tracking
-    if progress_state is not None:
-        if molecule.volume is not None:
-            total = 1 + (len(molecule.volume_trajectory) if molecule.volume_trajectory else 0)
-        elif molecule.orbitals is not None:
-            total = (1 if options["volume"] != 'orbital' else
-                     len([x.strip() for x in options["orbital"].split(',')]))
-            total *= 1 + len(molecule.orbitals_trajectory or [])
-        else:
-            total = 1
-        progress_state["total"] = max(total, 1)
-        progress_state["completed"] = 0
-
-    def tick():
-        if progress_state is not None:
-            progress_state["completed"] = progress_state.get("completed", 0) + 1
-
-    if molecule.volume is not None:  # volumetric data was read
-        frames = [molecule.volume, *(molecule.volume_trajectory or ())]
-        for vol in frames:
-            vol.select_dataset(options.get("cube_dataset", 0))
-        levels = options["isovalues"]
-        if options["cumulative"]:
-            reference = frames[0]
-            if reference.linear_combination:
-                reference = next((vol for vol in frames if np.any(vol.data)), None)
-                if reference is None:
-                    for _ in frames:
-                        tick()
-                    return
-            levels = reference.isovalue_containing_proportion(levels, options.get("cube_field_type", "auto"))
-        for i, vol in enumerate(frames):
-            name = "cube-{:5d}".format(i) if i else "cube"
-            surfaces = cube_isosurface(vol.data, vol.origin, vol.axes, levels, name=name)
-            if vol.linear_combination:
-                surfaces = [s for s in surfaces if len(s['triangles'])]
-            for surface in surfaces:
-                surface['series'] = 'cube'
-                surface['grid_spacing'] = float(min(vol.axis_norms))
-                if indexed:
-                    surface['vertices'], surface['faces'] = index_field_triangles(
-                        surface.pop('triangles'), surface['grid_spacing'])
-            mapping = {fmap(i): [s['name'] for s in surfaces]} if len(frames) > 1 else {}
-            tick()
-            yield surfaces, mapping
-
-    elif molecule.orbitals is not None:  # orbital data was read
-        orbitals = molecule.orbitals
-        channel = options.get('orbital_spin', 'all')
-        channel = None if channel == 'all' else channel
-        if options['volume'] == 'response':
-            orbnames = [orbitals.response_field(options.get('response_eigenpair', 0))]
-        elif options['volume'] == 'orbital':
-            orbnames = [x.strip().lower() for x in options['orbital'].split(',')]
-        else:
-            orbnames = [options['volume']]
-        isovals = options["isovalues"]
-        resolution = options["resolution"]
-
-        align_phase = options.get('align_orbital_phase') and molecule.orbitals_trajectory
-        previous = {}
-
-        def field_surface(model, name, label, levels, frame):
-            ambiguous = False
-            if options['volume'] == 'response' and not model.is_density(name):
-                raise ValueError(f'Blender frame {frame} is missing DIPL {name}')
-            if model.is_density(name):
-                if not np.any(model.density_matrix(name)[0]):
-                    return [], levels
-                field = model.get_density(name)
-            else:
-                index = model.resolve_orbital(name, channel)
-                field = model.get_orbital(index)
-                if align_phase:
-                    spin = model.spins[index - 1] if model.spins else None
-                    if name in previous:
-                        last_field, last_spin = previous[name]
-                        overlap = sampled_orbital_overlap(last_field, field) if spin == last_spin else 0.0
-                        ambiguous = abs(overlap) < 0.5
-                        if overlap <= -0.5:
-                            field = model.get_orbital(index, flip_phase=True)
-                    current[name] = field, spin
-            if levels is None:
-                levels = field.isovalue_containing_proportion(isovals) if options['cumulative'] else isovals
-            method = 'adaptive' if model.is_density(name) else 'tiled'
-            surfaces = molden_isosurface(field, levels, resolution, label, method=method)
-            if ambiguous:
-                for surface in surfaces:
-                    surface['ambiguous_phase_frame'] = frame
-            if indexed:
-                for surface in surfaces:
-                    surface['vertices'], surface['faces'] = index_field_triangles(surface.pop('triangles'), resolution)
-            return surfaces, levels
-
-        initial_levels = {}
-        for i, snapshot in enumerate(chain((orbitals,), molecule.orbitals_trajectory or ())):
-            surfaces = []
-            current = {}
-            for name in orbnames:
-                label = f"{name}-{i:4d}" if i else name
-                fields, levels = field_surface(snapshot, name, label, initial_levels.get(name), fmap(i))
-                if i == 0:
-                    initial_levels[name] = levels
-                if i:
-                    for field in fields:
-                        field['series'] = name
-                surfaces.extend(fields)
-                tick()
-            previous = current
-            mapping = {fmap(i): [s['name'] for s in surfaces]} if molecule.orbitals_trajectory is not None else {}
-            yield surfaces, mapping
-
-
-def compute_surface_vertex_sets(molecule, options, progress_state=None, *, indexed=False):
-    """Collect numerical results for callers that request the full calculation."""
-    definitions, mapping = [], {}
-    for surfaces, frames in iter_surface_frames(molecule, options, progress_state, indexed=indexed):
-        definitions.extend(surfaces)
-        mapping.update(frames)
-    if molecule.orbitals is not None and molecule.orbitals_trajectory and options['volume'] == 'orbital':
-        # The collecting API historically returns all snapshots of one orbital together.
-        order = {name.strip().lower(): i for i, name in enumerate(options['orbital'].split(','))}
-        definitions.sort(key=lambda field: order[field.get('series', field['name'])])
-    return definitions, mapping
 
 
 class SurfaceMeshStage:

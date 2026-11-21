@@ -498,11 +498,12 @@ class TestBondOrders(unittest.TestCase):
                                    ['Alpha','Alpha','Beta','Beta'], energies=[-1.,1.,-2.,2.])
         options = default_options({'orbital': 'homo', 'orbital_spin': 'beta',
                                    'isosurfaces': True, 'isovalues': [.1], 'cumulative': False})
-        with patch('molecular_blender.plotter.molden_isosurface', return_value=[]) as generate:
+        with patch('molecular_blender.surface_calculation.field_isosurface', return_value=[]) as generate:
             compute_surface_vertex_sets(molecule, options)
+        from molecular_blender.constants import ang2bohr
         selected = generate.call_args[0][0]
         expected = molecule.orbitals.get_orbital(3)
-        self.assertAlmostEqual(selected.value(0., .1, .2), expected.value(0., .1, .2))
+        self.assertAlmostEqual(selected.point([0., .1, .2]), expected.value(0., .1*ang2bohr, .2*ang2bohr))
 
     def test_importer_bond_order_toggle(self):
         from types import SimpleNamespace

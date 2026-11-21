@@ -11,8 +11,8 @@ import traceback
 def main(directory):
     # Prefer the same addon installation/check-out as the launching process.
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from molecular_blender.molecule import Molecule
-    from molecular_blender.plotter import compute_surface_vertex_sets, iter_surface_frames
+    from molecular_blender.molecular_data import Molecule
+    from molecular_blender.surface_calculation import compute_surface_vertex_sets, iter_surface_frames
     from molecular_blender.surface_jobs import SavedSurfaceSource
 
     class Progress(dict):
