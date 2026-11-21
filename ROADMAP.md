@@ -7,9 +7,6 @@ Keep the current curve-extrusion approach for bonds as the baseline. Keep bond-o
 ## Remaining topics
 
 - **Builds and releases (4).** Share compiler settings between build tools, define the supported Blender/Python/NumPy combinations, and test the remaining release packages in clean Blender installations. The fourth item, comparing a water ESP value from the installed wheel and add-on ZIP, is deferred. [Packaging and compatibility](#11-packaging-compatibility-and-user-workflows)
-- **Numerical reliability and test isolation (2).** Audit native allocations, pointer lifetimes, array layouts and screening. Check for Blender objects and data left behind by tests, and establish runtime and peak-memory baselines. [Numerical implementation](#9-performance-and-numerical-implementation) and [tests](#10-tests-and-scientific-validation)
-- **Input formats and writer examples (2).** Choose among PDB/mmCIF, MOL2 and periodic inputs when a concrete workflow calls for one. Add runnable figure examples for more quantum-chemistry writers using formats the importer already reads. [Input formats](#5-import-export-and-data-fidelity) and [workflow examples](#11-packaging-compatibility-and-user-workflows)
-- **Publication output (1 placeholder).** Field legends are implemented and scale bars belong in compositing. The open entry has no further figure feature specified. [Scientific visualization](#3-other-scientific-visualization-features)
 
 ## 1. Post-import editing and scene interaction
 
@@ -68,7 +65,6 @@ Entry points: [orbitals.py](molecular_blender/orbitals.py), [compute_ao_py.py](m
 - [x] **Choose a Turbomole response density.** A Molden manifest with a DIPL file offers an eigenpair picker for rendering signed induced densities.
 - [x] **Set ordinary renders to transparent PNG.** Output Properties includes a one-click film and RGBA output preset.
 - [x] **Align the viewport to molecular principal axes.** Frame the current geometry with its longest dimension horizontal and best-fit plane face-on, using the current view to resolve ambiguous axes.
-- [ ] **Improve publication output.** Standalone field legends are available for compositing. Scale bars remain a compositing task.
 
 ## 4. Bond perception and chemical representation
 
@@ -91,8 +87,7 @@ Entry points: [importers.py](molecular_blender/importers.py), [transform.py](mol
 - [x] **Validate spherical f and g orbitals.** The coefficient tables reproduce all 16 real harmonics in Molden order. ORCA imports handle its radial and phase conventions. Point and grid tests include weak tails from an independent [ORCA water calculation](test/fixtures/orca_water_fg/README.md).
 - [x] **Validate spherical Molden import from a second writer.** A PySCF RHF water calculation supplies independent values for all 28 signed orbitals and total density on a 64-point grid with the ORCA fix off. The density check exposed premature screening of a contracted oxygen s shell. [Reference generator](test/fixtures/pyscf_water/generate.py)
 - [x] **Preserve all cube datasets.** All cube fields and dataset IDs are retained, with a zero-based importer/API selector and first-field compatibility. Optional header value counts and malformed lengths are tested. Free-form comments are retained without guessing physical field types or units.
-- [x] **Audit cube coordinates and grid conventions.** Tests cover both voxel-count unit conventions, nonzero origins, atom positions on a known surface, rotated orthogonal grids with unequal spacings, and surface normals on left-handed grids. Dataset tests cover optional header values and malformed data lengths. The reader reports mixed signs, zero counts, and degenerate or sheared axes. General sheared-grid support remains a possible extension.
-- [ ] **Consider PDB/mmCIF, MOL2, and periodic inputs.** Choose formats based on actual use cases: biomolecular hierarchy, typed bonds, or unit cells. The disabled Babel fallback has been removed; unsupported formats now report the supported formats.
+- [x] **Audit cube coordinates and grid conventions.** Tests cover both voxel-count unit conventions, nonzero origins, atom positions on a known surface, rotated orthogonal grids with unequal spacings, and surface normals on left-handed grids. Dataset tests cover optional header values and malformed data lengths. The reader reports mixed signs, zero counts, and degenerate or sheared axes.
 - [x] **Check atom counts and element order across JSON trajectory frames.** The reader resolves paths relative to the manifest and checks each subsequent frame against the first. [JSON reader](molecular_blender/importers.py)
 - [x] **Validate JSON trajectories.** Check frame indices, references, atom identities, SDF topology, Molden basis and orbital channels, and cube dataset IDs. Each cube frame uses its own grid. Atom and surface keyframes honor manifest timing and SDF entries can select records.
 
@@ -158,7 +153,9 @@ Entry points: [molecule.py](molecular_blender/molecule.py), [compute_ao_cy.pyx](
 - [x] **Build indexed orbital and density meshes.** Molden calculations share vertices before passing surfaces to Blender. The initial import and sidebar recomputation write indexed faces directly, using the grid spacing to resolve duplicate intersections. [Mesh benchmark](benchmarks/orbital_mesh.py)
 - [x] **Extend indexed meshes to cube data.** Cube and JSON field surfaces share vertices using each frame’s smallest voxel spacing. Tests cover rotated anisotropic grids, both signs of a difference field and field mapping on a remeshed density.
 - [x] **Measure orbital precision and fast math on real contours.** A controlled float32/64 and fast-math on/off comparison on planar and twisted ethene found a maximum vertex shift of 0.000020 Å at 0.05 Å spacing. The maximum sampled outer crossing error against PySCF was 0.000581 Å. [Benchmark and results](test/fixtures/pyscf_ethene/README.md)
-- [ ] **Audit remaining Cython memory and numerical contracts.** Check allocation failures, pointer lifetime, remaining array layout/dtype assumptions and screening across other fields and inputs.
+- [x] **Audit Cython memory and numerical contracts.** Native AO kernels hold their primitive buffers, validate shell and output sizes, handle strided and empty grids, and use managed scratch space. Density screening accounts for both indices of a coupling. Native marching propagates allocation failures, and the ESP recurrence checks predecessor indices before reading its workspace. [AO regressions](test/test_compute_ao.py), [meshing regressions](test/test_marching_cube.py) and [ESP regressions](test/test_wavefunction_esp.py)
+- [x] **Profile and speed up drawing orbitals.** Reuse Gaussian scratch space, factor one-primitive s/p shells along grid rows, and transfer marching-cubes triangles directly into NumPy arrays. In Blender 4.3.2 on Apple Silicon, generating both HOMO meshes at ±0.05 and 0.06 Å took 154 ms for planar ethene and 332 ms for phenanthroline, down from 234 and 475 ms (one warm-up, medians of three). Native AO sampling went from 115 to 60 ms and 201 to 128 ms respectively. Marching went from 21 to 8 ms and 59 to 20 ms. Largest corresponding triangle-vertex shift was 0.0000022 Å. [Reproduce the benchmark](benchmarks/orbital_kernels.py)
+- [x] **Bound large density contractions.** Tile the point-by-AO work arrays to a combined 64 MiB budget. Sampling the first phenanthroline response on a 100³ grid took 0.069 s versus 0.491 s, and fresh Blender process peak RSS fell from 2,084 to 465 MiB. The largest absolute change across all million values was 8.95 × 10⁻⁸. Run the [benchmark](benchmarks/orbital_kernels.py) with `-- --response`.
 
 ## 10. Tests and scientific validation
 
@@ -177,7 +174,7 @@ There is already useful coverage for readers, numerical routines, geometry, bond
 - [x] **Run the bond-perception reference comparison independently.** A dedicated CI job installs RDKit and runs the existing comparison across 24 molecular graphs, including the documented sulfur convention.
 - [x] **Grow independent scientific references for distorted geometry.** Planar and 30° twisted ethene have native PySCF values on either side of the π node, in both tails, and at signed contour crossings. Blender tests check each published lobe for closure and clearance. [Fixtures](test/fixtures/pyscf_ethene) and [tests](test/test_ethene_orbitals.py)
 - [x] **Test the installed artifacts, not just the checkout.** Standalone wheel tests require both compiled extensions from the installed package and exercise known Gaussian/surface results independently of test ordering. Missing installations/binaries fail; a separate CI job verifies Python fallback. Commit `9f085b1`.
-- [ ] **Finish test isolation and performance baselines.** The test runner handles external working directories and paths with spaces. Reader tests exercise malformed Molden, SDF and cube input. Verify scene/datablock cleanup across the suite and add peak-memory and runtime baselines.
+- [x] **Isolate Blender tests and record runtime and peak memory.** Each test gets a fresh scene. The runner restores the previous scene, removes added datablocks including orphans, and compares datablock identities after cleanup, including on failure. Before isolation, discovery retained 1,737 datablocks. On local Blender 4.3.2 with compiled kernels, the updated suite ran 426 tests in 26.0 s with 7 skips and 618 MiB peak process RSS. The original 416-test run took 35.0 s and peaked at 2,361 MiB. These are local baselines. [Runner](test/run_tests.py) and [isolation regression](test/test_runner.py)
 
 ## 11. Packaging, compatibility, and user workflows
 
@@ -194,7 +191,7 @@ Entry points: [pyproject.toml](pyproject.toml), [setup.py](setup.py), [blender_s
 - [x] **Adapt import controls to the selected file and field.** The highlighted file determines the available controls. Cube files expose the appropriate dataset picker, Molden densities hide orbital controls, and JSON manifests preview the first frame. Import Details reports the active numerical backends. [Dialog tests](test/test_import_dialog.py)
 - [x] **Add post-import and trajectory examples.** [Edit and export water orbitals](examples/edit_orbitals.py) and [animate an SDF record sequence](examples/water_bend.json).
 - [x] **Add a runnable ESP figure workflow.** The [water example](examples/render_water_esp.py) maps a supplied PySCF potential cube onto its Molden density surface and exports a transparent PNG and matching SVG legend.
-- [ ] **Add workflow examples for additional quantum-chemistry writers.**
+- [x] **Add runnable figure examples from TURBOMOLE and xTB.** The [ethene figure script](examples/render_ethene.py) renders the signed RHF π HOMO from a legacy TURBOMOLE Molden export and the positive GFN2-xTB valence density from an xTB cube. [Inputs and regeneration instructions](examples/ethene_fields/README.md)
 - [x] **Render an ORCA orbital figure.** The [ethene example](examples/render_orca_ethene.py) renders ORCA orbital 7 from the supplied wavefunction as Molden orbital 8 with automatic convention detection.
 
 ## Bugs found during implementation
@@ -246,7 +243,7 @@ Entry points: [pyproject.toml](pyproject.toml), [setup.py](setup.py), [blender_s
 
 
 - [x] **Remove the disabled Babel fallback.** Commit `092fb42`; unsupported formats raise an actionable `ValueError`.
-- [x] **Repair test-runner paths and argument handling.** Commit `717c68b`; named tests and discovery run from outside the checkout, shell arguments remain intact, and Blender starts with factory settings. Broader scene cleanup and performance-baseline work in section 10 remains open.
+- [x] **Repair test-runner paths and argument handling.** Commit `717c68b`; named tests and discovery run from outside the checkout, shell arguments remain intact, and Blender starts with factory settings. See section 10 for scene isolation and measured baselines.
 
 - [x] **Fix Python charge-option defaults.** `default_options` now provides `charge_offset`/`charge_factor`, and a Blender regression imports charge spheres using those defaults. Commit `e8a2ad9`.
 
@@ -262,7 +259,7 @@ Entry points: [pyproject.toml](pyproject.toml), [setup.py](setup.py), [blender_s
 
 ## Scope notes
 
-The first post-import editing increment does not require replacing the renderer. External ESP cubes provide field maps without a Gaussian Coulomb integral evaluator. Full aromaticity, metal chemistry and periodic systems each deserve separate designs and validation datasets before implementation.
+The first post-import editing increment does not require replacing the renderer. External ESP cubes provide field maps without a Gaussian Coulomb integral evaluator. The bond model covers the valence and aromaticity cases documented in section 4.
 
 Visualization defaults approved 2026-11-16: infer occupation scale 1/2 from the maximum; classify occupied strictly above half (half is empty). Spatial populations fill the majority spin first; missing labels default to alpha. Preserve actual fractional populations for density calculations.
 
