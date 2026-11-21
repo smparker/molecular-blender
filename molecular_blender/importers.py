@@ -31,6 +31,7 @@ import json
 import os
 import sys
 
+from .diagnostics import InputError
 from .options import molden_convention, trajectory_range
 from .esp import add_resampled_cube
 from .util import stopwatch
@@ -49,6 +50,7 @@ class Reader(object):
         self.marks = {}
         self.line_number = 0
         self.section = None
+        self.context = {}
 
     def readline(self):
         """Read the next physical line, counting the expected line at EOF."""
@@ -58,8 +60,9 @@ class Reader(object):
             raise EOFError
         return out
 
-    def error(self, section, message):
-        return ValueError(f"{self.filename}:{self.line_number}: {section}: {message}")
+    def error(self, section, message, **context):
+        return InputError(self.filename, section, message, line=self.line_number,
+                          **dict(self.context, **context))
 
     def set_mark(self, label, line):
         """Sets a mark of where label was found"""
@@ -84,7 +87,7 @@ class Reader(object):
         """Call upon exit from a with-as clause"""
         self.f.__exit__(exc_type, exc_val, exc_tb)
         self.f = None
-        if self.section and isinstance(exc_val, (ValueError, EOFError)):
+        if self.section and isinstance(exc_val, (ValueError, EOFError)) and not isinstance(exc_val, InputError):
             raise self.error(self.section, str(exc_val) or "Unexpected end of file") from exc_val
 
 
@@ -105,9 +108,15 @@ def molecule_from_file(filename, options):
                    cube=molecule_from_cube, json=molecule_from_json)
     reader = readers.get(file_format(filename))
     if reader is not None:
-        data = reader(filename, options)
+        try:
+            data = reader(filename, options)
+        except InputError:
+            raise
+        except (OSError, ValueError, EOFError) as exc:
+            raise InputError(filename, file_format(filename), str(exc) or "Unexpected end of file") from exc
         if data is None:
-            raise ValueError("Missing molecules list in " + os.fspath(filename))
+            raise InputError(filename, "JSON", "Missing molecules list")
+        data.setdefault("source", os.fspath(filename))
         return data
 
     raise ValueError(
@@ -144,12 +153,14 @@ def molecule_from_sdf(filename, options):
         raise ValueError("sdf_record must be a nonnegative integer")
     with Reader(filename) as reader:
         label = f"SDF record {record}"
+        reader.context = dict(record=record)
         reader.section = label
         for _ in range(record):
             while reader.readline().strip() != "$$$$":
                 pass
 
-        def line(section):
+        def line(section, **context):
+            reader.context = dict(record=record, **context)
             reader.section = f"{label}, {section}"
             text = reader.readline().rstrip('\r\n')
             if text.strip() == "$$$$":
@@ -170,7 +181,7 @@ def molecule_from_sdf(filename, options):
         ignore_h = options.get("ignore_hydrogen", False)
         charge_codes = {0: 0, 1: 3, 2: 2, 3: 1, 4: 0, 5: -1, 6: -2, 7: -3}
         for index in range(natoms):
-            row = line(f"atom {index + 1}")
+            row = line(f"atom {index + 1}", atom=index+1)
             position = [_finite_float(row[i:i + 10], axis) for i, axis in zip((0, 10, 20), 'xyz')]
             symbol = row[31:34].strip().lower()
             if symbol not in symbols:
@@ -184,7 +195,7 @@ def molecule_from_sdf(filename, options):
 
         seen = set()
         for number in range(1, nbonds + 1):
-            row = line(f"bond {number}")
+            row = line(f"bond {number}", bond=number)
             i, j, order = (int(row[k:k + 3]) for k in (0, 3, 6))
             if not (1 <= i <= natoms and 1 <= j <= natoms) or i == j:
                 raise ValueError(f"Invalid atom references {i}, {j}")
@@ -233,6 +244,7 @@ def molecule_from_xyz(filename, options):
     with Reader(filename) as reader:
         index = 0
         while end < 0 or index <= end:
+            reader.context = dict(frame=index)
             reader.section = f"XYZ frame {index}, atom count"
             try:
                 line = reader.readline()
@@ -250,6 +262,7 @@ def molecule_from_xyz(filename, options):
             reader.readline()
             keep = index >= start and (index - start) % step == 0
             for i in range(natoms):
+                reader.context["atom"] = i
                 reader.section = f"XYZ frame {index}, atom {i}"
                 line = reader.readline()
                 if not keep:
@@ -277,7 +290,7 @@ def molecule_from_xyz(filename, options):
                     break
             index += 1
     if not frames:
-        raise ValueError(f"{filename}: Frame range selects no XYZ snapshots")
+        raise InputError(filename, "XYZ", "Frame range selects no XYZ snapshots")
     if animate and len(frames) > 1:
         options["plot_type"] = "animate"
     return {"atoms": atoms, "frame_numbers": frames}
@@ -334,30 +347,29 @@ def molden_read_atoms(f, ignore_h=False, animate=False):
     unit = "au" if m.group(1) and m.group(1).lower() in "au" else "angs"
     factor = 1.0 if unit == "angs" else bohr2ang
 
-    # advance until a line starts with [
-    try:
-        line = f.readline()
-        m = NEWSECTION_RE.match(line)
-        while not m:
-            if not line.strip():
-                line = f.readline()
-                m = NEWSECTION_RE.match(line)
-                continue
-            element, index, _atom, x, y, z = line.split()
+    seen = set()
+    for row, fields in enumerate(_molden_section(f, "atoms"), 1):
+        section = f"[Atoms] atom row {row}"
+        context = dict(row=row)
+        try:
+            element, identifier, _atomic_number, x, y, z = fields
+            index = int(identifier)
+            section = f"[Atoms] atom {index}"
+            context["atom"] = index
+            if index in seen:
+                raise ValueError("Duplicate atom ID")
             element = element.lower()
-            index = int(index)
-            pos = [factor * molden_float(a) for a in [x, y, z]]
-            charge = 0.0
-            grad = [0.0, 0.0, 0.0]
-            hidden = ignore_h and element == "h"
-            new_atom = make_atom_dict(element, pos, index, charge, grad, hidden)
-            if animate:
-                new_atom["trajectory"] = [make_snap_dict(pos, charge, grad)]
-            out.append(new_atom)
-            line = f.readline()
-            m = NEWSECTION_RE.match(line)
-    except EOFError:
-        pass
+            if element not in elements:
+                raise ValueError(f"Unknown element {element!r}")
+            pos = [factor * molden_float(v) for v in (x, y, z)]
+        except ValueError as exc:
+            raise f.error(section, str(exc), **context) from exc
+        seen.add(index)
+        gradient = [0., 0., 0.]
+        atom = make_atom_dict(element, pos, index, 0., gradient, ignore_h and element == "h")
+        if animate:
+            atom["trajectory"].append(make_snap_dict(pos, 0., gradient))
+        out.append(atom)
 
     return sorted(out, key=lambda atom: atom["index"])
 
@@ -388,6 +400,7 @@ def molden_read_gto(f, atom_ids=None):
             continue
         if fields[0].isdigit():
             reference = int(fields[0])
+            f.context = dict(atom=reference)
             if reference < 1 or reference in blocks:
                 raise f.error(f"[GTO] atom {reference}", "Invalid or duplicate GTO atom reference")
             if atom_ids is not None and reference not in atom_ids:
@@ -425,6 +438,7 @@ def molden_read_gto(f, atom_ids=None):
             current.append({"shell": "p", "exponents": exponents.copy(),
                             "contractions": pcoefficients})
     references = sorted(blocks) if atom_ids is None else atom_ids
+    f.context = {}
     return [blocks.get(reference, []) for reference in references]
 
 
@@ -437,13 +451,17 @@ def molden_read_mo(f, nao):
     out, modata, coefficients = [], {}, []
 
     def error(message):
-        return f.error(f"[MO] orbital {len(out) + 1}", message)
+        return f.error(f"[MO] orbital {len(out) + 1}", message, orbital=len(out)+1)
 
     def finish():
         if modata or coefficients:
             if len(coefficients) != nao:
                 raise error("Molden MO expected {} coefficients, found {}".format(
                     nao, len(coefficients)))
+            if 'occup' not in modata:
+                raise error("Missing orbital occupation (Occup)")
+            if out and ('spin' in modata) != ('spin' in out[0]):
+                raise error("Incomplete spin labels across orbitals")
             out.append(dict(modata, coeff=coefficients.copy()))
 
     while True:
@@ -466,6 +484,10 @@ def molden_read_mo(f, nao):
                     value = str(molden_float(value))
                 except ValueError as exc:
                     raise error(f"Invalid {key} value: {value}") from exc
+            if key == 'occup' and not 0 <= float(value) <= 2:
+                raise error(f"Orbital occupation must be between 0 and 2, found {value}")
+            if key == 'spin' and value.lower() not in ('alpha', 'beta'):
+                raise error(f"Unknown spin label {value!r}")
             modata[key] = value
         else:
             fields = line.split()
@@ -478,6 +500,8 @@ def molden_read_mo(f, nao):
             except ValueError as exc:
                 raise error(f"Invalid Molden MO coefficient line {line.strip()!r}: {exc}") from exc
     finish()
+    if not out:
+        raise f.error("[MO]", "Empty orbital section")
     return out
 
 
@@ -567,7 +591,7 @@ def molecule_from_molden(filename, _options):
     # molden format is not terribly efficient, but hopefully this doesn't matter
     ignore_h = _options.get("ignore_hydrogen", False)
     animate = _options.get("plot_type", "") == "animate"
-    out = {"atoms": []}
+    out = {"atoms": [], "source": os.fspath(filename)}
     mode = molden_convention(_options)
 
     marks = {"molden": MOLDEN_RE, "title": TITLE_RE,
@@ -600,7 +624,7 @@ def molecule_from_molden(filename, _options):
             pass
 
         if not f.is_marked("molden"):
-            raise ValueError(f"{filename}: Molden file is missing [Molden Format] specification")
+            raise InputError(filename, "Molden header", "Molden file is missing [Molden Format] specification")
         if mode == 'auto':
             mode = 'standard'
             if f.is_marked('title'):
@@ -611,10 +635,13 @@ def molecule_from_molden(filename, _options):
         if f.is_marked("atoms"):
             out["atoms"] = molden_read_atoms(f, ignore_h, animate=animate)
         elif not f.is_marked("fr-coord"):
-            raise ValueError(f"{filename}: Molden file is missing [Atoms] or [FR-COORD]")
+            raise InputError(filename, "Molden geometry", "Molden file is missing [Atoms] or [FR-COORD]")
 
         if f.is_marked("fr-coord") or f.is_marked("fr-norm-coord"):
             molden_read_vibrations(f, out, ignore_h, animate)
+
+        if not out["atoms"]:
+            raise f.error("[Atoms]", "Missing atom records")
 
         if f.is_marked("gto"):  # read through GTO section to build basis
             out["basis"] = molden_read_gto(f, [atom["index"] for atom in out["atoms"]])
@@ -741,7 +768,7 @@ def _cube_values(f, size):
 @stopwatch("read cube")
 def molecule_from_cube(filename, options):
     """Read a cube file including its volumetric data"""
-    out = {"atoms": [], "volume": {}}
+    out = {"atoms": [], "volume": {"source": os.fspath(filename)}}
 
     ignore_h = options.get("ignore_hydrogen", False)
     animate = options.get("plot_type", "") in [ "animate", "auto" ]
@@ -790,6 +817,7 @@ def molecule_from_cube(filename, options):
         # next natoms lines define the molecule
         # <atomic number> <charge> <x> <y> <z>
         for i in range(abs(natoms)):
+            f.context = dict(atom=i)
             f.section = f"Cube atom {i}"
             ato, chg, x, y, z = f.readline().split()
             iatom = int(ato)
@@ -807,6 +835,7 @@ def molecule_from_cube(filename, options):
             out["atoms"].append(new_atom)
 
         # optionally check for DSET_IDs, basically labels of different data sets
+        f.context = {}
         volume_labels = list(_cube_labels(f, natoms, nvalues))
 
         # and finally the volumetric data comes, 6 elements per line in z, y, x order
@@ -817,7 +846,7 @@ def molecule_from_cube(filename, options):
     datasets = data.reshape(data_layout)
     selected = options.get('cube_dataset', 0)
     if isinstance(selected, bool) or not isinstance(selected, int) or not 0 <= selected < nvol:
-        raise ValueError(f'{filename}: cube_dataset must be a zero-based index in [0, {nvol})')
+        raise InputError(filename, 'Cube datasets', f'cube_dataset must be a zero-based index in [0, {nvol})')
     out['volume']['datasets'] = datasets
     out['volume']['labels'] = volume_labels
     out['volume']['dataset_index'] = selected
@@ -878,7 +907,7 @@ def _linear_combination(entry, directory, options):
             cube = molecule_from_cube(os.path.join(directory, name),
                                       dict(options, cube_dataset=term.get("cube_dataset", 0)))
         except (ValueError, OSError, EOFError) as exc:
-            raise ValueError(f"Term {index} ({name}): {exc}") from exc
+            raise InputError(os.path.join(directory, name), f"Term {index} ({name})", str(exc), term=index) from exc
         grid = cube["volume"]
         if result is None:
             result = cube
@@ -912,24 +941,27 @@ def _linear_combination(entry, directory, options):
 def molecule_from_json(filename, options, *, single_combination=False):
     """Read one structure per manifest entry, with zero-based timeline indices."""
     with open(filename) as source:
-        data = json.load(source)
+        try:
+            data = json.load(source)
+        except json.JSONDecodeError as exc:
+            raise InputError(filename, "JSON", exc.msg, line=exc.lineno, column=exc.colno) from exc
     if not isinstance(data, dict):
-        raise ValueError("Expected a JSON object in " + os.fspath(filename))
+        raise InputError(filename, "JSON", "Expected a JSON object")
     entries = data.get("molecules")
     if single_combination and not (isinstance(entries, list) and len(entries) == 1
             and isinstance(entries[0], dict) and "linear_combination" in entries[0]):
-        raise ValueError(f"{filename}: field mapping needs one linear_combination entry in molecules")
+        raise InputError(filename, "JSON", "field mapping needs one linear_combination entry in molecules")
     if "molecules" not in data:
         return None  # Historical direct reader API.
     if not isinstance(entries, list) or not entries:
-        raise ValueError("Expected a nonempty molecules list in " + os.fspath(filename))
+        raise InputError(filename, "JSON", "Expected a nonempty molecules list")
 
     start, end, step = trajectory_range(options)
     previous = -1
     frames = []
     merged = None
     for i, entry in enumerate(entries):
-        label = "{}: entry {}".format(filename, i + 1)
+        label = f"entry {i + 1}"
         try:
             if not isinstance(entry, dict):
                 raise ValueError("Expected a manifest entry")
@@ -949,6 +981,7 @@ def molecule_from_json(filename, options, *, single_combination=False):
             directory = os.path.dirname(filename)
             if "linear_combination" in entry:
                 current = _linear_combination(entry, directory, child_options)
+                current["volume"]["source"] = os.fspath(filename)
             else:
                 if not isinstance(entry.get("filename"), str) or not entry["filename"].strip():
                     raise ValueError("Expected a filename")
@@ -962,6 +995,8 @@ def molecule_from_json(filename, options, *, single_combination=False):
                     child_options["sdf_record"] = entry["sdf_record"]
                 current = molecule_from_file(path, child_options)
                 if "polar" in entry:
+                    if not isinstance(entry["polar"], str) or not entry["polar"].strip():
+                        raise ValueError("Expected a DIPL filename in polar")
                     orbital_pairs = None
                     if "mo" in current:
                         occupied = sum(_finite_float(orb.get("occup", ""), "Molden occupation") > 0
@@ -987,11 +1022,11 @@ def molecule_from_json(filename, options, *, single_combination=False):
                 merged.setdefault("volume_trajectory", []).append(current["volume"])
             if "mo" in current:
                 merged.setdefault("orbital_trajectory", []).append(current)
-        except Exception as exc:
-            raise ValueError("{}: {}".format(label, exc or "invalid frame")) from exc
+        except (ValueError, OSError, OverflowError) as exc:
+            raise InputError(filename, label, str(exc), entry=i+1) from exc
 
     if merged is None:
-        raise ValueError("Frame range selects no JSON entries in " + os.fspath(filename))
+        raise InputError(filename, "JSON", "Frame range selects no JSON entries")
     merged["frame_numbers"] = frames
     options["plot_type"] = "animate"
     return merged

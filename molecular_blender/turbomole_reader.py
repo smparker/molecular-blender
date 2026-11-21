@@ -29,6 +29,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .diagnostics import InputError
+
 PAIR_HEADER = re.compile(r'(\d+)\s+eigenvalue\s*=\s*(\S+)')
 
 
@@ -65,7 +67,7 @@ class DiplParser:
         self._parse(lines)
 
     def error(self, line, section, message):
-        return ValueError(f"{self.filename}:{line}: ${section}: {message}")
+        return InputError(self.filename, "$" + section, message, line=line)
 
     @staticmethod
     def _parse_scientific_notation(value: str) -> float:
