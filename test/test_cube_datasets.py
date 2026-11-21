@@ -160,6 +160,68 @@ class TestCubeDatasets(unittest.TestCase):
         self.assertEqual(frames[1], [])
         self.assertIn(2, frames)
 
+    def test_indexed_signed_trajectory_uses_each_grid_and_switches_only_on_changes(self):
+        try:
+            import bpy
+        except ImportError:
+            self.skipTest('requires Blender')
+        import json
+        from collections import Counter
+        from molecular_blender.plotter import BlendMoleculeSetup, compute_surface_vertex_sets, create_surface_meshes
+        from molecular_blender.scene_state import owned_objects
+
+        # Two disjoint, closed octahedra on a rotated left-handed grid. The
+        # short axis is finer than the old 0.01 angstrom weld distance.
+        original_scene = bpy.context.window.scene
+        scene = bpy.data.scenes.new('Cube trajectory')
+        bpy.context.window.scene = scene
+        def datablocks():
+            return {item for kind in ('objects', 'collections', 'meshes', 'curves', 'materials', 'actions')
+                    for item in getattr(bpy.data, kind)}
+        original_data = datablocks()
+        def cleanup():
+            bpy.context.window.scene = original_scene
+            bpy.data.batch_remove(datablocks() - original_data)
+            bpy.data.scenes.remove(scene)
+        self.addCleanup(cleanup)
+        entries = []
+        for i, (time, spacing) in enumerate(((0, .003), (3, .003), (5, .006), (8, .006))):
+            terms = []
+            for side, x in enumerate((2, 2 if time == 3 else 4)):
+                data = np.zeros((7, 5, 5), dtype=np.float32)
+                data[x, 2, 2] = 1.
+                cube = self.path.with_name(f'grid{i}_{side}.cube')
+                cube.write_text(f'rotated\ndensity\n1 0 0 0\n-7 .06 .08 0\n-5 -.16 .12 0\n'
+                                f'-5 0 0 {-spacing}\n1 0 0 0 0\n' + ' '.join(map(str, data.ravel())) + '\n')
+                terms.append(dict(filename=cube.name, coefficient=(1., -1.)[side]))
+            entries.append(dict(frame=time, units='au', linear_combination=terms))
+        manifest = self.path.with_suffix('.json')
+        manifest.write_text(json.dumps(dict(molecules=entries)))
+        model, styler, options = BlendMoleculeSetup(bpy.context, str(manifest), cumulative=False,
+            isovalues='.5,-.5', remesh=0, keystride=2, ignore_hydrogen=False)
+        definitions, frames = compute_surface_vertex_sets(model, options, indexed=True)
+        self.assertEqual(sorted(frames), [1, 7, 11, 17])
+        self.assertEqual(frames[7], [])
+        create_surface_meshes(model, styler, bpy.context, options, definitions, frames)
+        self.assertEqual(len(owned_objects(model.scene_owner, 'surface')), 6)
+        for surface in definitions:
+            obj = surface['mesh']
+            self.assertNotIn('triangles', surface)
+            self.assertEqual((len(obj.data.vertices), len(obj.data.polygons)), (6, 8))
+            edges = Counter(edge for poly in obj.data.polygons for edge in poly.edge_keys)
+            self.assertEqual(set(edges.values()), {2})
+            expected_spacing = .003 if surface['name'] in frames[1] else .006
+            self.assertAlmostEqual(np.ptp(surface['vertices'][:, 2]), expected_spacing)
+            switch_frames = ([1, 7] if surface['name'] in frames[1] else
+                             [1, 11, 17] if surface['name'] in frames[11] else [1, 17])
+            for curve in obj.animation_data.action.fcurves:
+                self.assertEqual([p.co.x for p in curve.keyframe_points], switch_frames)
+        for time, sample in ((0, 1), (1, 1), (6, 1), (7, 7), (10, 7), (11, 11), (16, 11), (25, 17), (2, 1)):
+            bpy.context.scene.frame_set(time)
+            for surface in definitions:
+                hidden = surface['name'] not in frames[sample]
+                self.assertEqual((surface['mesh'].hide_render, surface['mesh'].hide_viewport), (hidden, hidden))
+
     def test_explicit_containment_semantics_and_voxel_volume(self):
         try:
             import bpy

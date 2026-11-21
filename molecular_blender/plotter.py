@@ -230,13 +230,14 @@ def make_iso_materials(molecule, styler, vertex_sets, options):
     for the isosurfaces and adds keys under "material" to each vertex set
     """
 
-    orbitals = set([ v["name"] for v in vertex_sets ])
+    groups = {}
+    for surface in vertex_sets:
+        groups.setdefault(surface['name'], []).append(surface)
 
     # returns dict of materials created
     out = {}
 
-    for o in orbitals:
-        all_surfaces = [ v for v in vertex_sets if v["name"] == o ]
+    for o, all_surfaces in groups.items():
 
         # list of positive and negative isovalue surfaces
         positive_surfaces = [ v for v in all_surfaces if v["isovalue"] >= 0.0 ]
@@ -252,7 +253,6 @@ def make_iso_materials(molecule, styler, vertex_sets, options):
 
             nsurf = len(surf_list)
             vset = surf_list.pop(0)
-            iv = vertex_sets.index(vset)
             matname = "{orbital}_{type}_inner".format(orbital=o, type=mat_basename)
             if not (options["recycle_materials"] and matname in bpy.data.materials.keys()):
                 matname = unique_name(matname, bpy.data.materials.keys())
@@ -266,12 +266,11 @@ def make_iso_materials(molecule, styler, vertex_sets, options):
             else:
                 material = bpy.data.materials.get(matname)
             out[matname] = material
-            vertex_sets[iv]["material"] = material
+            vset["material"] = material
 
             # any remaining elements get the "outer" material
             for surf in surf_list:
                 matname = "{orbital}_{type}_outer".format(orbital=o, type=mat_basename)
-                iv = vertex_sets.index(surf)
                 if not (options["recycle_materials"] and matname in bpy.data.materials.keys()):
                     matname = unique_name(matname, bpy.data.materials.keys())
                     material = styler.outer_isosurface_material(matname)
@@ -279,7 +278,7 @@ def make_iso_materials(molecule, styler, vertex_sets, options):
                 else:
                     material = bpy.data.materials.get(matname)
                 out[matname] = material
-                vertex_sets[iv]["material"] = material
+                surf["material"] = material
 
     return out
 
@@ -814,7 +813,7 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None, *, index
 
     progress_state is an optional dict with keys 'completed' and 'total' that this function
     updates as isosurfaces are computed, for use by a modal progress bar.
-    With indexed=True, Molden fields carry shared vertices and triangle indices.
+    With indexed=True, fields carry shared vertices and triangle indices.
     """
     if molecule.volume is None and molecule.orbitals is None:
         return [], {}
@@ -861,6 +860,10 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None, *, index
                 surfaces = [s for s in surfaces if len(s['triangles'])]
             for surface in surfaces:
                 surface['series'] = 'cube'
+                surface['grid_spacing'] = float(min(vol.axis_norms))
+                if indexed:
+                    surface['vertices'], surface['faces'] = index_field_triangles(
+                        surface.pop('triangles'), surface['grid_spacing'])
             if len(frames) > 1:
                 vertex_trajectory_map[fmap(i)] = [s['name'] for s in surfaces]
             vertex_sets.extend(surfaces)
@@ -931,20 +934,16 @@ def create_surface_meshes(molecule, styler, context, options, vertex_sets, verte
     parent_inverse = mathutils.Matrix.Identity(4)
     if options["object_type"] != "wireframe":
         parent_inverse = mathutils.Matrix.Translation(-molecule.center_of_mass())
-    function_names = dict.fromkeys(v["name"] for v in vertex_sets)
-    for func in function_names:
-        fsets = [v for v in vertex_sets if v["name"] == func]
+    groups = {}
+    for surface in vertex_sets:
+        groups.setdefault(surface['name'], []).append(surface)
+    for func, fsets in groups.items():
         fmeshes = []
         for v in fsets:
             name = "{0}_{1}_{2}".format(molecule.name, v["name"], v["isovalue"])
-            if molecule.volume is not None:
-                verts, faces = create_geometry(v["triangles"])
-                weld_distance = .01
-            else:
-                verts, faces = field_geometry(v, options['resolution'])
-                weld_distance = None
+            verts, faces = field_geometry(v, v.get('grid_spacing', options['resolution']))
             vmesh = create_mesh(name, verts, faces, v["material"], context,
-                                remesh=options["remesh"], weld_distance=weld_distance)
+                                remesh=options["remesh"], weld_distance=None)
             v["mesh"] = vmesh
             fmeshes.append(vmesh)
 
@@ -976,15 +975,19 @@ def create_surface_meshes(molecule, styler, context, options, vertex_sets, verte
                 _set_opacity(material, options['surface_opacity'])
 
     if vertex_trajectory_map:
-        for frame in vertex_trajectory_map:
-            for v in vertex_sets:
-                obj = v["mesh"]
-                vn = v["name"]
-                hide = vn not in vertex_trajectory_map[frame]
-                obj.hide_viewport = hide
-                obj.hide_render = hide
-                obj.keyframe_insert(data_path="hide_viewport", frame=frame)
-                obj.keyframe_insert(data_path="hide_render", frame=frame)
+        previous = set()
+        for index, frame in enumerate(sorted(vertex_trajectory_map)):
+            visible = set(vertex_trajectory_map[frame])
+            changed = groups.keys() if index == 0 else previous ^ visible
+            for name in changed:
+                for surface in groups.get(name, ()):
+                    obj = surface['mesh']
+                    obj.hide_viewport = obj.hide_render = name not in visible
+                    obj.keyframe_insert(data_path='hide_viewport', frame=frame)
+                    obj.keyframe_insert(data_path='hide_render', frame=frame)
+            previous = visible
+        scene = context.scene
+        scene.frame_set(scene.frame_current, subframe=scene.frame_subframe)
 
     if hasattr(molecule, 'scene_owner'):
         from .scene_surfaces import SOLO_GROUP, apply_solo, surface_groups
