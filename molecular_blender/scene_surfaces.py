@@ -11,7 +11,7 @@ from .options import molden_convention, validated_options
 from .plotter import create_surface_mesh_data, field_geometry, process_options
 from .scene_edit import _set_color, _set_opacity, _surface_output
 from .scene_state import ID, new_id, surface_sampling, owned_objects, read_record, resolve_owner, write_record
-from .surface_jobs import SavedMoldenSource
+from .surface_jobs import SavedSurfaceSource
 from .stylers import get_styler
 from .surface_operator import DENSITIES, MoldenSurfaceProperties, SurfaceJobOperator
 
@@ -306,13 +306,16 @@ class MB_OT_remove_surface(bpy.types.Operator):
         return {'FINISHED'}
 
 
-def surface_model(owner, record):
+def surface_model(owner, record, *, cube=False):
     path = record['source']
-    if file_format(path) != 'molden' or not record['orbitals']:
+    if cube:
+        if not can_recompute_cube(record):
+            raise ValueError('Choose a single-frame cube surface')
+    elif file_format(path) != 'molden' or not record['orbitals']:
         raise ValueError('Adding a surface requires a single-frame Molden molecule with orbitals')
     if not os.path.isfile(path):
-        raise ValueError('Molden source unavailable: ' + path)
-    source = SavedMoldenSource.from_record(path, record)
+        raise ValueError('Surface source unavailable: ' + path)
+    source = SavedSurfaceSource.from_record(path, record)
     # Scene placement only needs the original center of mass.
     model = Molecule(owner.name, [Atom(symbol, pos, index) for index, symbol, pos in source.atoms])
     model.surface_input = source
@@ -347,7 +350,7 @@ class MB_OT_locate_source(bpy.types.Operator):
             path = os.path.abspath(bpy.path.abspath(self.filepath))
             if file_format(record['source']) != 'molden' or file_format(path) != 'molden':
                 raise ValueError('Choose a Molden source file for a Molden molecule')
-            SavedMoldenSource.from_record(path, record).load(record['settings'])
+            SavedSurfaceSource.from_record(path, record).load(record['settings'])
             record['source'] = path
             write_record(owner, record)
         except Exception as exc:
@@ -390,22 +393,39 @@ class MB_OT_add_surface(MoldenSurfaceProperties, SurfaceJobOperator, bpy.types.O
             overrides = {name: getattr(self, name) for name in self._settings_names}
             if not self.properties.is_property_set('molden_convention') and not self.properties.is_property_set('orca_fix'):
                 overrides['molden_convention'] = record['settings']['molden_convention']
-            return start_molden_job(self, context, owner, record, overrides)
+            return start_field_job(self, context, owner, record, overrides)
         except (KeyError, ValueError) as exc:
             self.report({'ERROR'}, str(exc))
             return {'CANCELLED'}
 
 
-def start_molden_job(op, context, owner, record, overrides):
+def can_recompute_cube(record):
+    kind = file_format(record['source'])
+    fields = record.get('fields')
+    if fields is None or kind not in ('cube', 'json'):
+        return False
+    if 'frames' in fields:
+        return fields['frames'] == 1
+    return kind == 'cube' or record['settings']['plot_type'] != 'animate'
+
+
+def start_field_job(op, context, owner, record, overrides, *, cube=False):
     settings = validated_options(dict(record['settings'], **overrides))
     if not settings['isovalues'].strip():
         raise ValueError('Enter at least one surface level')
-    return op.start_surface_job(context, surface_model(owner, record), get_styler(settings),
-                                process_options(settings), select_surfaces=False)
+    return op.start_surface_job(context, surface_model(owner, record, cube=cube), get_styler(settings),
+                                process_options(settings, cube=cube), select_surfaces=False)
 
 
 def recompute_settings(record, group):
     field = group['field']
+    if field == 'cube':
+        # Legacy cubes stored their requested levels in the molecule settings.
+        settings = record['settings']
+        if group['sampling']:
+            return dict(group['sampling'])
+        return dict(cumulative=settings['cumulative'], isovalues=settings['isovalues'], resolution=settings['resolution'],
+                    cube_both_signs=settings.get('cube_both_signs', settings['volume'] in ('orbital', 'spin')))
     # Older files saved the absolute mesh levels, even for fractional requests.
     signed = field not in DENSITY_LABELS or field == 'spin'
     sampling = group['sampling'] or dict(cumulative=False, isovalues=', '.join(
@@ -417,12 +437,14 @@ def recompute_settings(record, group):
 
 def replace_surface_geometry(context, owner, record, key, group, definitions, options, styler):
     """Prepare the complete replacement before swapping any existing mesh."""
+    from .scene_esp import BASE_MESH, remap_contour
     entries = {entry['id']: entry for entry in record['surfaces'] if entry['id'] in group['ids']}
     old_objects = group['objects']
     remaining = set(old_objects)
-    sampling = surface_sampling(options)
+    sampling = surface_sampling(options, cube=group['field'] == 'cube')
     staged, clones, new_meshes, new_materials = [], [], [], []
     replacements = []
+    grids, backups = {}, []
     try:
         # Match unchanged levels first so named objects and external references survive.
         def match_order(item):
@@ -440,7 +462,8 @@ def replace_surface_geometry(context, owner, record, key, group, definitions, op
             mesh = create_surface_mesh_data(template.data.name, *field_geometry(item, options['resolution']),
                                             weld_distance=None)
             new_meshes.append(mesh)
-            for mat in template.data.materials:
+            old_base = template.get(BASE_MESH)
+            for mat in (old_base if old_base is not None else template.data).materials:
                 mesh.materials.append(mat)
             if obj is None:
                 obj = template.copy()
@@ -451,7 +474,12 @@ def replace_surface_geometry(context, owner, record, key, group, definitions, op
                     coll.objects.link(obj)
             else:
                 remaining.remove(obj)
-            if not phase:
+            if old_base is not None:
+                base = mesh
+                mesh = remap_contour(context, record, template, base, grids)
+                new_meshes.append(mesh)
+                backups.append((obj, old_base, base))
+            elif not phase:
                 material = styler.outer_isosurface_material('orbital_mat_' + ('plus' if level >= 0 else 'negative'))
                 new_materials.append(material)
                 material['mb_surface_material'] = True
@@ -468,12 +496,16 @@ def replace_surface_geometry(context, owner, record, key, group, definitions, op
                                      isovalue=float(level), sampling=sampling))
         for obj, old_mesh, mesh in staged:
             obj.data = mesh
+        for obj, old, base in backups:
+            obj[BASE_MESH] = base
         surfaces = record['surfaces']
         first = next(i for i, entry in enumerate(surfaces) if entry['id'] in entries)
         record['surfaces'] = (surfaces[:first] + replacements
                               + [e for e in surfaces[first:] if e['id'] not in entries])
         write_record(owner, record)
     except Exception:
+        for obj, old, base in backups:
+            obj[BASE_MESH] = old
         for obj, old_mesh, mesh in staged:
             if obj not in clones:
                 obj.data = old_mesh
@@ -484,7 +516,7 @@ def replace_surface_geometry(context, owner, record, key, group, definitions, op
         for material in new_materials:
             bpy.data.materials.remove(material)
         raise
-    for old_mesh in {old for _, old, _ in staged}:
+    for old_mesh in {old for _, old, _ in staged + backups}:
         if old_mesh.users == 0:
             bpy.data.meshes.remove(old_mesh)
     if context.view_layer.objects.active in remaining:
@@ -504,12 +536,12 @@ class MB_OT_recompute_surface(MoldenSurfaceProperties, SurfaceJobOperator, bpy.t
 
     def _group_settings(self, owner):
         if owner is None:
-            raise ValueError('Select a Molden molecule')
+            raise ValueError('Select a molecule with a saved surface')
         record = read_record(owner)
         group = surface_groups(owner, record).get(self.group)
         if group is None:
             raise ValueError('The surface calculation no longer exists')
-        if any('mb_esp_original_mesh' in obj for obj in group['objects']):
+        if group['field'] != 'cube' and any('mb_esp_original_mesh' in obj for obj in group['objects']):
             raise ValueError('Remove the field map before recomputing the density geometry')
         return record, group, recompute_settings(record, group)
 
@@ -521,15 +553,21 @@ class MB_OT_recompute_surface(MoldenSurfaceProperties, SurfaceJobOperator, bpy.t
             self.report({'ERROR'}, str(exc))
             return {'CANCELLED'}
         self._label = group['label']
+        self._cube = group['field'] == 'cube'
         for name in ('cumulative', 'isovalues', 'resolution'):
             setattr(self, name, settings[name])
+        if self._cube:
+            self.cube_both_signs = settings['cube_both_signs']
         return context.window_manager.invoke_props_dialog(self)
 
     def draw(self, context):
         self.layout.label(text=getattr(self, '_label', self.bl_label))
         self.layout.prop(self, 'level_mode')
         self.layout.prop(self, 'isovalues', text='Fractions' if self.cumulative else 'Isovalues')
-        self.layout.prop(self, 'resolution', text='Grid spacing (Å)')
+        if getattr(self, '_cube', False):
+            self.layout.prop(self, 'cube_both_signs')
+        else:
+            self.layout.prop(self, 'resolution', text='Grid spacing (Å)')
 
     def execute(self, context):
         owner = self._target if hasattr(self, '_target') else resolve_owner(context.object)
@@ -538,8 +576,10 @@ class MB_OT_recompute_surface(MoldenSurfaceProperties, SurfaceJobOperator, bpy.t
             for name in ('cumulative', 'isovalues', 'resolution'):
                 if self.properties.is_property_set(name):
                     settings[name] = getattr(self, name)
+            if group['field'] == 'cube' and self.properties.is_property_set('cube_both_signs'):
+                settings['cube_both_signs'] = self.cube_both_signs
             self._original_meshes = {o.data.as_pointer() for o in group['objects']}
-            return start_molden_job(self, context, owner, record, settings)
+            return start_field_job(self, context, owner, record, settings, cube=group['field'] == 'cube')
         except (ValueError, KeyError) as exc:
             self.report({'ERROR'}, str(exc))
             return {'CANCELLED'}

@@ -17,16 +17,18 @@ _jobs = set()
 
 
 @dataclass
-class SavedMoldenSource:
+class SavedSurfaceSource:
     """A sidebar job can reopen the source directly inside the worker."""
     path: str
     atoms: list
     orbitals: list
+    datasets: list = None
 
     @classmethod
     def from_record(cls, path, record):
         atoms = [(a['index'], a['element'], tuple(a['position'])) for a in record['atoms']]
-        return cls(path, atoms, record['orbitals'])
+        fields = record.get('fields')
+        return cls(path, atoms, record['orbitals'], fields['datasets'] if fields else None)
 
     def load(self, options):
         from .importers import molecule_from_file
@@ -37,8 +39,11 @@ class SavedMoldenSource:
         model = Molecule.from_dict('surface-worker', data)
         actual = [(a.index, a.element.symbol, tuple(a.position)) for a in model.atoms]
         if actual != self.atoms:
-            raise ValueError('Source atom identities or coordinates have changed. Reimport the Molden file.')
-        if orbital_metadata(model.orbitals) != self.orbitals:
+            raise ValueError('Source atom identities or coordinates have changed. Reimport the source file.')
+        if self.datasets is not None:
+            if model.volume is None or model.volume.labels != self.datasets or model.volume_trajectory:
+                raise ValueError('Source cube datasets or frame count have changed. Reimport the source file.')
+        elif orbital_metadata(model.orbitals) != self.orbitals:
             raise ValueError('Source orbital metadata has changed. Reimport the Molden file.')
         return model
 

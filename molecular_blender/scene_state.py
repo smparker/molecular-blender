@@ -127,6 +127,7 @@ def persist_molecule(molecule, source, settings):
     if 'molden_convention' in molecule.surface_input:
         record['molden_convention'] = molecule.surface_input['molden_convention']
     if molecule.volume is not None:
+        record['fields']['frames'] = 1 + len(molecule.volume_trajectory or ())
         for key in ("units", "linear_combination", "resample"):
             value = getattr(molecule.volume, key)
             if value is not None:
@@ -159,13 +160,19 @@ def persist_molecule(molecule, source, settings):
     return owner
 
 
-def surface_sampling(options):
+def surface_sampling(options, *, cube=False):
     levels = options['isovalues']
-    if options['volume'] in ('orbital', 'spin', 'response'):
+    both = options['volume'] in ('orbital', 'spin', 'response')
+    if cube:
+        both = options.get('cube_both_signs', both)
+    if both:
         levels = sorted({abs(level) for level in levels})
-    return dict(isovalues=', '.join(str(level) for level in levels),
-                cumulative=options['cumulative'], resolution=options['resolution'],
-                molden_convention=molden_convention(options))
+    sampling = dict(isovalues=', '.join(str(level) for level in levels),
+                    cumulative=options['cumulative'], resolution=options['resolution'],
+                    molden_convention=molden_convention(options))
+    if cube:
+        sampling['cube_both_signs'] = both
+    return sampling
 
 
 def persist_surfaces(owner, definitions, options):
@@ -183,8 +190,8 @@ def persist_surfaces(owner, definitions, options):
                                        isovalue=float(definition['isovalue'])))
         if 'ambiguous_phase_frame' in definition:
             record['surfaces'][-1]['ambiguous_phase_frame'] = definition['ambiguous_phase_frame']
-        if record['orbitals'] and 'isovalues' in options:
-            record['surfaces'][-1]['sampling'] = surface_sampling(options)
+        if 'isovalues' in options and (record['orbitals'] or field == 'cube'):
+            record['surfaces'][-1]['sampling'] = surface_sampling(options, cube=field == 'cube')
     write_record(owner, record)
 
 

@@ -280,6 +280,46 @@ class TestSidebarActions(unittest.TestCase):
                 replace_surface_geometry(bpy.context, owner, record, key, group, defs, options, styler)
         self.assertEqual((owner['mb_molecule'], set(bpy.data.meshes), set(bpy.data.objects)), baseline)
 
+    def test_cube_recompute_uses_selected_dataset_and_literal_negative_level(self):
+        from molecular_blender.plotter import BlendMoleculeSetup, compute_surface_vertex_sets, draw_surfaces
+        from molecular_blender.scene_state import read_record
+        from molecular_blender.scene_surfaces import MB_OT_recompute_surface, surface_groups, surface_model
+        path = Path(self.tmp.name) / 'two.cube'
+        header = 'comment\ncomment\n-1 0 0 0\n-3 1 0 0\n-3 0 1 0\n-3 0 0 1\n1 0 0 0 0\n2 7 23\n'
+        values = ' '.join(f'0 {x-1}' for x in range(3) for _ in range(9))
+        path.write_text(header + values)
+        model, styler, options = BlendMoleculeSetup(bpy.context, str(path), cube_dataset=1,
+            isovalues='-.2', cube_both_signs=False, cumulative=False, remesh=0)
+        draw_surfaces(model, styler, bpy.context, options)
+        owner = model.scene_owner
+        self.select(owner)
+        record = read_record(owner)
+        key, group = next(iter(surface_groups(owner, record).items()))
+        obj, = group['objects']
+        obj.location.y += 2
+        obj.mb_surface_color = (.7, .2, .1)
+        obj.mb_surface_opacity = .37
+        obj.hide_render = True
+        old_style = obj.location.copy(), obj.active_material
+        def finish(op, ctx, model, styler, opts, **kwargs):
+            op._owner, op._styler, op._options = owner, styler, opts
+            sets, frames = compute_surface_vertex_sets(model.surface_input.load(opts), opts, indexed=True)
+            op.apply_surface_result(ctx, sets, frames)
+            return {'FINISHED'}
+        with patch.object(MB_OT_recompute_surface, 'start_surface_job', finish):
+            self.assertEqual(bpy.ops.molecular_blender.recompute_surface(group=key, isovalues='-.6'), {'FINISHED'})
+        group = surface_groups(owner, read_record(owner))[key]
+        self.assertEqual(group['objects'], [obj])
+        self.assertEqual(group['levels'], {-.6})
+        self.assertTrue(obj.hide_render)
+        self.assertEqual((obj.location, obj.active_material), old_style)
+        self.assertGreater(len(obj.data.vertices), 0)
+        for point in obj.data.vertices:
+            self.assertAlmostEqual(point.co.x, .4, places=5)
+        path.write_text(header.replace('2 7 23', '2 23 7') + values)
+        with self.assertRaisesRegex(ValueError, 'datasets'):
+            surface_model(owner, record, cube=True).surface_input.load(options)
+
     def test_frontier_jumps_use_saved_populations_spin_and_import_order(self):
         from molecular_blender.scene_state import read_record, write_record
         from test_scene_panel import panel_labels

@@ -118,22 +118,26 @@ def _field_material(path, dataset, units, low, high, opacity, kind, label):
         raise
 
 
-def _display_mesh(context, obj):
+def _display_mesh(context, obj, replacement=None):
     """Evaluate only the imported surface's remesh, even if the object is hidden."""
     if any(mod.type != 'REMESH' for mod in obj.modifiers) or len(obj.modifiers) > 1:
         raise ValueError('Field mapping supports the imported surface and its Remesh modifier')
-    if BASE_MESH in obj or not obj.modifiers:
-        return obj.data.copy()
+    data = replacement if replacement is not None else obj.data
+    if not obj.modifiers or (replacement is None and BASE_MESH in obj):
+        return data.copy()
     mod = obj.modifiers[0]
     if mod.show_viewport != mod.show_render:
         raise ValueError('Set Remesh to the same visibility for viewport and render before mapping')
-    if not mod.show_viewport:
-        return obj.data.copy()
+    enabled = obj.get(REMESH, mod.show_viewport) if replacement is not None else mod.show_viewport
+    if not enabled:
+        return data.copy()
     # Local mesh coordinates are source angstroms. Parent and scene placement are presentation.
     proxy = obj.copy()
     try:
         proxy.parent = None
         proxy.hide_viewport = False
+        proxy.data = data
+        proxy.modifiers[0].show_viewport = True
         context.scene.collection.objects.link(proxy)
         depsgraph = context.evaluated_depsgraph_get()
         return bpy.data.meshes.new_from_object(proxy.evaluated_get(depsgraph), depsgraph=depsgraph)
@@ -150,6 +154,45 @@ def _discard_unused(meshes, materials):
             bpy.data.materials.remove(mat)
 
 
+def _mapping_grid(record, path, dataset):
+    if file_format(path) == 'json':
+        cube = molecule_from_json(path, {}, single_combination=True)
+    else:
+        cube = molecule_from_cube(path, {'cube_dataset': dataset})
+    if ([atom['symbol'] for atom in cube['atoms']] != [a['element'] for a in record['atoms']]
+            or not np.allclose([a['position'] for a in cube['atoms']], [a['position'] for a in record['atoms']],
+                               atol=1e-4, rtol=0)):
+        raise ValueError('Cube atom order and source coordinates must match the molecule (0.0001 Å tolerance)')
+    return cube['volume']
+
+
+def _sample_mesh(mesh, grid, name):
+    points = np.empty(len(mesh.vertices) * 3, dtype=np.float32)
+    mesh.vertices.foreach_get('co', points)
+    attr = mesh.attributes.get(name) or mesh.attributes.new(name, 'FLOAT', 'POINT')
+    attr.data.foreach_set('value', sample_cube(grid, points))
+
+
+def remap_contour(context, record, template, base, grids):
+    """Resample the original map on a new displayed mesh, using the edited material."""
+    material = template.active_material
+    settings = field_map_settings(material)
+    if not settings:
+        raise ValueError('Cannot find the source field for the mapped surface')
+    key = (settings['path'], settings['dataset'])
+    if key not in grids:
+        grids[key] = _mapping_grid(record, *key)
+    mesh = _display_mesh(context, template, replacement=base)
+    try:
+        _sample_mesh(mesh, grids[key], ATTRIBUTE if settings['kind'] == 'esp' else 'mb_field')
+        mesh.materials.clear()
+        mesh.materials.append(material)
+        return mesh
+    except Exception:
+        bpy.data.meshes.remove(mesh)
+        raise
+
+
 def map_esp(context, record, group, path, dataset, units, low, high, *, kind='esp', label=None):
     if not density_group(group):
         raise ValueError('Select a single-frame density surface')
@@ -163,15 +206,9 @@ def map_esp(context, record, group, path, dataset, units, low, high, *, kind='es
     if kind not in ('esp', 'signed', 'unsigned') or not label.strip() or (source_format == 'cube' and not units.strip()):
         raise ValueError('Choose a field type and enter its name and scalar units')
     validate_limits(kind, low, high)
+    grid = _mapping_grid(record, path, dataset)
     if source_format == 'json':
-        cube = molecule_from_json(path, {}, single_combination=True)
-        units = cube['volume']['units']
-    else:
-        cube = molecule_from_cube(path, {'cube_dataset': dataset})
-    if ([atom['symbol'] for atom in cube['atoms']] != [a['element'] for a in record['atoms']]
-            or not np.allclose([a['position'] for a in cube['atoms']], [a['position'] for a in record['atoms']],
-                               atol=1e-4, rtol=0)):
-        raise ValueError('Cube atom order and source coordinates must match the molecule (0.0001 Å tolerance)')
+        units = grid['units']
     staged, meshes, materials = [], [], {}
     try:
         for obj in group['objects']:
@@ -179,15 +216,12 @@ def map_esp(context, record, group, path, dataset, units, low, high, *, kind='es
                 raise ValueError('Field mapping requires a surface mesh with one material')
             mesh = _display_mesh(context, obj)
             meshes.append(mesh)
-            points = np.empty(len(mesh.vertices) * 3, dtype=np.float32)
-            mesh.vertices.foreach_get('co', points)
             name = ATTRIBUTE if kind == 'esp' else 'mb_field'
             if BASE_MESH in obj:
                 previous = ATTRIBUTE if obj.active_material.get('mb_field_kind', 'esp') == 'esp' else 'mb_field'
                 if previous != name and mesh.attributes.get(previous):
                     mesh.attributes.remove(mesh.attributes[previous])
-            attr = mesh.attributes.get(name) or mesh.attributes.new(name, 'FLOAT', 'POINT')
-            attr.data.foreach_set('value', sample_cube(cube['volume'], points))
+            _sample_mesh(mesh, grid, name)
             opacity = surface_opacity(obj)
             if opacity not in materials:
                 materials[opacity] = _field_material(path, dataset, units, low, high, opacity, kind, label)

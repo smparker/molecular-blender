@@ -493,6 +493,11 @@ surface stays visible or hidden as you set it, including during calculation.
 The replacement keeps its lobe colors and opacity. For surfaces saved by older
 versions, the dialog starts from their stored absolute isovalues.
 
+On a single-frame cube surface, **Recompute Surface** changes the contour
+levels on the original dataset and grid. **Include both signs** mirrors each
+level. Turn it off to enter signed levels individually. For a field-mapped
+cube, Blender resamples the map on the new mesh and keeps the edited color ramp.
+
 Choose **Restyle molecule…** in that sidebar to change atom size, bond thickness,
 palette, and surface opacity. Apply acts on the whole owning molecule and supports
 Blender Undo/Redo. Linked duplicates and recycled materials are isolated on edit;

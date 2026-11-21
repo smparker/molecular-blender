@@ -13,7 +13,7 @@ def main(directory):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from molecular_blender.molecule import Molecule
     from molecular_blender.plotter import compute_surface_vertex_sets, iter_surface_frames
-    from molecular_blender.surface_jobs import SavedMoldenSource
+    from molecular_blender.surface_jobs import SavedSurfaceSource
 
     class Progress(dict):
         def __setitem__(self, key, value):
@@ -25,7 +25,7 @@ def main(directory):
     try:
         with (directory / 'request.pkl').open('rb') as stream:
             data, options, stream_frames = pickle.load(stream)
-        if isinstance(data, SavedMoldenSource):
+        if isinstance(data, SavedSurfaceSource):
             molecule = data.load(options)
         else:
             molecule = Molecule.from_dict('surface-worker', data)

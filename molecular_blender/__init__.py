@@ -194,10 +194,6 @@ if _HAS_BPY:
             name="Dataset", items=import_dialog.dataset_items, get=import_dialog.get_dataset_choice,
             set=lambda op, value: setattr(op, 'cube_dataset', value), options={'SKIP_SAVE'})
 
-        cube_both_signs: BoolProperty(
-            name="Include both signs", default=True,
-            description="Generate both signs for each cube level. Turn off to use exactly the signs entered")
-
         ## Properties
         gradient: BoolProperty(
             name="Plot gradient",

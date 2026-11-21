@@ -10,7 +10,7 @@ from .representation import MB_OT_representation, can_switch
 from .importers import file_format
 from .orbitals import frontier_index
 from .scene_state import ID, RECORD, ROLE, read_record, resolve_owner, owned_objects
-from .scene_surfaces import (SOLO_GROUP, MB_OT_add_surface, MB_OT_locate_source, MB_OT_recompute_surface,
+from .scene_surfaces import (SOLO_GROUP, can_recompute_cube, MB_OT_add_surface, MB_OT_locate_source, MB_OT_recompute_surface,
                              MB_OT_remove_surface, MB_OT_solo_surface, MB_OT_surface_visibility, set_surface_color,
                              set_surface_opacity, surface_color, surface_groups, surface_opacity, surface_visible)
 from .surface_export import MB_ExportSurface, MB_OT_export_surface_series, MB_OT_transparent_png, draw_png_preset
@@ -45,6 +45,7 @@ def molecule_summary(obj):
                 groups=groups,
                 representation=REPRESENTATIONS[settings['plot_style']],
                 can_switch=can_switch(settings),
+                cube_recompute=can_recompute_cube(record),
                 object_type=settings['object_type'], charge=settings['molecular_charge'],
                 orbitals=record['orbitals'], fields=record['fields'])
 
@@ -351,7 +352,7 @@ class MB_PT_molecule(bpy.types.Panel):
                              depress=owner.get(SOLO_GROUP) == key).group = key
                 obj = group['objects'][0]
                 mapped = BASE_MESH in obj
-                if orbitals and molden and not mapped:
+                if (orbitals and molden and not mapped) or summary['cube_recompute']:
                     action = row.row(align=True)
                     action.enabled = available
                     action.operator('molecular_blender.recompute_surface', text='', icon='FILE_REFRESH').group = key

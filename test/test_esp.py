@@ -35,6 +35,46 @@ class TestInterpolation(unittest.TestCase):
 
 @unittest.skipUnless(bpy, 'requires Blender')
 class TestMappedDensity(unittest.TestCase):
+    def test_cube_contour_resamples_edited_map_and_restores_new_base(self):
+        from molecular_blender.plotter import BlendMoleculeSetup, compute_surface_vertex_sets, draw_surfaces
+        from molecular_blender.scene_state import read_record
+        from molecular_blender.scene_surfaces import replace_surface_geometry, surface_groups
+        from molecular_blender.scene_esp import ATTRIBUTE, BASE_MESH, map_esp, clear_esp
+        with tempfile.TemporaryDirectory() as tmp:
+            x, y, z = .5 * np.indices((9, 9, 9)) - 2
+            root = Path(tmp)
+            density, field = root / 'density.cube', root / 'field.cube'
+            write_cube(density, np.exp(-(x*x + y*y + z*z)))
+            write_cube(field, x)
+            blocks = set(bpy.data.objects) | set(bpy.data.collections)
+            self.addCleanup(lambda: bpy.data.batch_remove((set(bpy.data.objects) | set(bpy.data.collections)) - blocks))
+            model, styler, options = BlendMoleculeSetup(bpy.context, str(density), volume='density',
+                isovalues='.35', cumulative=False, remesh=4)
+            draw_surfaces(model, styler, bpy.context, options)
+            owner = model.scene_owner
+            record = read_record(owner)
+            key, group = next(iter(surface_groups(owner, record).items()))
+            map_esp(bpy.context, record, group, str(field), 0, 'V', -1., 1.)
+            obj, = group['objects']
+            old_mesh, mat = obj.data, obj.active_material
+            old_base = obj[BASE_MESH].as_pointer()
+            options['isovalues'] = [.55]
+            surfaces, _ = compute_surface_vertex_sets(model, options, indexed=True)
+            field.rename(root / 'missing')
+            with self.assertRaises(FileNotFoundError):
+                replace_surface_geometry(bpy.context, owner, record, key, group, surfaces, options, styler)
+            self.assertEqual(obj.data, old_mesh)
+            (root / 'missing').rename(field)
+            replace_surface_geometry(bpy.context, owner, record, key, group, surfaces, options, styler)
+            self.assertEqual(obj.active_material, mat)
+            self.assertNotEqual(obj[BASE_MESH].as_pointer(), old_base)
+            np.testing.assert_allclose([p.value for p in obj.data.attributes[ATTRIBUTE].data],
+                                       [p.co.x for p in obj.data.vertices], atol=1e-5)
+            base = obj[BASE_MESH]
+            clear_esp(group)
+            self.assertEqual(obj.data, base)
+            self.assertTrue(obj.modifiers[0].show_render)
+
     def test_remeshed_potential_renders_and_restores(self):
         from molecular_blender import scene_panel
         from molecular_blender.plotter import BlendMoleculeSetup, draw_surfaces

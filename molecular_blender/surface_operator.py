@@ -17,6 +17,9 @@ MOLDEN_FIELDS = DENSITIES + (('orbital', 'Molecular orbital', 'Plot positive and
 
 
 class MoldenSurfaceProperties:
+    cube_both_signs: BoolProperty(name="Include both signs", default=True,
+        description="Generate both signs for each cube level. Turn off to use exactly the signs entered")
+
     isovalues: StringProperty(
         name="Isovalues to plot",
         description="Comma-separated surface levels. Leave empty to import just the structure",
