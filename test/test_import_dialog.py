@@ -75,6 +75,7 @@ class TestAdaptiveImport(unittest.TestCase):
 
     def test_molden_fields_follow_selection(self):
         self.assertIn('orbital_spin', self.visible('ORCA.MOLDEN.INPUT'))
+        self.assertIn('orbital_spin', self.visible('molden_std.input'))
         self.op.orbital_choice = 'custom'
         for expression, spin in [('3, 4', False), ('beta:lumo+1', False), ('2, homo-1', True), ('-1', True)]:
             self.op.orbital = expression

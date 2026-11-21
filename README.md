@@ -681,7 +681,8 @@ Calculations require an all-electron basis, full nuclear charges and a complete
 occupied space. Virtual orbitals are optional. The add-on checks the electron
 count against the charge and checks the occupied orbital overlaps analytically.
 Ghost centers and ECP inputs need an externally computed potential cube.
-For TURBOMOLE, `tm2molden norm` writes standard-normalized Cartesian shells.
+For TURBOMOLE spherical-basis calculations, choose **Legacy TURBOMOLE** for
+a default `tm2molden` export or **Standard Molden** for `tm2molden norm`.
 [TURBOMOLE export options](https://manual.turbomole.org/v8.0/preface-and-general-information/tools/).
 
 ### Color a density surface with a cube or a JSON field combination
@@ -769,10 +770,18 @@ lower-level AO evaluators returned by `get_orbital` and `get_density` use Bohr.
 New imports use **Auto** under **Surfaces → Advanced → Molden convention**.
 A producer title from `orca_2mkl` selects **ORCA**. Other files use **Standard
 Molden**. The Molecule sidebar shows the convention used for the import. For
-files with missing or edited titles, select either convention explicitly. In
-Python use `molden_convention="auto"`, `"standard"`, or `"orca"`. Existing
+files with missing or edited titles, select the convention explicitly. In
+Python use `molden_convention="auto"`, `"standard"`, `"orca"`, or
+`"turbomole_legacy"`. Existing
 scripts and saved scenes using `orca_fix=True` or `False` retain their explicit
 ORCA or standard choice.
+
+Choose **Legacy TURBOMOLE** for a default `tm2molden` export from a
+spherical-basis calculation. The writer expands those orbitals into Cartesian
+components. The legacy setting scales their d, f and g coefficients by √3,
+√15 and √105 respectively. Both default filenames, `molden.input` and
+`molden_std.input`, open directly. Use **Standard Molden** for
+`tm2molden norm` output. [Paired writer exports](test/fixtures/turbomole/README.md)
 
 The ORCA convention uses the normalization already present in the contraction
 coefficients, including the spherical d-shell factor. For spherical f and g

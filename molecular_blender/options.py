@@ -141,7 +141,8 @@ OPTIONS = {
         items=(
             ('auto', 'Auto', 'Use ORCA for an orca_2mkl producer title, otherwise standard Molden'),
             ('standard', 'Standard Molden', 'Use standard Molden normalization and phases'),
-            ('orca', 'ORCA', 'Use orca_2mkl normalization and phases'))),
+            ('orca', 'ORCA', 'Use orca_2mkl normalization and phases'),
+            ('turbomole_legacy', 'Legacy TURBOMOLE', 'Use for spherical-basis calculations exported by tm2molden without norm'))),
     'sdf_record': option(0),
     'atom_scale': option(1.0),
     'surface_opacity': option(1.0),
@@ -149,6 +150,7 @@ OPTIONS = {
 
 DEFAULTS = {key: spec.default for key, spec in OPTIONS.items() if spec.default is not UNSET}
 ENUMS = {key: spec.choices for key, spec in OPTIONS.items() if spec.choices}
+MOLDEN_CONVENTION_LABELS = {key: label for key, label, _ in OPTIONS['molden_convention'].ui['items']}
 IMPORT_PROPERTIES = tuple(key for key, spec in OPTIONS.items() if spec.ui and spec.default is not UNSET)
 
 
@@ -160,7 +162,7 @@ def molden_convention(options):
         return 'orca' if options['orca_fix'] else 'standard'
     mode = options.get('molden_convention', 'auto')
     if mode not in ENUMS['molden_convention']:
-        raise ValueError('molden_convention must be auto, standard, or orca')
+        raise ValueError('molden_convention must be one of ' + ', '.join(ENUMS['molden_convention']))
     return mode
 
 

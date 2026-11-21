@@ -85,6 +85,7 @@ Entry points: [importers.py](molecular_blender/importers.py), [transform.py](mol
 
 - [x] **Harden Molden basis parsing.** Expands `sp` shells, registers standalone `[7F]`, maps GTO blocks by atom reference, reads Fortran D/d numbers, and validates indexed coefficient blocks and section endings. Existing molecular fixtures and focused synthetic cases pass. Commit `f1547e0`.
 - [x] **Detect the Molden normalization convention.** Auto recognizes the ORCA producer title. Import and sidebar controls support explicit standard and ORCA choices, including settings from older scenes and scripts.
+- [x] **Support legacy TURBOMOLE normalization.** The explicit convention converts Cartesian d, f and g components from default `tm2molden` exports. [Paired writer exports](test/fixtures/turbomole/README.md)
 - [x] **Validate Cartesian d, f and g orbitals.** The [PySCF fixture](test/fixtures/pyscf_water/generate.py) checks 38 signed Cartesian orbitals and total density by point and by grid.
 - [x] **Validate spherical d orbitals against ORCA.** An RHF/def2-SVP ethene fixture checks both lobes and the nodal plane of the occupied π orbital. Corrected the normalized d-harmonic expansion and ORCA spherical d contraction factor. [Reference test](test/test_transform.py)
 - [x] **Validate spherical f and g orbitals.** The coefficient tables reproduce all 16 real harmonics in Molden order. ORCA imports handle its radial and phase conventions. Point and grid tests include weak tails from an independent [ORCA water calculation](test/fixtures/orca_water_fg/README.md).

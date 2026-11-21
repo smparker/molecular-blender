@@ -93,7 +93,7 @@ class Reader(object):
 
 FORMAT_SUFFIXES = {
     'xyz': ('.xyz',), 'sdf': ('.sdf', '.mol', '.sd'),
-    'molden': ('.molden', 'molden.input'), 'cube': ('.cub', '.cube'), 'json': ('.json',),
+    'molden': ('.molden', 'molden.input', 'molden_std.input'), 'cube': ('.cub', '.cube'), 'json': ('.json',),
 }
 
 
@@ -121,7 +121,7 @@ def molecule_from_file(filename, options):
 
     raise ValueError(
         f"Unsupported molecular file format: {filename!r}. "
-        "Supported formats: XYZ, SDF/MOL/SD, Molden (.molden or molden.input), "
+        "Supported formats: XYZ, SDF/MOL/SD, Molden (.molden, molden.input or molden_std.input), "
         "cube (.cube or .cub), and JSON."
     )
 
@@ -634,7 +634,7 @@ def molecule_from_molden(filename, _options):
                 f.restore_mark('title')
                 mode = convention_from_title(f.f)
         out['molden_convention'] = mode
-        out['denorm'] = mode == 'standard'
+        out['denorm'] = mode != 'orca'
         out['has_ecp'] = f.is_marked('core')
         if f.is_marked("atoms"):
             out["atoms"] = molden_read_atoms(f, ignore_h, animate=animate)
@@ -671,8 +671,22 @@ def molecule_from_molden(filename, _options):
                        for atom in out["basis"]])
             molden_mo = molden_read_mo(f, nao)
 
+            if mode == 'turbomole_legacy':
+                # tm2molden norm scales the Cartesian MO components of each
+                # expanded shell together. Explicit spherical shells use Molden normalization.
+                cart_factors = {'d': np.sqrt(3.), 'f': np.sqrt(15.), 'g': np.sqrt(105.)}
+                factors = []
+                for atom_basis in out['basis']:
+                    for shell in atom_basis:
+                        kind = shell['shell']
+                        factor = 1. if kind in spherical else cart_factors.get(kind, 1.)
+                        factors.extend([factor] * shelldegen[kind])
+                factors = np.asarray(factors)
+                for orbital in molden_mo:
+                    orbital['coeff'] = (factors * orbital['coeff']).tolist()
+
             if spherical and molden_mo:
-                orca = not out["denorm"]
+                orca = mode == 'orca'
                 if orca:
                     # orca_2mkl includes the xy, xyz and xxyz primitive
                     # factors in d, f and g contractions. Our shared radial

@@ -10,6 +10,7 @@ from . import import_dialog, vibrations
 from .representation import MB_OT_representation, can_switch
 from .importers import file_format
 from .orbitals import frontier_index
+from .options import MOLDEN_CONVENTION_LABELS
 from .scene_state import ID, RECORD, ROLE, read_record, resolve_owner, owned_objects
 from .scene_surfaces import (SOLO_GROUP, can_recompute_cube, MB_OT_add_surface, MB_OT_locate_source, MB_OT_recompute_surface,
                              MB_OT_remove_surface, MB_OT_solo_surface, MB_OT_surface_visibility, set_surface_color,
@@ -298,9 +299,8 @@ class MB_PT_molecule(bpy.types.Panel):
         box = layout.box()
         box.label(text='Source: ' + os.path.basename(summary['source']))
         box.label(text=summary['source'])
-        if file_format(summary['source']) == 'molden' and summary['convention'] in ('orca', 'standard'):
-            label = 'ORCA' if summary['convention'] == 'orca' else 'Standard Molden'
-            box.label(text='Molden convention: ' + label)
+        if file_format(summary['source']) == 'molden' and summary['convention'] in MOLDEN_CONVENTION_LABELS:
+            box.label(text='Molden convention: ' + MOLDEN_CONVENTION_LABELS[summary['convention']])
         available = os.path.isfile(summary['source'])
         if not available:
             box.label(text='Source unavailable; saved scene remains editable', icon='INFO')

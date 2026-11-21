@@ -284,11 +284,12 @@ class TestMoldenRead(unittest.TestCase):
                 for options, chosen in (({}, expected), ({'molden_convention': 'auto'}, expected),
                                         ({'molden_convention': 'standard'}, 'standard'),
                                         ({'molden_convention': 'orca'}, 'orca'),
+                                        ({'molden_convention': 'turbomole_legacy'}, 'turbomole_legacy'),
                                         ({'orca_fix': False}, 'standard'), ({'orca_fix': True}, 'orca')):
                     with self.subTest(title=title, options=options):
                         geo = molecule_from_molden(path, validated_options(options))
                         self.assertEqual(geo['molden_convention'], chosen)
-                        self.assertEqual(geo['denorm'], chosen == 'standard')
+                        self.assertEqual(geo['denorm'], chosen != 'orca')
 
     def test_orca_fix(self):
         geo = molecule_from_molden(

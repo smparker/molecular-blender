@@ -124,6 +124,36 @@ class TestGetSphToCart(unittest.TestCase):
 
 
 class TestTransformSphToCart(unittest.TestCase):
+    def test_tm2molden_default_and_norm_exports_agree_through_g(self):
+        from molecular_blender.importers import molecule_from_file
+        from molecular_blender.wavefunction_esp import WavefunctionESP
+        fixture = Path(__file__).parent / 'fixtures' / 'turbomole'
+        legacy = molecule_from_file(fixture / 'molden.input', {'molden_convention': 'turbomole_legacy'})
+        standard = molecule_from_file(fixture / 'molden_std.input', {})
+        raw = molecule_from_file(fixture / 'molden.input', {})
+        self.assertEqual(raw['molden_convention'], 'standard')
+        self.assertEqual(legacy['basis'], standard['basis'])
+        self.assertEqual(len(legacy['mo']), 2)
+        for actual, expected in zip(legacy['mo'], standard['mo']):
+            np.testing.assert_allclose(actual['coeff'], expected['coeff'], rtol=1e-12, atol=1e-14)
+        points = [[.3, -.7, 1.2], [-1., .4, .9]]
+        with self.assertRaisesRegex(ValueError, 'Integrated density'):
+            WavefunctionESP(raw)
+        np.testing.assert_allclose(WavefunctionESP(legacy).potential_bohr(points),
+                                   WavefunctionESP(standard).potential_bohr(points), atol=1e-8)
+
+    def test_tm2molden_scales_only_cartesian_shells_in_mixed_input(self):
+        from molecular_blender.importers import molecule_from_molden
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'mixed.molden'
+            path.write_text('[Molden Format]\n[Atoms] AU\nHe 1 2 0 0 0\n[GTO]\n1 0\n'
+                            'd 1 1.0\n0.8 1\nf 1 1.0\n0.7 1\ng 1 1.0\n0.6 1\n[5D10F]\n[9G]\n'
+                            '[MO]\nOccup= 1\n' + ''.join(f'{i} {i}\n' for i in range(1, 25)))
+            standard = np.array(molecule_from_molden(path, {})['mo'][0]['coeff'])
+            legacy = molecule_from_molden(path, {'molden_convention': 'turbomole_legacy'})
+        standard[6:16] *= math.sqrt(15)
+        np.testing.assert_allclose(legacy['mo'][0]['coeff'], standard)
+
     def test_orca_fix_respects_mixed_cartesian_f_and_spherical_g(self):
         from molecular_blender.importers import molecule_from_molden
         # In a [9G] file alone the ten f components are Cartesian.

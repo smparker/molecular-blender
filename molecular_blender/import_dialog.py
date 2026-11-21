@@ -8,6 +8,7 @@ import stat
 import bpy
 
 from .importers import cube_dataset_labels, file_format, preview_molden_convention
+from .options import MOLDEN_CONVENTION_LABELS
 from .turbomole_reader import response_headers
 
 MAX_DATASET_MENU = 256
@@ -172,7 +173,7 @@ def draw_sampling_controls(box, op, kind, path=None):
             box.prop(op, 'molden_convention')
             if op.molden_convention == 'auto' and path:
                 convention = _preview(preview_molden_convention, path)
-                label = {'orca': 'ORCA', 'standard': 'Standard Molden'}.get(convention)
+                label = MOLDEN_CONVENTION_LABELS.get(convention)
                 box.label(text='Auto uses ' + label if label else 'Auto uses standard Molden unless the title identifies ORCA')
         else:
             box.prop(op, 'cube_both_signs')
