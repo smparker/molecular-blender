@@ -8,7 +8,7 @@ Keep the current curve-extrusion approach for bonds as the baseline. Keep bond-o
 
 - **Extend post-import editing.** The sidebar already supports restyling, bond edits and surface management. Reloading coordinates and orbitals from a changed source is open.
 - **Extend field maps.** External scalar cubes can color density surfaces. The sidebar exports field legends for compositing. Direct wavefunction ESP evaluation remains open.
-- **Extend bond perception.** Diagnostics and manual overrides are available. Solver scaling and trajectory orientation remain open.
+- **Extend bond perception.** Diagnostics and manual overrides are available. Solver scaling and per-frame bond-order assignment remain open.
 
 ## 1. Post-import editing and scene interaction
 
@@ -67,12 +67,12 @@ Entry points: [orbitals.py](molecular_blender/orbitals.py), [compute_ao_py.py](m
 
 ## 4. Bond perception and chemical representation
 
-Current implementation: covalent-radius connectivity, bounded valence/charge search, explicit SDF precedence, and fixed initial strand orientation. Start in [bond_perception.py](molecular_blender/bond_perception.py), [molecule.py](molecular_blender/molecule.py), and [aromatics.py](molecular_blender/aromatics.py).
+Current implementation includes covalent-radius connectivity, bounded valence/charge search, explicit SDF precedence, and animated strand orientation. See [bond perception](molecular_blender/bond_perception.py) and [strand orientation](molecular_blender/bond_orientation.py).
 
 - [x] **Make failures explainable.** Report the offending atom IDs/elements, degrees, candidate valences, requested charge, and search budget. Distinguish bad connectivity, unsupported chemistry, missing hydrogens, incompatible charge, and exhausted search. Commit `a4c6961`.
 - [x] **Allow manually specifying bonds and bond orders after import.** Select two atoms to create or change a single, double, or triple bond. Both halves of a split-color bond update together. [Bond edit tests](test/test_bond_edit.py)
 - [ ] **Scale the solver and expose ambiguity.** Partition independent graph work where possible, propagate charge constraints across fragments, add timing/node diagnostics, and benchmark symmetric/fused systems. Preserve search limits and atomic application of successful results.
-- [ ] **Keep multiple-bond orientation coherent across frames.** Initial strand alignment uses neighboring atoms and the sidebar supports manual tilt. Ring-plane alignment and continuity through near-collinear geometries remain open.
+- [x] **Keep multiple-bond orientation coherent across frames.** Hooked trajectory bonds follow the smallest ring containing the bond or a local neighbor. Degenerate frames carry the preceding direction forward. Sidebar tilt offsets apply to both halves across the animation.
 
 ## 5. Import, export, and data fidelity
 
@@ -81,7 +81,6 @@ Entry points: [importers.py](molecular_blender/importers.py), [transform.py](mol
 - [x] **Harden Molden basis parsing.** Expands `sp` shells, registers standalone `[7F]`, maps GTO blocks by atom reference, reads Fortran D/d numbers, and validates indexed coefficient blocks and section endings. Existing molecular fixtures and focused synthetic cases pass. Commit `f1547e0`.
 - [x] **Detect the Molden normalization convention.** Auto recognizes the ORCA producer title. Import and sidebar controls support explicit standard and ORCA choices, including settings from older scenes and scripts.
 - [x] **Validate Cartesian d, f and g orbitals.** The [PySCF fixture](test/fixtures/pyscf_water/generate.py) checks 38 signed Cartesian orbitals and total density by point and by grid.
-- [ ] **Validate imported orbital overlaps.** Extend the independent point and density references with orbital overlap integrals.
 - [x] **Validate spherical d orbitals against ORCA.** An RHF/def2-SVP ethene fixture checks both lobes and the nodal plane of the occupied π orbital. Corrected the normalized d-harmonic expansion and ORCA spherical d contraction factor. [Reference test](test/test_transform.py)
 - [x] **Validate spherical f and g orbitals.** The coefficient tables reproduce all 16 real harmonics in Molden order. ORCA imports handle its radial and phase conventions. Point and grid tests include weak tails from an independent [ORCA water calculation](test/fixtures/orca_water_fg/README.md).
 - [x] **Validate spherical Molden import from a second writer.** A PySCF RHF water calculation supplies independent values for all 28 signed orbitals and total density on a 64-point grid with the ORCA fix off. The density check exposed premature screening of a contracted oxygen s shell. [Reference generator](test/fixtures/pyscf_water/generate.py)
@@ -97,6 +96,7 @@ Entry points: `AnimateMolecule`, `compute_surface_vertex_sets`, and `create_surf
 
 - [x] **Expose trajectory sampling.** XYZ and JSON imports accept inclusive input ranges and a sampling stride. Only selected snapshots are allocated and original key times are preserved.
 - [x] **Choose trajectory interpolation.** Hold or linearly interpolate sampled positions and charge sizes, or use Blender's keyframe preference.
+- [x] **Reduce surface visibility keyframes.** Each lobe records its initial viewport and render visibility, then keys only transitions, including transitions through empty frames.
 - [ ] **Expose physical playback timing.** Add time units and frame rate options.
 - [x] **Stabilize dynamic inferred bonds.** Separate formation and breaking distances with an adjustable break margin.
 - [ ] **Design per-frame bond-order perception.** Handle strand appearance/disappearance and charge conservation.
@@ -144,7 +144,7 @@ Entry points: [molecule.py](molecular_blender/molecule.py), [compute_ao_cy.pyx](
 - [x] **Remove repeated selection and parenting operators from geometry imports.** Atoms, charge spheres, gradients and rings are parented directly. The 20-atom trajectory imported in 13.8 ms versus 36.4 ms in an empty scene and 111.5 ms versus 455.0 ms with 1,000 extra objects (medians of three local Blender 4.3.2 runs). [Benchmark](benchmarks/trajectory_import.py)
 - [ ] **Reduce remaining geometry construction overhead.** Profile primitive creation, material assignment and dependency-graph updates during larger imports.
 - [x] **Build indexed orbital and density meshes.** Molden calculations share vertices before passing surfaces to Blender. The initial import and sidebar recomputation write indexed faces directly, using the grid spacing to resolve duplicate intersections. [Mesh benchmark](benchmarks/orbital_mesh.py)
-- [ ] **Extend indexed meshes to cube data.** Account for each grid’s voxel spacing and validate remeshing and field-attribute transfer.
+- [x] **Extend indexed meshes to cube data.** Cube and JSON field surfaces share vertices using each frame’s smallest voxel spacing. Tests cover rotated anisotropic grids, both signs of a difference field and field mapping on a remeshed density.
 - [ ] **Audit Cython memory and floating-point policy.** Check allocation failures, pointer lifetime, array layout/dtype assumptions, and Python/Cython screening differences. Measure a float64 validation mode and the accuracy impact of `-ffast-math` before changing production flags.
 
 ## 10. Tests and scientific validation
@@ -162,7 +162,7 @@ There is already useful coverage for readers, numerical routines, geometry, bond
 - [x] **Compare final Python/Cython mesh geometry.** Both evaluator/mesher pairs produce closed signed lobes with matching component and face counts and vertices within 0.00002 Å on diffuse orbital and open-shell spin-density fixtures. The check exposed an absolute interpolation tolerance that distorted weak fields. Both meshers now interpolate independently of field scale.
 - [x] **Fix the empty orbital surface in the pure-Python fallback.** Discovered on 2026-11-15: with compiled `.so`/`.pyd` extensions excluded from an isolated checkout, `TestMoldenIsosurface.test_small_orbital` in `test/test_isosurfaces.py` fails because orbital 1 of `examples/fake-atom.molden`, at isovalue `0.05` and resolution `0.3`, produces no triangles. Reproduced with Python 3.14 and NumPy 2.5.3; the full Blender 4.3.2 suite with compiled extensions passes. Fixed the shell-bound formula (`l` → `l + 1`), which collapsed s-shell bounds to zero. Added analytic and s–g backend-parity bounds checks; the complete isolated fallback suite passes, and fallback CI now runs full test discovery. Commit `614be0b`.
 - [x] **Validate against analytic surfaces and electron counts.** Tests check the radius of a Gaussian isosurface, the location of a rotated cube plane, and integrated densities with fractional occupations. [Gaussian surface](test/test_isosurfaces.py), [cube plane](test/test_cube_datasets.py) and [density tests](test/test_orbitals.py)
-- [ ] **Grow independent scientific references.** Add orbital-overlap and ESP reference values and expand fixtures for distorted geometry. The bond-perception suite already covers ions, resonance and invalid chemistry. Add a dedicated environment for its optional RDKit comparison.
+- [ ] **Grow independent scientific references.** Add ESP reference values and expand fixtures for distorted geometry. The bond-perception suite already covers ions, resonance and invalid chemistry. Add a dedicated environment for its optional RDKit comparison.
 - [x] **Test the installed artifacts, not just the checkout.** Standalone wheel tests require both compiled extensions from the installed package and exercise known Gaussian/surface results independently of test ordering. Missing installations/binaries fail; a separate CI job verifies Python fallback. Commit `9f085b1`.
 - [ ] **Finish test isolation and performance baselines.** The test runner handles external working directories and paths with spaces. Reader tests exercise malformed Molden, SDF and cube input. Verify scene/datablock cleanup across the suite and add peak-memory and runtime baselines.
 
@@ -173,7 +173,7 @@ Entry points: [pyproject.toml](pyproject.toml), [setup.py](setup.py), [blender_s
 - [x] **Repair and verify wheel-test wiring.** Corrected the command to `test/test_wheel.py`, verified that it ships in a built sdist, and removed CI failure swallowing. The standalone test excludes checkout import precedence. Commit `300b77b`.
 - [ ] **Unify build/install/export entry points.** Clarify the roles of `setup.py` and `blender_setup.py`, share extension/compiler configuration, and make Blender target discovery explicit. `--link-target` selection and destination preview are now implemented; sharing compiler configuration remains open.
 - [ ] **Maintain an explicit Blender/Python/NumPy compatibility matrix.** CI currently pins Blender 3.6.7 while material code uses newer Principled socket names and transparency settings. Test the versions actually claimed, gate API differences by capability, and verify compiled modules inside each Blender runtime rather than trusting documentation's Python-version mapping.
-- [x] **Test the release ZIP in Blender 4.3.2.** A Linux x64 release job installs the assembled ZIP in an empty profile, checks both native backends, and renders an orbital.
+- [x] **Test the release ZIP in Blender 4.3.2.** Linux x64 and Apple Silicon release jobs install the same assembled ZIP in an empty profile, check both native backends, and render an orbital. The ZIP includes Intel and Apple Silicon slices in each Mac extension.
 - [ ] **Validate remaining supported release artifacts.** Install the addon ZIP in a clean Blender configuration, exercise a tiny import/render, and verify binary extension selection on each supported OS/architecture. Review pinned build tools and runner availability against the chosen matrix.
 - [x] **Re-render a saved surface series from the command line.** Blender’s `molecular_render` command uses the saved camera, accepts a molecule and optional surface groups, and returns a failure exit code for invalid input or render errors.
 - [x] **List saved surface groups.** `molecular_render --list` prints the active camera and each molecule’s surface labels and group IDs.
