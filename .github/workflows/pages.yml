@@ -1,0 +1,47 @@
+name: Website
+
+on:
+  push:
+    branches: [master, 'website/**']
+    paths: ['site/**', '.github/workflows/pages.yml', 'test/check_website.py']
+  pull_request:
+    branches: [master]
+    paths: ['site/**', '.github/workflows/pages.yml', 'test/check_website.py']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/jekyll-build-pages@v1
+        with:
+          source: site
+          destination: _site
+      - name: Check links and images in the published site
+        run: python3 test/check_website.py _site
+      - uses: actions/upload-pages-artifact@v4
+        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+        with:
+          path: _site
+
+  deploy:
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy verified website
+        id: deployment
+        uses: actions/deploy-pages@v4
