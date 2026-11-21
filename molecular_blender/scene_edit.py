@@ -8,6 +8,7 @@ from .periodictable import elements
 from .scene_state import (atom_bond_style, read_record, write_record, resolve_owner, owned_objects,
                           normalize_duplicate_ids, ID, ROLE)
 from .stylers import get_styler
+from .ui_options import option_property
 from .util import darken_color
 
 
@@ -250,10 +251,10 @@ class MB_OT_restyle(bpy.types.Operator):
     bl_description = 'Change the selected molecule without rereading the source or recomputing fields'
     bl_options = {'REGISTER', 'UNDO'}
 
-    atom_scale: FloatProperty(name='Atom size multiplier', default=1.0, min=0.01, max=100)
-    bond_thickness: FloatProperty(name='Bond thickness', default=0.2, min=0.001, max=50)
-    colors: EnumProperty(name='Palette', items=(('default', 'Default', ''), ('vmd', 'VMD', '')))
-    surface_opacity: FloatProperty(name='Surface opacity', default=1.0, min=0, max=1)
+    atom_scale: option_property('atom_scale', name='Atom size multiplier', min=0.01, max=100)
+    bond_thickness: option_property('bond_thickness', name='Bond thickness', api_default=True, min=0.001)
+    colors: option_property('colors', name='Palette')
+    surface_opacity: option_property('surface_opacity', name='Surface opacity', min=0, max=1)
 
     @classmethod
     def poll(cls, context):

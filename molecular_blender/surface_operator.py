@@ -2,78 +2,43 @@
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 
+from .diagnostics import report_exception
 from . import import_dialog
 from .plotter import SurfaceMeshStage, create_surface_meshes
 from .surface_jobs import SurfaceJob
 
 
-DENSITIES = (('density', 'Total density', 'Total electron density'),
-             ('alpha', 'Alpha density', 'Alpha electron density'),
-             ('beta', 'Beta density', 'Beta electron density'),
-             ('spin', 'Spin density', 'Alpha minus beta density'))
-ORBITAL_SPINS = (('all', 'All', 'All orbitals'), ('alpha', 'Alpha', 'Alpha frontier orbitals'),
-                 ('beta', 'Beta', 'Beta frontier orbitals'))
-MOLDEN_FIELDS = DENSITIES + (('orbital', 'Molecular orbital', 'Plot positive and negative orbital lobes'),)
+from .options import DENSITIES, MOLDEN_FIELDS, ORBITAL_SPINS
+from .ui_options import option_property
 
 
 class MoldenSurfaceProperties:
-    cube_field_type: EnumProperty(
-        name="Cube field type",
-        description="How cumulative cube surfaces integrate values",
-        items=(('auto', 'Auto / scalar magnitude', 'Use file metadata; untyped fields integrate absolute magnitude'),
-               ('orbital', 'Orbital amplitude', 'Integrate squared amplitude'),
-               ('density', 'Density', 'Integrate absolute density'),
-               ('signed', 'Signed scalar', 'Integrate absolute field magnitude')),
-        default='auto')
+    cube_field_type: option_property('cube_field_type')
 
-    cube_dataset: IntProperty(
-        name="Cube dataset index", description="Zero-based dataset index within a cube file",
-        default=0, min=0)
+    cube_dataset: option_property('cube_dataset')
 
-    response_eigenpair: IntProperty(name='DIPL eigenpair', default=0, min=0,
-        description='Eigenpair ID in the DIPL file, or zero for the first listed pair')
+    response_eigenpair: option_property('response_eigenpair')
 
-    cube_both_signs: BoolProperty(name="Include both signs", default=True,
-        description="Generate both signs for each cube level. Turn off to use exactly the signs entered")
+    cube_both_signs: option_property('cube_both_signs')
 
-    isovalues: StringProperty(
-        name="Isovalues to plot",
-        description="Comma-separated surface levels. Leave empty to import just the structure",
-        default="0.25,0.50")
+    isovalues: option_property('isovalues')
 
-    cumulative: BoolProperty(
-        name="Cumulative isovalues",
-        description="Set isovalues so they contain given proportion of the total density",
-        default=True)
+    cumulative: option_property('cumulative')
 
-    molden_convention: EnumProperty(
-        name="Molden convention", default='auto',
-        items=(('auto', 'Auto', 'Use ORCA for an orca_2mkl producer title, otherwise standard Molden'),
-               ('standard', 'Standard Molden', 'Use standard Molden normalization and phases'),
-               ('orca', 'ORCA', 'Use orca_2mkl normalization and phases')))
+    molden_convention: option_property('molden_convention')
 
     # Existing Blender scripts and presets can still explicitly select either convention.
     orca_fix: BoolProperty(options={'HIDDEN'},
         get=lambda op: op.molden_convention == 'orca',
         set=lambda op, value: setattr(op, 'molden_convention', 'orca' if value else 'standard'))
 
-    volume: EnumProperty(
-        name="Field",
-        description="Field to calculate from the Molden wavefunction",
-        items=MOLDEN_FIELDS,
-        default='orbital')
+    volume: option_property('volume')
 
-    orbital_spin: EnumProperty(
-        name="Orbital Spin", description="Channel for frontier-orbital names; explicit numbers always use file indices",
-        items=ORBITAL_SPINS, default='all')
+    orbital_spin: option_property('orbital_spin')
 
-    align_orbital_phase: BoolProperty(name="Align orbital phase across frames", default=False,
-        description="Use the overlap with the preceding displayed orbital to keep lobe colors consistent")
+    align_orbital_phase: option_property('align_orbital_phase')
 
-    orbital: StringProperty(
-        name="Orbital",
-        description="Plot this orbital from molden file. Accepts comma separated list, homo-n, lumo+m. (ignored for other inputs)",
-        default="homo")
+    orbital: option_property('orbital')
 
     # These UI selectors edit the existing RNA properties used by scripts and presets.
     orbital_choice: EnumProperty(
@@ -90,19 +55,9 @@ class MoldenSurfaceProperties:
 
     surface_advanced: BoolProperty(name="Advanced", default=False, options={'SKIP_SAVE'})
 
-    resolution: FloatProperty(
-        name="Resolution",
-        description="Desired spacing between points in isosurface (Angstrom)",
-        default=0.05,
-        min=0.001,
-        max=0.5,
-        step=0.01,
-        precision=3)
+    resolution: option_property('resolution')
 
-    remesh: IntProperty(
-        name="Remesh Octree Depth",
-        description="Octree depth for remesh modifier",
-        default=8)
+    remesh: option_property('remesh')
 
 
 class SurfaceJobOperator:
@@ -129,7 +84,7 @@ class SurfaceJobOperator:
             context.workspace.status_text_set("Molecular Blender: computing isosurfaces... (Esc to cancel)")
         except Exception as exc:
             self.cancel(context)
-            self.report({'ERROR'}, str(exc))
+            report_exception(self, exc)
             return {'CANCELLED'}
         return {'RUNNING_MODAL'}
 
@@ -184,7 +139,7 @@ class SurfaceJobOperator:
                 self.apply_surface_result(context, vertex_sets, trajectory_map)
         except Exception as exc:
             self._cleanup(context)
-            self.report({'ERROR'}, str(exc))
+            report_exception(self, exc)
             return {'CANCELLED'}
         self._cleanup(context)
         return {'FINISHED'}
