@@ -4,9 +4,7 @@ An editable menu of possible work, based on the 2026-11-15 code review. Status w
 
 Keep the current curve-extrusion approach for bonds as the baseline. Keep bond-order drawing and perception opt-in until their behavior has broader validation.
 
-## Remaining topics
-
-- **Builds and releases (4).** Share compiler settings between build tools, define the supported Blender/Python/NumPy combinations, and test the remaining release packages in clean Blender installations. The fourth item, comparing a water ESP value from the installed wheel and add-on ZIP, is deferred. [Packaging and compatibility](#11-packaging-compatibility-and-user-workflows)
+All roadmap items are checked off. The supported runtimes and release checks are listed in the [compatibility matrix](README.md#compatibility).
 
 ## 1. Post-import editing and scene interaction
 
@@ -181,11 +179,11 @@ There is already useful coverage for readers, numerical routines, geometry, bond
 Entry points: [pyproject.toml](pyproject.toml), [setup.py](setup.py), [blender_setup.py](blender_setup.py), [build_all.sh](build_all.sh), and [CI workflows](.github/workflows/).
 
 - [x] **Repair and verify wheel-test wiring.** Corrected the command to `test/test_wheel.py`, verified that it ships in a built sdist, and removed CI failure swallowing. The standalone test excludes checkout import precedence. Commit `300b77b`.
-- [ ] **Unify build/install/export entry points.** Clarify the roles of `setup.py` and `blender_setup.py`, share extension/compiler configuration, and make Blender target discovery explicit. `--link-target` selection and destination preview are now implemented; sharing compiler configuration remains open.
-- [ ] **Maintain an explicit Blender/Python/NumPy compatibility matrix.** CI currently pins Blender 3.6.7 while material code uses newer Principled socket names and transparency settings. Test the versions actually claimed, gate API differences by capability, and verify compiled modules inside each Blender runtime rather than trusting documentation's Python-version mapping.
+- [x] **Unify build/install/export entry points.** The Blender build command and wheel backend compile the same three portable extensions with `setup.py`. `build --blender` checks the executable’s ABI and architecture. Install supports target selection and dry runs, and export accepts repaired wheels. [Build instructions](README.md#building-from-source)
+- [x] **Maintain an explicit Blender/Python/NumPy compatibility matrix.** The documented targets are Blender 3.6.7 and 4.3.2. Linux CI runs the compiled source suite in both. The installed ZIP tests check the bundled Python ABI, NumPy, all three native modules, Principled material settings and a render. [Compatibility matrix](README.md#compatibility)
 - [x] **Test the release ZIP in Blender 4.3.2.** Linux x64 and Apple Silicon release jobs install the same assembled ZIP in an empty profile, check both native backends, and render an orbital. The ZIP includes Intel and Apple Silicon slices in each Mac extension.
-- [ ] **Validate remaining supported release artifacts.** Install the addon ZIP in a clean Blender configuration, exercise a tiny import/render, and verify binary extension selection on each supported OS/architecture. Review pinned build tools and runner availability against the chosen matrix.
-- [ ] **Check a reference ESP value in shipped binaries (deferred).** Compare the installed wheel and Blender ZIP results at a water reference point.
+- [x] **Validate remaining supported release artifacts.** Release CI builds wheels from the source distribution, checks every CPython ABI from 3.9 through 3.14, and installs the assembled ZIP on Linux x64, Apple Silicon and Windows x64 for both Blender releases. Linux carries the repaired wheel’s private libraries. Intel macOS receives a slice check only. [Release workflow](.github/workflows/build-wheels.yml)
+- [x] **Check a reference ESP value in shipped binaries.** The installed wheel and Blender ZIP evaluate water at (1.1, −1.5, 0.8) bohr with the native kernel. The independent PySCF value is −0.058368035539439 Hartree/e, with an absolute tolerance of 5 × 10⁻⁷. [Shared check](test/installed_esp.py)
 - [x] **Re-render a saved surface series from the command line.** Blender’s `molecular_render` command uses the saved camera, accepts a molecule and optional surface groups, and returns a failure exit code for invalid input or render errors.
 - [x] **List saved surface groups.** `molecular_render --list` prints the active camera and each molecule’s surface labels and group IDs.
 - [x] **Adapt import controls to the selected file and field.** The highlighted file determines the available controls. Cube files expose the appropriate dataset picker, Molden densities hide orbital controls, and JSON manifests preview the first frame. Import Details reports the active numerical backends. [Dialog tests](test/test_import_dialog.py)

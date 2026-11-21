@@ -176,64 +176,60 @@ The easiest way to install Molecular Blender in Blender is using the pre-built a
 3. **Select** the downloaded zip file (do not extract it!)
 4. **Enable** the "Molecular Blender" addon
 
-The zip includes pre-compiled Cython extensions for all platforms (Linux, macOS, Windows). Blender automatically uses the correct ones for your system.
+### Compatibility
 
-### For Python Developers (Advanced)
+| Blender release | Bundled Python¹ | Bundled NumPy | Release ZIP runtime checks |
+| --- | --- | --- | --- |
+| 3.6.7 | 3.10 (3.10.13 on Apple Silicon) | 1.23.5 | Linux x64, Apple Silicon, Windows x64 |
+| 4.3.2 | 3.11 (3.11.9 on Apple Silicon) | 1.24.3 | Linux x64, Apple Silicon, Windows x64 |
 
-If you want to use molecular_blender as a Python package outside of Blender, or contribute to development:
+¹ Blender selects extensions by Python ABI and CPU architecture. Each release check
+prints the actual interpreter, verifies its ABI and NumPy version, installs the ZIP
+in an empty profile, loads all three native extensions, evaluates the water ESP
+reference and renders an orbital. Intel macOS receives the universal macOS binaries.
+CI checks the Intel slice at assembly time and skips Intel runtime tests.
 
-**Install from PyPI** (once published):
-```bash
-pip install molecular_blender
-```
+The standalone wheels cover standard CPython 3.9 through 3.14 on the same
+platforms, including both glibc and musl on Linux x64. The Blender ZIP uses the
+glibc binaries from the manylinux wheels. Each wheel comes from the release source distribution. CI installs the
+repaired wheel in a fresh environment and checks a Gaussian, a surface and the water
+potential on Linux x64, Apple Silicon and Windows x64.
 
-**Or download wheels** from [GitHub Releases](https://github.com/smparker/molecular-blender/releases):
-```bash
-pip install molecular_blender-*.whl
-```
+### For Python Developers
+
+Download the wheel matching your interpreter and system from GitHub Releases
+and install that file with pip. [Release downloads](https://github.com/smparker/molecular-blender/releases)
 
 ### Building from Source
 
-There are two basic ways to install Molecular Blender from source, depending on whether you
-want to use the optional cython enhanced isosurface routines (highly recommended,
-if you're drawing isosurfaces at all).
-
-#### Using blender_setup.py (cython compatible)
-The most robust way to install from source is to use the included `blender_setup.py`.
-
-**To create a Blender-ready zip file:**
-```bash
-cd /path/to/molecular/blender/repo
-python3 blender_setup.py build
-python3 blender_setup.py export
-```
-
-This creates a zip file that can be installed directly in Blender (Edit → Preferences → Add-ons → Install).
-
-**To install directly to Blender's addon directory:**
-```bash
-python3 blender_setup.py build
-python3 blender_setup.py install  # or use --mode=link for a symlink
-```
-
-This will build the Cython extensions and install/link to all Blender versions found in the standard directories (tested on macOS).
-
-Use `--link-target` with either install mode to select discovered Blender versions,
-and `--dry-run` to preview destinations before replacing existing installations:
+Use a Python environment with a C++ compiler, Python development headers, and the
+same Python ABI and architecture as the target Blender. From the repository root:
 
 ```bash
-python3 blender_setup.py install --mode=link --link-target=4.3 --dry-run
-python3 blender_setup.py install --mode=copy --link-target=4.3,4.10
+python -m pip install -r requirements.txt
+python blender_setup.py build --blender /path/to/blender
+python blender_setup.py install --mode=copy --link-target=4.3 --dry-run
+python blender_setup.py install --mode=copy --link-target=4.3
 ```
 
-`blender_setup.py` builds, installs, and exports the Blender addon. `setup.py` and
-`pyproject.toml` define the Python wheel and source distributions used by packaging CI.
+The build queries that Blender executable and reports its extension suffix, CPU
+architecture and NumPy version before compiling. With Blender on PATH, use
+`build --check-version`. The same flag accepts an executable through `BLENDER_BIN`.
+Plain `build` uses the current Python. Builds for different CPython ABIs can
+coexist in the checkout. For use with both NumPy 1.x and 2.x, build with NumPy
+2.x headers, as the release wheels do.
 
-**Requirements:**
-- A build targeting Blender's bundled Python ABI. Check `sys.version` in Blender's Python Console. This project's local Blender 4.3.2 uses Python 3.11.9 and NumPy 1.24.3.
-- Cython 3 for generating the native extension sources
-- NumPy installed: `pip install numpy`
-- C++ compiler (gcc, clang, or MSVC)
+`install` copies the checkout into discovered Blender profiles. Use
+`--link-target=4.3,4.10` to select multiple profiles or `--mode=link` for a
+development symlink. The default selects all discovered profiles. To package the
+current add-on and its in-place extensions, run `python blender_setup.py export`.
+For a release, use `python blender_setup.py export --wheel-dir wheelhouse --output molecular_blender.zip`.
+The exporter bundles the Linux wheel's private libraries with the add-on using
+`patchelf` and joins the two macOS slices using `lipo`.
+
+Python wheel, sdist and local Blender builds share the three extension definitions
+and portable compiler flags in `setup.py`. To produce Python distributions, install
+the `build` frontend and run `python -m build`.
 
 #### Direct symlink (no cython - not recommended)
 If you are okay with skipping Cython compilation, you can directly symlink from the python
@@ -275,18 +271,6 @@ For example:
   - `density` would compute the density
 
 ## Development and Contributing
-
-### For Blender Addon Development
-
-The standard development workflow for working on the addon:
-
-```bash
-python blender_setup.py build      # Build Cython extensions
-python blender_setup.py install    # Install to Blender (or --mode=link for symlink)
-python blender_setup.py export     # Export Blender-ready addon zip
-```
-
-This creates a zip file that can be distributed to Blender users or uploaded to GitHub releases.
 
 ### Selecting cube datasets
 
