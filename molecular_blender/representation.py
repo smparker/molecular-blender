@@ -6,18 +6,19 @@ from .bond_edit import _atom_objects, _remove_curve, _remove_unused_curve, _vali
 from .geometry_import import rollback_new_ids, track_new
 from .periodictable import elements
 from .plotter import set_bond_order
-from .scene_edit import _atom_radius, update_junctions
+from .scene_edit import _atom_radius, space_filling_bond, update_junctions
 from .scene_state import ID, normalize_duplicate_ids, owned_objects, read_record, resolve_owner, write_record
 from .stylers import get_styler
 
 STYLES = (('sticks', 'Sticks', 'Element-colored bonds with small atom junctions'),
           ('bs', 'Ball and stick', 'Element spheres with single-color bonds'),
-          ('fixedbs', 'Fixed ball and stick', 'Ball and stick with uniform bond thickness'))
+          ('fixedbs', 'Fixed ball and stick', 'Ball and stick with uniform bond thickness'),
+          ('vdw', 'Space-filling (van der Waals)', 'Show element van der Waals spheres and hide bonds'))
 
 
 def can_switch(settings):
     return (settings['plot_type'] != 'animate' and settings['object_type'] != 'wireframe'
-            and settings['plot_style'] in {'sticks', 'bs', 'fixedbs'})
+            and settings['plot_style'] in {item[0] for item in STYLES})
 
 
 def switch_representation(owner, style):
@@ -25,7 +26,7 @@ def switch_representation(owner, style):
     record = read_record(owner)
     settings = record['settings']
     if not can_switch(settings) or style not in {item[0] for item in STYLES}:
-        raise ValueError('Choose a single-frame stick or ball-and-stick molecule')
+        raise ValueError('Choose a single-frame molecule with individually selectable atoms')
     if style == settings['plot_style']:
         return
     if style == 'sticks' and settings['bond_thickness'] <= 0:
@@ -66,8 +67,11 @@ def switch_representation(owner, style):
     # Prepare all replacement curve data before modifying the original objects.
     staged = []
     surplus = []
+    prior_style = settings['plot_style']
+    bond_style = record.get('bond_representation', 'fixedbs') if prior_style == 'vdw' else prior_style
+    rebuild = style != 'vdw' and style != bond_style
     with rollback_new_ids():
-        for identifier, parts in groups.items():
+        for identifier, parts in (groups.items() if rebuild else ()):
             parts.sort(key=lambda obj: obj.data.bevel_factor_start)
             endpoints = [atoms.get(i) for i in bonds[identifier]['atoms']]
             if None in endpoints or len(parts) > 2:
@@ -132,6 +136,12 @@ def switch_representation(owner, style):
         _remove_curve(obj)
     for atom, radius in radii.items():
         atom['mb_atom_radius'] = radius
+    if style == 'vdw':
+        record['bond_representation'] = prior_style
+    elif prior_style == 'vdw':
+        record.pop('bond_representation', None)
+    for obj in owned_objects(owner, 'bond'):
+        space_filling_bond(obj, style == 'vdw')
     settings['plot_style'] = style
     update_junctions(owner, record)
     write_record(owner, record)

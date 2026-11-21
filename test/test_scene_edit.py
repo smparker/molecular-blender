@@ -64,6 +64,22 @@ class TestRestyle(unittest.TestCase):
                 self.assertEqual((surface.data, surface.active_material), (mesh, mat))
         for atom, original in zip(atoms, sizes):
             self.assertLess((atom.scale - original).length, 1e-5)
+        bonds = owned_objects(root, 'bond')
+        bonds[0].hide_render = True
+        presentation = [(obj, obj.data, obj.hide_viewport, obj.hide_render) for obj in bonds]
+        self.assertEqual(bpy.ops.molecular_blender.change_representation(style='vdw'), {'FINISHED'})
+        from molecular_blender.periodictable import elements
+        for atom in atoms:
+            radius = atom.scale.x * atom['mb_atom_radius']
+            self.assertAlmostEqual(radius, elements[atom['mb_element']].vdw, places=5)
+        self.assertTrue(all(obj.hide_render and obj.hide_viewport for obj in bonds))
+        self.assertEqual(bpy.ops.molecular_blender.change_representation(style='sticks'), {'FINISHED'})
+        for obj, data, viewport, render in presentation:
+            self.assertEqual((obj.data, obj.hide_viewport, obj.hide_render), (data, viewport, render))
+        self.assertEqual(read_record(root)['bonds'], saved['bonds'])
+        self.assertEqual(read_record(root)['surfaces'], saved['surfaces'])
+        for atom, original in zip(atoms, sizes):
+            self.assertLess((atom.scale - original).length, 1e-5)
 
     def test_make_independent_preserves_internal_sharing_and_detaches_bevel_sources(self):
         from molecular_blender.plotter import BlendMoleculeSetup

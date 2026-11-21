@@ -148,6 +148,9 @@ def persist_molecule(molecule, source, settings):
                 obj['mb_order'] = entry['order'] if settings['draw_bond_orders'] else 1
                 obj['mb_radius'] = obj.data.bevel_depth
                 obj['mb_nominal_radius'] = settings['bond_thickness']
+                if settings['plot_style'] == 'vdw' and settings['plot_type'] != 'animate':
+                    from .scene_edit import space_filling_bond
+                    space_filling_bond(obj, True)
                 if settings['plot_style'] == 'sticks' and obj.active_material is not None:
                     for symbol, material_name in molecule.materials.items():
                         if obj.active_material.name == material_name:

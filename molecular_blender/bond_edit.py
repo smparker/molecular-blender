@@ -9,7 +9,7 @@ from .periodictable import elements
 from .plotter import bind_bond_endpoints
 from .scene_state import (read_record, write_record, resolve_owner, owned_objects,
                           new_id, tag, ID, ROLE, normalize_duplicate_ids)
-from .scene_edit import _private_curve, apply_bond_profile, update_junctions
+from .scene_edit import _private_curve, apply_bond_profile, space_filling_bond, update_junctions
 from .stylers import get_styler
 
 
@@ -82,10 +82,12 @@ def _new_curves(owner, record, bond, atoms):
     if (coords[1] - coords[0]).length < 1e-8:
         raise ValueError('Cannot bond atoms at the same position')
     symbols = [obj['mb_element'] for obj in (first, second)]
-    colored = settings['plot_style'] == 'sticks'
+    envelope = settings['plot_style'] == 'vdw' and settings['plot_type'] != 'animate'
+    style = record.get('bond_representation', 'fixedbs') if envelope else settings['plot_style']
+    colored = style == 'sticks'
     split = colored and symbols[0] != symbols[1]
     radius = settings['bond_thickness']
-    if settings['plot_style'] == 'bs' and not settings['universal_bonds']:
+    if style == 'bs' and not settings['universal_bonds']:
         radius = 0.1 * min(elements[s].vdw for s in symbols)
     if radius <= 0:
         raise ValueError('Set a positive bond thickness before adding a bond')
@@ -133,6 +135,8 @@ def _new_curves(owner, record, bond, atoms):
             obj['mb_nominal_radius'] = settings['bond_thickness']
             bpy.context.view_layer.update()
             bind_bond_endpoints(obj, first, second)
+            if envelope:
+                space_filling_bond(obj, True)
         return objects
     except Exception:
         for obj in objects:

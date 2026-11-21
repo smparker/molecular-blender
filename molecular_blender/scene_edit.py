@@ -36,6 +36,17 @@ def apply_bond_profile(obj, bond, order):
         point.tilt = tilt
 
 
+def space_filling_bond(obj, enabled):
+    """Hide a bond for the atom envelope, remembering its own visibility."""
+    key = 'mb_space_filling_visibility'
+    if enabled and key not in obj:
+        obj[key] = [int(obj.hide_viewport), int(obj.hide_render)]
+        obj.hide_viewport = obj.hide_render = True
+    elif not enabled and key in obj:
+        obj.hide_viewport, obj.hide_render = map(bool, obj[key])
+        del obj[key]
+
+
 def update_junctions(owner, record):
     """Scale objects, preserving manual nonuniform scaling and linked atom meshes."""
     from .plotter import _multiple_bond_profile
