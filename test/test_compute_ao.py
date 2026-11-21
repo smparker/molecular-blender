@@ -386,6 +386,7 @@ class TestFractionalDensity(unittest.TestCase):
             for field in fields:
                 grid = field.box_values(*axes)
                 self.assertEqual(grid.shape, (17, 15, 13))
+                self.assertTrue(grid.flags.c_contiguous)
                 self.assertLess(grid.min(), 0)
                 self.assertGreater(grid.max(), 0)
                 np.testing.assert_allclose(grid[:, :, 5], field.plane_values(*axes[:2], axes[2][5]), atol=1e-6)

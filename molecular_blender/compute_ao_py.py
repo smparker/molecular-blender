@@ -291,6 +291,14 @@ class MOData:
         return cls(shells, coeff, nocc, occupations)
 
 
+def _grid_from_planes(plane_values, xvals, yvals, zvals):
+    """Fill a C-contiguous [x,y,z] array for the native marching-cubes kernel."""
+    grid = np.empty((len(xvals), len(yvals), len(zvals)), dtype=np.float32)
+    for k, z in enumerate(zvals):
+        grid[:, :, k] = plane_values(xvals, yvals, z)
+    return grid
+
+
 class OrbitalCalculater(object):
     """Computes value of orbital at real space points"""
 
@@ -334,11 +342,7 @@ class OrbitalCalculater(object):
         return out
 
     def box_values(self, xvals, yvals, zvals):
-        out_contiguous = np.empty([len(zvals), len(xvals), len(yvals)], dtype=np.float32)
-        for k, z_a in enumerate(zvals):
-            out_contiguous[k,:,:] = self.plane_values(xvals, yvals, z_a)
-
-        return out_contiguous.transpose(1,2,0)
+        return _grid_from_planes(self.plane_values, xvals, yvals, zvals)
 
     def isovalue_containing_proportion(self, values=[0.90], resolution=0.2*ang2bohr, box=None):
         if box is None:
@@ -431,11 +435,7 @@ class DensityCalculater(object):
         return out
 
     def box_values(self, xvals, yvals, zvals):
-        out_contiguous = np.empty([len(zvals), len(xvals), len(yvals)], dtype=np.float32)
-        for k, z_a in enumerate(zvals):
-            out_contiguous[k,:,:] = self.plane_values(xvals, yvals, z_a)
-
-        return out_contiguous.transpose(1,2,0)
+        return _grid_from_planes(self.plane_values, xvals, yvals, zvals)
 
     def isovalue_containing_proportion(self, values=[0.90], resolution=0.2*ang2bohr, box=None):
         if box is None:
