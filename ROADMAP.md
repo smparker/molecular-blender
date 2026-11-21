@@ -1,6 +1,6 @@
 # Molecular Blender roadmap
 
-An editable menu of possible work, based on the 2026-11-15 code review. Status was checked against the working tree on 2026-11-20. Checked items are implemented. Open items describe remaining work.
+An editable menu of possible work, based on the 2026-11-15 code review. Status was checked against the working tree on 2026-11-21. Checked items are implemented. Open items describe remaining work.
 
 Keep the current curve-extrusion approach for bonds as the baseline. Keep bond-order drawing and perception opt-in until their behavior has broader validation.
 
@@ -19,7 +19,7 @@ Imports retain their settings and object identities in the blend file. The sideb
 - [x] **Restyle a molecule and individual surfaces.** Adjust atom size, bond thickness, palette, and surface opacity. Multiple-bond profiles and junctions resize together. Each surface calculation has independent lobe colors and opacity, including for linked duplicates. [Restyle tests](test/test_scene_edit.py) and [surface tests](test/test_scene_surfaces.py)
 - [x] **Style selected atoms and bonds.** Apply an accent to a fragment or individual bonds and restore the current element palette.
 - [x] **Add an orbital and surface browser.** Browse saved orbital metadata, jump to HOMO/LUMO by spin, and show, hide, style or remove a surface calculation. Single-frame Molden imports can add orbitals and densities after import. [Sidebar action tests](test/test_scene_surfaces.py)
-- [x] **Replace a surface calculation in place.** Single-frame Molden surfaces can change levels and grid spacing while retaining their lobe colors, opacity and visibility.
+- [x] **Replace a surface calculation in place.** Single-frame Molden surfaces can change levels and grid spacing. Cube contours reuse the selected dataset and grid. Both preserve lobe styling and placement. Mapped cubes resample their field colors.
 - [x] **Expose bond editing tools.** Set an order, add/delete a bond, lock a manual assignment against reperception, and adjust strand tilt. Split bonds update both halves. Order changes update junction sizes, and profile rebuilds preserve manual tilt.
 - [x] **Inspect and select atoms.** Inspect element, index, and charges. Select visible atoms by element, direct neighbor, or connected fragment using the current bond graph. [Panel tests](test/test_scene_panel.py) and [selection tests](test/test_scene_surfaces.py)
 - [x] **Select atoms by index.** Select individual saved indices and inclusive ranges on the active molecule.
@@ -29,8 +29,8 @@ Imports retain their settings and object identities in the blend file. The sideb
 - [ ] **Refresh source data while preserving presentation.** Reload coordinates or orbitals and retain user colors, visibility, transforms, and locked edits where atom identities still match. Report incompatible atom lists rather than silently rebinding objects.
 - [x] **Support undo and redo for sidebar edits.** Molecule restyling, manual bond edits, and surface removal support Blender Undo/Redo. Moving atoms changes the displayed geometry. Wavefunction surfaces use the original calculation coordinates.
 - [x] **Reset atom and bond style.** The sidebar restores the original atom size, bond thickness and palette, and clears accents for the selected molecule. Older scene records use their saved settings as the baseline.
-- [x] **Switch sticks and ball-and-stick after import.** The sidebar converts single-frame molecules using their current geometry, preserving atom accents, manual bond edits, and existing surfaces.
-- [ ] **Add a general Rebuild Geometry action.** Scope cleanup to the owning molecule. The stick and ball-and-stick switch covers single-frame representation changes.
+- [x] **Switch sticks, ball-and-stick and space-filling after import.** The sidebar converts single-frame molecules using their current geometry, preserving atom accents, manual bond edits, and existing surfaces.
+- [ ] **Add a general Rebuild Geometry action.** Scope cleanup to the owning molecule. The sidebar already covers single-frame representation changes.
 - [x] **Make a molecule independent.** Detach shared geometry, multiple-bond bevel sources and materials while retaining sharing within the molecule.
 
 ## 2. Electrostatic-potential maps
@@ -62,6 +62,8 @@ Entry points: [orbitals.py](molecular_blender/orbitals.py), [compute_ao_py.py](m
 - [x] **Frame the visible molecule in the viewport.** Frame Molecule fits the current geometry and visible surfaces while preserving the active selection and render camera.
 - [x] **View a selected plane face-on.** Three atoms define the viewing direction for the framed molecule.
 - [x] **Export a surface series.** Render selected surface groups to individual transparent PNGs with the active scene camera.
+- [x] **Fit the camera to a surface series.** Export selected groups at a common scale from the chosen viewport orientation.
+- [x] **Choose a Turbomole response density.** A Molden manifest with a DIPL file offers an eigenpair picker for rendering signed induced densities.
 - [x] **Set ordinary renders to transparent PNG.** Output Properties includes a one-click film and RGBA output preset.
 - [x] **Align the viewport to molecular principal axes.** Frame the current geometry with its longest dimension horizontal and best-fit plane face-on, using the current view to resolve ambiguous axes.
 - [ ] **Improve publication output.** Standalone field legends are available for compositing. Scale bars remain a compositing task.
@@ -102,7 +104,6 @@ Entry points: `AnimateMolecule`, `compute_surface_vertex_sets`, and `create_surf
 - [x] **Stabilize dynamic inferred bonds.** Separate formation and breaking distances with an adjustable break margin.
 - [ ] **Design per-frame bond-order perception.** Handle strand appearance/disappearance and charge conservation.
 - [x] **Align orbital phases across frames.** Molden trajectories can use sampled real-space overlap to stabilize lobe colors. The sidebar identifies frames with ambiguous phase.
-- [ ] **Track orbital identity near crossings.** Follow changes in orbital ordering and handle near-degenerate subspaces.
 - [x] **Stream trajectory surface construction.** Cube and Molden trajectories build Blender meshes a frame at a time. The interactive worker queues at most two completed frames on disk. Escape, worker failure and add-on shutdown discard staged surfaces. A 24-frame signed cube benchmark produced the same 48 meshes and 1,498,176 faces, with peak memory falling from 333 to 307 MiB in Blender and from 341 to 302 MiB in the worker.
 - [ ] **Load trajectory meshes on demand during playback.** Completed scenes currently retain all final meshes for scrubbing, rendering and saving.
 
@@ -253,7 +254,7 @@ Entry points: [pyproject.toml](pyproject.toml), [setup.py](setup.py), [blender_s
 
 ## Scope notes
 
-The first post-import editing increment does not require replacing the renderer. External ESP cubes provide field maps without a Gaussian Coulomb integral evaluator. Full aromaticity, metal chemistry, periodic systems, native ESP evaluation, and orbital tracking each deserve separate designs and validation datasets before implementation.
+The first post-import editing increment does not require replacing the renderer. External ESP cubes provide field maps without a Gaussian Coulomb integral evaluator. Full aromaticity, metal chemistry, periodic systems, and native ESP evaluation each deserve separate designs and validation datasets before implementation.
 
 Visualization defaults approved 2026-11-16: infer occupation scale 1/2 from the maximum; classify occupied strictly above half (half is empty). Spatial populations fill the majority spin first; missing labels default to alpha. Preserve actual fractional populations for density calculations.
 
