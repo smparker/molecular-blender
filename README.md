@@ -377,6 +377,11 @@ whole molecule, duplicate its root and children together; the copy receives a
 new molecule identity while preserving atom identities within that molecule.
 Older imports without this record must be reimported to use molecule editing.
 
+Use **Remove Molecule** in the Molecule sidebar to delete an import and release
+its unused meshes, materials, actions, bevel profiles and collections. Shared
+data stays available to its other users. Cleanup of older imports preserves
+resources whose ownership the saved scene cannot establish.
+
 If a Molden file moves, select its molecule and click **Locate Source…**
 beside the missing path. Choose the relocated file. The add-on checks the saved
 atom indices, elements, coordinates, and orbital metadata before updating the
@@ -712,6 +717,29 @@ at 0.001 e/Bohr³ and colors it by electrostatic potential from −0.035 to
 +0.035 Hartree/e. Red marks negative potential. Blue marks positive potential.
 To use your own calculation, change the two input paths, color limits and camera
 framing in the [figure script](examples/render_water_esp.py).
+
+### Sample a field from Python
+
+The numerical model runs in ordinary Python with NumPy. For example, to sample
+water's HOMO at two positions in angstroms from the repository root:
+
+```python
+from molecular_blender.importers import molecule_from_file
+from molecular_blender.molecular_data import Molecule
+
+data = molecule_from_file("examples/water-sto-3g.molden", {})
+water = Molecule.from_dict("water", data)
+field = water.orbitals.scalar_field("homo")
+values = field.batch([[0.1, 0.2, 0.3], [0.4, 0.0, 0.0]])
+```
+
+Use `water.orbitals.scalar_field("density")` for total density or
+`model.volume.scalar_field()` for the selected cube dataset. Every field accepts
+`point(xyz)`, `batch(points)` and `grid(x, y, z)` in source-space angstroms.
+Grid axes are monotonic and results follow the supplied axis order. `bounds()`
+returns the lower and upper corners. `info` identifies the source, selection,
+scalar units and sign convention when known. `gradient` is optional. The
+lower-level AO evaluators returned by `get_orbital` and `get_density` use Bohr.
 
 ### Molden normalization by writer
 
