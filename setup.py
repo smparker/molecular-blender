@@ -1,104 +1,36 @@
-"""
-Setup file for building wheels with cibuildwheel
-Modified from the original setup.py for molecular_blender
-This file is specifically for wheel building and CI/CD purposes.
-For local development, continue using setup.py
-"""
-
-import os
+"""Native extension definitions shared by Blender source builds and Python wheels."""
+import ast
+from pathlib import Path
 import sys
-import numpy as np
-from setuptools import setup, Extension
+
+import Cython
 from Cython.Build import cythonize
+import numpy as np
+from setuptools import Extension, setup
 
-# Get version from __init__.py
-def get_version():
-    init_file = os.path.join(os.path.dirname(__file__), "molecular_blender", "__init__.py")
-    with open(init_file, "r") as f:
-        for line in f:
-            if line.startswith("bl_info"):
-                # Parse the bl_info dictionary to get version
-                for i in range(20):  # Look ahead a few lines
-                    line = f.readline()
-                    if '"version"' in line or "'version'" in line:
-                        # Extract version tuple like (1, 2, 3)
-                        import re
-                        match = re.search(r'\((\d+),\s*(\d+),\s*(\d+)\)', line)
-                        if match:
-                            return f"{match.group(1)}.{match.group(2)}.{match.group(3)}"
-    return "0.0.0"
 
-# Compiler flags - portable version (no -march=native for wheels)
-extra_compile_args = ["-O3", "-ffast-math"]
-if sys.platform != "win32":
-    extra_compile_args.append("-std=c++11")
+def addon_version():
+    # Read metadata without importing the package before its extensions exist.
+    for node in ast.parse(Path("molecular_blender/__init__.py").read_text()).body:
+        if isinstance(node, ast.Assign) and any(
+                isinstance(target, ast.Name) and target.id == "bl_info" for target in node.targets):
+            return ".".join(map(str, ast.literal_eval(node.value)["version"]))
+    raise ValueError("Missing bl_info in molecular_blender/__init__.py")
 
-# Define Cython extensions
+
+# The kernels are serial C++. Keep binaries portable between CPUs of the same
+# architecture, including ZIPs exported from a local Blender build.
+flags = ["/O2", "/fp:fast"] if sys.platform == "win32" else ["-O3", "-ffast-math", "-std=c++11"]
 extensions = [
-    Extension(
-        "molecular_blender.compute_ao_cy",
-        sources=["molecular_blender/compute_ao_cy.pyx"],
-        include_dirs=[np.get_include()],
-        define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")],
-        extra_compile_args=extra_compile_args,
-        language="c++",
-    ),
-    Extension(
-        "molecular_blender.esp_kernel",
-        sources=["molecular_blender/esp_kernel.pyx"],
-        include_dirs=[np.get_include()],
-        extra_compile_args=extra_compile_args,
-        language="c++",
-    ),
-    Extension(
-        "molecular_blender.marching_cube_cy",
-        sources=["molecular_blender/marching_cube_cy.pyx"],
-        include_dirs=[np.get_include()],
-        define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")],
-        extra_compile_args=extra_compile_args,
-        language="c++",
-    ),
+    Extension(f"molecular_blender.{name}", [f"molecular_blender/{name}.pyx"],
+              include_dirs=[np.get_include()],
+              define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION"),
+                             ("NPY_TARGET_VERSION", "NPY_1_19_API_VERSION")],
+              extra_compile_args=flags, language="c++")
+    for name in ("compute_ao_cy", "marching_cube_cy", "esp_kernel")
 ]
 
-# Cythonize extensions
-extensions = cythonize(
-    extensions,
-    compiler_directives={
-        "language_level": "3",
-        "cdivision": True,
-        "profile": True,
-    },
-    include_path=[np.get_include()],
-)
-
-setup(
-    name="molecular_blender",
-    version=get_version(),
-    description="Blender addon for molecular visualization",
-    long_description=open("README.md").read() if os.path.exists("README.md") else "",
-    long_description_content_type="text/markdown",
-    author="Shane Parker",
-    url="https://github.com/smparker/molecular-blender",
-    packages=["molecular_blender"],
-    ext_modules=extensions,
-    python_requires=">=3.9",
-    install_requires=[
-        "numpy>=1.19.0",
-    ],
-    classifiers=[
-        "Development Status :: 4 - Beta",
-        "Intended Audience :: Science/Research",
-        "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
-        "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Programming Language :: Python :: 3.12",
-        "Programming Language :: Python :: 3.13",
-        "Programming Language :: Cython",
-        "Topic :: Scientific/Engineering :: Chemistry",
-        "Topic :: Scientific/Engineering :: Visualization",
-    ],
-    zip_safe=False,
-)
-
+# A checkout can target several Blender/Python installations. Cython generates
+# different C++ from the NumPy 1.x and 2.x declarations for the same .pyx.
+generated = Path("build") / f"cython-{Cython.__version__}-{sys.implementation.cache_tag}-numpy-{np.__version__}"
+setup(version=addon_version(), ext_modules=cythonize(extensions, language_level=3, build_dir=str(generated)))

@@ -58,6 +58,28 @@ class TestInstallTargets(unittest.TestCase):
         self.assertEqual((target / 'version').read_text(), 'new')
 
 
+class TestBuildTarget(unittest.TestCase):
+    def test_abi_and_architecture_must_match_before_compiling(self):
+        import json
+        import platform
+        import sysconfig
+
+        suffix = sysconfig.get_config_var('EXT_SUFFIX')
+        machine = platform.machine().lower()
+        for abi, arch in ((suffix, machine), ('different-ABI', machine), (suffix, 'other-CPU')):
+            with self.subTest(abi=abi, arch=arch):
+                output = 'MB_BUILD_RUNTIME ' + json.dumps(['Blender test', '1.24.3', abi, arch])
+                with patch('blender_setup.subprocess.check_output', return_value=output), \
+                        patch('blender_setup.subprocess.run') as compile_extensions, redirect_stdout(io.StringIO()):
+                    if (abi, arch) == (suffix, machine):
+                        blender_setup.build('selected-blender')
+                        compile_extensions.assert_called_once()
+                    else:
+                        with self.assertRaisesRegex(ValueError, 'same ABI and architecture'):
+                            blender_setup.build('selected-blender')
+                        compile_extensions.assert_not_called()
+
+
 class TestBlenderDiscovery(unittest.TestCase):
     def test_linux_missing_roots_and_numeric_version_order(self):
         from _setuputils import generic

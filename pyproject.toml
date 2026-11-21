@@ -1,9 +1,9 @@
 [build-system]
 requires = [
-    "setuptools>=45",
+    "setuptools>=77.0.3",
     "wheel",
-    "Cython>=0.29.0",
-    "numpy>=1.19.0",
+    "Cython>=3.0",
+    "numpy>=2.0,<3",
 ]
 build-backend = "setuptools.build_meta"
 
@@ -13,7 +13,8 @@ dynamic = ["version"]
 description = "Blender addon for molecular visualization with quantum chemistry support"
 readme = "README.md"
 requires-python = ">=3.9"
-license = {text = "GPL-3.0-or-later"}
+license = "GPL-3.0-or-later"
+license-files = ["COPYING"]
 authors = [
     {name = "Shane Parker"}
 ]
@@ -27,6 +28,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Cython",
     "Topic :: Scientific/Engineering :: Chemistry",
     "Topic :: Scientific/Engineering :: Visualization",
@@ -41,6 +43,9 @@ Homepage = "https://github.com/smparker/molecular-blender"
 Repository = "https://github.com/smparker/molecular-blender"
 Issues = "https://github.com/smparker/molecular-blender/issues"
 
+[tool.setuptools]
+include-package-data = false
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["molecular_blender*"]
@@ -49,49 +54,16 @@ include = ["molecular_blender*"]
 # Standalone wheel ABIs. Blender extensions must match its bundled interpreter.
 build = "cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
 
-# Skip 32-bit builds (not needed for modern Blender)
-skip = [
-    "*-win32",           # Skip 32-bit Windows
-    "*-manylinux_i686",  # Skip 32-bit Linux
-    "*-musllinux_i686",  # Skip 32-bit musllinux
-    "pp*",               # Skip PyPy
-]
-
-# Test that the wheels work correctly using our test suite
-# Note: We use test_wheel.py which tests Cython extensions without requiring bpy
+# cibuildwheel installs each repaired wheel in a fresh environment.
 test-command = "python {project}/test/test_wheel.py"
+test-skip = "*-macosx_x86_64"
 
-# Skip tests on emulated architectures (ARM on x86, etc.)
-test-skip = "*-*linux_{aarch64,ppc64le,s390x} *-macosx_arm64 *-macosx_universal2:arm64"
-
-# Additional build environment variables
-[tool.cibuildwheel.environment]
-# Ensure numpy is available during build
-PIP_PREFER_BINARY = "1"
-
-# macOS-specific settings
-[tool.cibuildwheel.macos]
-# Build for both Intel and Apple Silicon
-archs = ["x86_64", "arm64"]
-# macOS deployment target - support back to 10.13
-environment = {MACOSX_DEPLOYMENT_TARGET = "10.13"}
-
-# Linux-specific settings
 [tool.cibuildwheel.linux]
-# Use manylinux_2_28 (AlmaLinux 8 - newer, avoids CentOS 7 EOL issues)
-# This provides good compatibility for modern Linux systems (glibc 2.28+, ~2018+)
-# which covers all systems that can run modern Blender versions
-# Only build x86_64 for now - aarch64 uses QEMU emulation which is very slow (10-20x)
-# and times out in GitHub Actions. Enable aarch64 if needed for native ARM Linux systems.
 archs = ["x86_64"]
-build-frontend = "build"
-# Use the newer manylinux_2_28 image based on AlmaLinux 8
 manylinux-x86_64-image = "manylinux_2_28"
-# Before building, ensure we have a C++ compiler
-before-all = "yum install -y gcc-c++ || apk add g++"
 
-# Windows-specific settings
+[tool.cibuildwheel.macos]
+archs = ["native"]
+
 [tool.cibuildwheel.windows]
 archs = ["AMD64"]
-# MSVC is used by default on Windows
-

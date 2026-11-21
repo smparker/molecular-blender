@@ -7,7 +7,9 @@ import os
 import sys
 import subprocess
 import argparse
-import importlib
+import json
+import platform
+import sysconfig
 import shutil
 
 currentDirectory = os.path.dirname(os.path.abspath(__file__))
@@ -16,10 +18,9 @@ if not os.path.samefile(currentDirectory, os.getcwd()):
     print("You are not in the correct directory.")
     print("Expected:", currentDirectory)
     print("Got:     ", os.getcwd())
-    raise RuntimeError("setup.py should be run from the directory it is in.")
+    raise RuntimeError("blender_setup.py should be run from the directory it is in.")
 
-from _setuputils.generic import *
-from _setuputils.setup_info_files import getSetupInfoList
+from _setuputils.generic import currentOS, find_user_blender_dirs, getAddonVersion
 from _setuputils.export import execute_Export
 
 addonName = "molecular_blender"
@@ -36,9 +37,13 @@ exportPath = os.path.join(currentDirectory, exportName + ".zip")
 def main():
     parser = argparse.ArgumentParser("Setup molecular_blender")
     parser.add_argument("command", choices=['build', 'install', 'export'])
+    parser.add_argument("--wheel-dir", help="export native modules from these wheels")
+    parser.add_argument("--output", help="export ZIP destination")
     parser.add_argument("--mode", "-m", choices=['link', 'copy'], default='copy',
-        help='install by either linking of copying')
-    parser.add_argument("--check-version", action='store_true', help='check python version')
+        help='install by copying or linking the add-on')
+    parser.add_argument("--check-version", action='store_true', help='verify build ABI against BLENDER_BIN or blender on PATH')
+    parser.add_argument("--blender", metavar="EXECUTABLE",
+        help="verify the build interpreter against this Blender executable")
     parser.add_argument("--link-target", default='all',
         help='Blender versions to install into, comma-separated (default: all found)')
     parser.add_argument("--dry-run", action='store_true', help='preview install destinations without changing files')
@@ -46,21 +51,40 @@ def main():
     args = parser.parse_args()
 
     if args.command == 'build':
-        build(check_environment=args.check_version)
+        build(args.blender, check_environment=args.check_version)
     elif args.command == 'install':
         install(install_mode=args.mode, link_target=args.link_target, dry_run=args.dry_run)
     elif args.command == 'export':
-        export()
+        export(args.wheel_dir, args.output)
 
 # Build
 ####################################################
 
-def build(check_environment=False):
-    if check_environment:
-        check_build_environment()
+def build(blender=None, check_environment=False):
+    if blender or check_environment:
+        check_build_environment(blender or os.environ.get('BLENDER_BIN', 'blender'))
+    subprocess.run([sys.executable, 'setup.py', 'build_ext', '--inplace', '--force'],
+                   cwd=currentDirectory, check=True)
 
-    changedFileStates = build_impl()
-    printChangedFileStates(changedFileStates, currentDirectory)
+
+def check_build_environment(blender):
+    marker = 'MB_BUILD_RUNTIME '
+    probe = ("import json, platform, sysconfig, numpy, bpy; "
+             "print('MB_BUILD_RUNTIME ' + json.dumps([bpy.app.version_string, numpy.__version__, "
+             "sysconfig.get_config_var('EXT_SUFFIX'), platform.machine().lower()]))")
+    output = subprocess.check_output([blender, '-b', '--factory-startup', '--python-exit-code', '1',
+                                      '--python-expr', probe], text=True)
+    record = next((line[len(marker):] for line in output.splitlines() if line.startswith(marker)), None)
+    if record is None:
+        raise ValueError(f'Could not identify the Python runtime in {blender}: {output.strip()}')
+    version, numpy_version, suffix, machine = json.loads(record)
+    print(f'Blender {version} uses {suffix} on {machine} with NumPy {numpy_version}', flush=True)
+    build_suffix = sysconfig.get_config_var('EXT_SUFFIX')
+    build_machine = platform.machine().lower()
+    if (build_suffix, build_machine) != (suffix, machine):
+        raise ValueError(f'Build interpreter uses {build_suffix} on {build_machine}. '
+                         'Select a Python with the same ABI and architecture as Blender.')
+
 
 def install(install_mode='copy', link_target='all', dry_run=False):
     if install_mode not in ('link', 'copy'):
@@ -102,39 +126,12 @@ def install(install_mode='copy', link_target='all', dry_run=False):
             os.symlink(source, target)
     return targets
 
-def export():
-    execute_Export(addonDirectory, exportPath, addonName)
-
-def printChangedFileStates(states, basepath):
-    print()
-    print('Change Summary')
-    for p in states['new']:
-        print(' + {}'.format(p))
-    for p in states['removed']:
-        print(' - {}'.format(p))
-    for p in states['changed']:
-        print(' ~ {}'.format(p))
-
-@returnChangedFileStates(currentDirectory)
-def build_impl():
-    from _setuputils.compilation import compile_cxx, compile_cython
-    compile_cython(addonDirectory)
-    setupInfoList = getSetupInfoList(addonDirectory)
-
-    compile_cxx(addonDirectory)
-
-def check_build_environment(cython=True, python=True):
-    fail = False
-    if cython and (importlib.util.find_spec("Cython") is None):
-        print("Cython is not installed for this Python version.")
-        print(sys.version)
-        fail = True
-    if python and not (sys.version_info.major, sys.version_info.minor) == (3, 10):
-        print("Blender 3.6 uses Python 3.10")
-        print(f"You are using {sys.version}")
-        fail = True
-    if fail:
-        raise Exception("Build environment is not correct.")
+def export(wheel_dir=None, output=None):
+    if wheel_dir:
+        from _setuputils.release import export_wheels
+        export_wheels(addonDirectory, output or exportPath, wheel_dir)
+    else:
+        execute_Export(addonDirectory, output or exportPath, addonName)
 
 if __name__ == "__main__":
     main()

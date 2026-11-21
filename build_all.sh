@@ -1,4 +1,5 @@
 #!/bin/sh
+set -eu
 
 for v in 3.9.23 3.10.18 3.11.13 3.12.11 3.13.8 3.14.0; do
     if [ -f build_${v}.log ]; then

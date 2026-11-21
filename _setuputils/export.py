@@ -1,4 +1,5 @@
 import os
+import tempfile
 import zipfile
 from . generic import *
 from . addon_files import iterRelativeAddonFiles, iterRelativeExportCFiles
@@ -6,15 +7,19 @@ from . addon_files import iterRelativeAddonFiles, iterRelativeExportCFiles
 currentDirectory = os.path.dirname(os.path.abspath(__file__))
 
 def execute_Export(addonDirectory, exportPath, addonName):
-    removeFile(exportPath)
+    # Replace an existing ZIP only after the new central directory is written.
+    destination = os.path.abspath(exportPath)
+    files = [name for name in iterRelativeAddonFiles(addonDirectory)
+             if os.path.abspath(os.path.join(addonDirectory, name)) != destination]
+    with tempfile.TemporaryDirectory(dir=os.path.dirname(destination)) as staging:
+        archive = os.path.join(staging, 'addon.zip')
+        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zipFile:
+            for relativePath in files:
+                absolutePath = os.path.join(addonDirectory, relativePath)
+                zipFile.write(absolutePath, os.path.join(addonName, relativePath))
+        os.replace(archive, exportPath)
 
-    with zipfile.ZipFile(exportPath, "w", zipfile.ZIP_DEFLATED) as zipFile:
-        for relativePath in iterRelativeAddonFiles(addonDirectory):
-            absolutePath = os.path.join(addonDirectory, relativePath)
-            zipFile.write(absolutePath, os.path.join(addonName, relativePath))
-
-    print("Exported Addon:")
-    print("    " + exportPath)
+    print(f"Exported add-on to {exportPath}")
 
 def execute_ExportC(addonDirectory, exportCPath, exportCSetupPath, addonName):
     removeFile(exportCPath)
