@@ -5,7 +5,7 @@ import re
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, IntProperty, StringProperty
 
-from . import vibrations
+from . import import_dialog, vibrations
 from .representation import MB_OT_representation, can_switch
 from .importers import file_format
 from .orbitals import frontier_index
@@ -27,7 +27,7 @@ _label_handler = None
 
 
 def molecule_summary(obj):
-    """Return saved metadata without loading the source or evaluating fields."""
+    """Summarize the saved molecule, previewing DIPL headers for older manifests."""
     owner = resolve_owner(obj)
     if owner is None:
         return None
@@ -43,6 +43,7 @@ def molecule_summary(obj):
                 atoms=len(record['atoms']), visible_atoms=len(owned_objects(owner, 'atom')),
                 bonds=len(record['bonds']), surfaces=sum(len(g['objects']) for g in groups.values()),
                 groups=groups,
+                response_pairs=import_dialog.saved_response_pairs(record),
                 representation=REPRESENTATIONS[settings['plot_style']],
                 can_switch=can_switch(settings),
                 cube_recompute=can_recompute_cube(record),
@@ -52,6 +53,19 @@ def molecule_summary(obj):
 
 def _page_count(orbitals):
     return max(1, (len(orbitals) + ORBITALS_PER_PAGE - 1) // ORBITALS_PER_PAGE)
+
+
+def _source_field_items(owner, context):
+    if RECORD not in owner:
+        return []
+    record = read_record(owner)
+    if record['fields']:
+        labels = record['fields']['datasets']
+        if len(labels) <= import_dialog.MAX_DATASET_MENU:
+            return [import_dialog.dataset_item(i, label) for i, label in enumerate(labels)]
+        return []
+    return [import_dialog.pair_item(i, pair, value)
+            for i, (pair, value) in enumerate(import_dialog.saved_response_pairs(record))]
 
 
 def _level_labels(levels):
@@ -318,8 +332,8 @@ class MB_PT_molecule(bpy.types.Panel):
         box = layout.box()
         box.label(text='Scientific data')
         orbitals = summary['orbitals']
+        molden = file_format(summary['source']) == 'molden'
         if orbitals:
-            molden = file_format(summary['source']) == 'molden'
             _draw_orbitals(box, owner, orbitals, molden, available)
             labels = sorted({o['spin'] for o in orbitals if o['spin']})
             box.label(text='Spin labels: ' + (', '.join(labels) if labels else 'not supplied'))
@@ -328,10 +342,32 @@ class MB_PT_molecule(bpy.types.Panel):
                 row.enabled = available
                 row.prop(owner, 'mb_density_field', text='')
                 row.operator('molecular_blender.add_surface', text='Add Surface…').volume = owner.mb_density_field
+        if summary['response_pairs']:
+            row = box.row(align=True)
+            row.prop(owner, 'mb_source_field', text='')
+            action = row.row(align=True)
+            action.enabled = available
+            action.operator('molecular_blender.add_surface', text='Add Response Density…').response_eigenpair = int(
+                owner.mb_source_field or summary['response_pairs'][0][0])
         fields = summary['fields']
         if fields is not None:
             box.label(text='Cube datasets: {}'.format(len(fields['datasets'])))
-            box.label(text='Dataset IDs: ' + ', '.join(str(x) for x in fields['datasets']))
+            labels = fields['datasets']
+            if summary['cube_recompute'] and len(labels) > 1:
+                row = box.row(align=True)
+                if len(labels) <= import_dialog.MAX_DATASET_MENU:
+                    row.prop(owner, 'mb_source_field', text='')
+                    index = int(owner.mb_source_field or 0)
+                else:
+                    row.prop(owner, 'mb_cube_index', text=f'Index (0–{len(labels) - 1})')
+                    index = owner.mb_cube_index
+                    if index < len(labels):
+                        box.label(text=f'Dataset ID {labels[index]}')
+                action = row.row(align=True)
+                action.enabled = available and index < len(labels)
+                action.operator('molecular_blender.add_surface', text='Add Surface…').cube_dataset = index
+            else:
+                box.label(text='Dataset IDs: ' + ', '.join(str(x) for x in labels))
             box.label(text='Field type: ' + fields['field_type'])
             if 'units' in fields:
                 box.label(text='Field units: ' + fields['units'])
@@ -352,7 +388,8 @@ class MB_PT_molecule(bpy.types.Panel):
                              depress=owner.get(SOLO_GROUP) == key).group = key
                 obj = group['objects'][0]
                 mapped = BASE_MESH in obj
-                if (orbitals and molden) or summary['cube_recompute']:
+                if (orbitals and molden or summary['cube_recompute']
+                        or summary['response_pairs'] and group['field'].startswith('response ')):
                     action = row.row(align=True)
                     action.enabled = available
                     action.operator('molecular_blender.recompute_surface', text='', icon='FILE_REFRESH').group = key
@@ -428,6 +465,8 @@ def register():
     bpy.types.Object.mb_browser_spin = EnumProperty(name='Orbital Spin', items=ORBITAL_SPINS,
         get=_get_browser_spin, set=_set_browser_spin)
     bpy.types.Object.mb_density_field = EnumProperty(name='Density', items=DENSITIES, default='density')
+    bpy.types.Object.mb_source_field = EnumProperty(name='Field', items=_source_field_items)
+    bpy.types.Object.mb_cube_index = IntProperty(name='Cube dataset index', min=0)
     bpy.types.Object.mb_show_orbitals = BoolProperty(name='Show saved orbitals', default=False)
     bpy.types.Object.mb_orbital_page = IntProperty(name='Orbital page', min=1,
                                                   get=_get_orbital_page, set=_set_orbital_page)
@@ -451,6 +490,8 @@ def unregister():
     del bpy.types.Object.mb_surface_color
     del bpy.types.Object.mb_surface_opacity
     del bpy.types.Object.mb_density_field
+    del bpy.types.Object.mb_source_field
+    del bpy.types.Object.mb_cube_index
     del bpy.types.Object.mb_orbital_page
     del bpy.types.Object.mb_show_orbitals
     del bpy.types.Object.mb_show_atom_indices

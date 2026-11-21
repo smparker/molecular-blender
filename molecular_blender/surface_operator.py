@@ -17,6 +17,22 @@ MOLDEN_FIELDS = DENSITIES + (('orbital', 'Molecular orbital', 'Plot positive and
 
 
 class MoldenSurfaceProperties:
+    cube_field_type: EnumProperty(
+        name="Cube field type",
+        description="How cumulative cube surfaces integrate values",
+        items=(('auto', 'Auto / scalar magnitude', 'Use file metadata; untyped fields integrate absolute magnitude'),
+               ('orbital', 'Orbital amplitude', 'Integrate squared amplitude'),
+               ('density', 'Density', 'Integrate absolute density'),
+               ('signed', 'Signed scalar', 'Integrate absolute field magnitude')),
+        default='auto')
+
+    cube_dataset: IntProperty(
+        name="Cube dataset index", description="Zero-based dataset index within a cube file",
+        default=0, min=0)
+
+    response_eigenpair: IntProperty(name='DIPL eigenpair', default=0, min=0,
+        description='Eigenpair ID in the DIPL file, or zero for the first listed pair')
+
     cube_both_signs: BoolProperty(name="Include both signs", default=True,
         description="Generate both signs for each cube level. Turn off to use exactly the signs entered")
 

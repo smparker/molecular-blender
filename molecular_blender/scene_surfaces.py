@@ -39,11 +39,13 @@ def surface_groups(owner, record):
                 field = base
         key = entry.get('group', field)
         if key not in groups:
+            sampling = entry.get('sampling') or {}
             if field == 'cube':
                 label = 'Linear combination' if (record['fields'] or {}).get('linear_combination') else 'Cube'
                 datasets = (record['fields'] or {}).get('datasets', [])
                 if len(datasets) > 1:
-                    label += ' · dataset {}'.format(datasets[settings['cube_dataset']])
+                    index = sampling.get('cube_dataset', settings['cube_dataset'])
+                    label += ' · dataset {}'.format(datasets[index])
             elif field.startswith('response '):
                 label = 'Response density · eigenpair ' + field.split()[1]
             else:
@@ -57,10 +59,8 @@ def surface_groups(owner, record):
         if 'ambiguous_phase_frame' in entry:
             group.setdefault('ambiguous_phase_frames', set()).add(entry['ambiguous_phase_frame'])
         if field == 'cube':
-            cube_kind = settings['cube_field_type']
-            if cube_kind == 'auto':
-                cube_kind = (record['fields'] or {}).get('field_type', 'unknown')
-            group['cube_kind'] = cube_kind
+            kind = (group['sampling'] or {}).get('cube_field_type', settings['cube_field_type'])
+            group['cube_kind'] = (record['fields'] or {}).get('field_type', 'unknown') if kind == 'auto' else kind
         group['ids'].add(entry['id'])
         if members:
             group['levels'].add(entry['isovalue'])
@@ -311,7 +311,7 @@ def surface_model(owner, record, *, cube=False):
     if cube:
         if not can_recompute_cube(record):
             raise ValueError('Choose a single-frame cube surface')
-    elif file_format(path) != 'molden' or not record['orbitals']:
+    elif not record['orbitals'] or (file_format(path) != 'molden' and not import_dialog.saved_response_pairs(record)):
         raise ValueError('Adding a surface requires a single-frame Molden molecule with orbitals')
     if not os.path.isfile(path):
         raise ValueError('Surface source unavailable: ' + path)
@@ -363,37 +363,73 @@ class MB_OT_locate_source(bpy.types.Operator):
 class MB_OT_add_surface(MoldenSurfaceProperties, SurfaceJobOperator, bpy.types.Operator):
     bl_idname = 'molecular_blender.add_surface'
     bl_label = 'Add Surface'
-    bl_description = 'Calculate an orbital or density surface on the selected Molden molecule'
+    bl_description = 'Calculate another surface from the selected molecule’s source file'
     bl_options = {'UNDO'}
 
-    _settings_names = ('volume', 'orbital', 'orbital_spin', 'cumulative', 'isovalues',
-                       'resolution', 'remesh', 'molden_convention')
+    _molden_names = ('volume', 'orbital', 'orbital_spin', 'cumulative', 'isovalues',
+                     'resolution', 'remesh', 'molden_convention')
+    _cube_names = ('cube_dataset', 'cube_field_type', 'cube_both_signs', 'cumulative', 'isovalues', 'remesh')
 
     def invoke(self, context, event):
         self._target = resolve_owner(context.object)
         if self._target is None:
             return {'CANCELLED'}
-        settings = read_record(self._target)['settings']
-        for name in self._settings_names:
-            if not self.properties.is_property_set(name) and (name != 'isovalues' or settings[name]):
+        record = read_record(self._target)
+        settings = record['settings']
+        cube = can_recompute_cube(record)
+        pairs = import_dialog.saved_response_pairs(record)
+        if pairs and not self.response_eigenpair:
+            self.response_eigenpair = pairs[0][0]
+        names = self._cube_names if cube else self._molden_names
+        for name in names:
+            if self.properties.is_property_set(name):
+                continue
+            if name == 'cube_both_signs':
+                self.cube_both_signs = settings.get(name, settings['volume'] in ('orbital', 'spin', 'response'))
+            elif (name != 'isovalues' or settings[name]) and (name != 'volume' or not pairs):
                 setattr(self, name, settings[name])
         return context.window_manager.invoke_props_dialog(self, width=350)
 
     def draw(self, context):
-        owner = resolve_owner(context.object)
-        path = read_record(owner)['source'] if owner and self.surface_advanced else None
-        import_dialog.draw_surface_controls(self.layout, self, 'molden', path=path)
+        record = read_record(self._target)
+        if can_recompute_cube(record):
+            label = record['fields']['datasets'][self.cube_dataset]
+            self.layout.label(text=f'Cube dataset {label}')
+            import_dialog.draw_sampling_controls(self.layout, self, 'cube')
+        elif import_dialog.saved_response_pairs(record):
+            self.layout.label(text=f'Response density · eigenpair {self.response_eigenpair}')
+            import_dialog.draw_sampling_controls(self.layout, self, 'molden')
+        else:
+            path = record['source'] if self.surface_advanced else None
+            import_dialog.draw_surface_controls(self.layout, self, 'molden', path=path)
 
     def execute(self, context):
         try:
             owner = self._target if hasattr(self, '_target') else resolve_owner(context.object)
             if owner is None:
-                raise ValueError('Select a Molden molecule')
+                raise ValueError('Select an imported molecule')
             record = read_record(owner)
-            overrides = {name: getattr(self, name) for name in self._settings_names}
-            if not self.properties.is_property_set('molden_convention') and not self.properties.is_property_set('orca_fix'):
-                overrides['molden_convention'] = record['settings']['molden_convention']
-            return start_field_job(self, context, owner, record, overrides)
+            cube = can_recompute_cube(record)
+            pairs = import_dialog.saved_response_pairs(record)
+            names = self._cube_names if cube else self._molden_names
+            if cube or pairs:
+                overrides = {k: getattr(self, k) for k in names if self.properties.is_property_set(k)}
+                if not record['settings']['isovalues']:
+                    overrides.setdefault('isovalues', self.isovalues)
+                if cube:
+                    index = overrides.get('cube_dataset', record['settings']['cube_dataset'])
+                    if index >= len(record['fields']['datasets']):
+                        raise ValueError('Cube dataset index is out of range')
+                else:
+                    pair = self.response_eigenpair or pairs[0][0]
+                    if pair not in {p for p, _ in pairs}:
+                        raise ValueError(f'DIPL eigenpair {pair} is unavailable')
+                    overrides.update(volume='response', response_eigenpair=pair)
+            else:
+                overrides = {k: getattr(self, k) for k in names}
+                if not self.properties.is_property_set('molden_convention') and not self.properties.is_property_set('orca_fix'):
+                    overrides['molden_convention'] = record['settings']['molden_convention']
+            return start_field_job(self, context, owner, record, overrides, cube=cube)
         except (KeyError, ValueError) as exc:
             self.report({'ERROR'}, str(exc))
             return {'CANCELLED'}
@@ -431,6 +467,8 @@ def recompute_settings(record, group):
     sampling = group['sampling'] or dict(cumulative=False, isovalues=', '.join(
         str(x) for x in sorted({abs(v) if signed else v for v in group['levels']})),
         resolution=record['settings']['resolution'], molden_convention=molden_convention(record['settings']))
+    if field.startswith('response '):
+        return dict(sampling, volume='response', response_eigenpair=int(field.split()[1]))
     return dict(sampling, molden_convention=molden_convention(sampling), volume=field if field in DENSITY_LABELS else 'orbital',
                 orbital=field if field not in DENSITY_LABELS else 'homo', orbital_spin=group['spin'])
 

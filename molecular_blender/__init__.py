@@ -161,19 +161,6 @@ if _HAS_BPY:
         frame_step: IntProperty(name="Read every Nth frame", default=1, min=1,
             description="Sample starting at the first selected input frame and preserve source timing")
 
-        cube_field_type: EnumProperty(
-            name="Cube field type",
-            description="How cumulative cube surfaces integrate values",
-            items=(('auto', 'Auto / scalar magnitude', 'Use file metadata; untyped fields integrate absolute magnitude'),
-                   ('orbital', 'Orbital amplitude', 'Integrate squared amplitude'),
-                   ('density', 'Density', 'Integrate absolute density'),
-                   ('signed', 'Signed scalar', 'Integrate absolute field magnitude')),
-            default='auto')
-
-        cube_dataset: IntProperty(
-            name="Cube dataset index", description="Zero-based dataset index within a cube file",
-            default=0, min=0)
-
         def _set_response_field(self, value):
             self['show_response'] = value == len(MOLDEN_FIELDS)
             if not self['show_response']:
@@ -184,8 +171,6 @@ if _HAS_BPY:
             get=lambda op: len(MOLDEN_FIELDS) if op.get('show_response') else
                            next(i for i, field in enumerate(MOLDEN_FIELDS) if field[0] == op.volume),
             set=_set_response_field)
-        response_eigenpair: IntProperty(name='DIPL eigenpair', default=0, min=0,
-            description='Eigenpair ID in the DIPL file, or zero for the first listed pair')
         response_choice: EnumProperty(name='Eigenpair', items=import_dialog.response_items,
             get=import_dialog.get_response_choice, set=import_dialog.set_response_choice,
             options={'SKIP_SAVE'})

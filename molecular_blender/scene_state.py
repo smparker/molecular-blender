@@ -99,6 +99,13 @@ def orbital_metadata(model):
             for i, (e, sym, occ) in enumerate(zip(model.energies, model.symmetries, model.occupations))]
 
 
+def response_metadata(data):
+    """Keep the DIPL IDs and values for a single geometry, without the response vectors."""
+    if data.get('orbital_trajectory'):
+        return []
+    return [[p['index'], p['eigenvalue']] for p in data.get('polar', ())]
+
+
 def atom_bond_style(settings):
     return {key: settings[key] for key in ('atom_scale', 'bond_thickness', 'colors')}
 
@@ -126,6 +133,8 @@ def persist_molecule(molecule, source, settings):
                           if molecule.volume is not None else None))
     if 'molden_convention' in molecule.surface_input:
         record['molden_convention'] = molecule.surface_input['molden_convention']
+    if record['orbitals'] and record['source'].lower().endswith('.json'):
+        record['response_pairs'] = response_metadata(molecule.surface_input)
     if molecule.volume is not None:
         record['fields']['frames'] = 1 + len(molecule.volume_trajectory or ())
         for key in ("units", "linear_combination", "resample"):
@@ -172,6 +181,8 @@ def surface_sampling(options, *, cube=False):
                     molden_convention=molden_convention(options))
     if cube:
         sampling['cube_both_signs'] = both
+        sampling['cube_dataset'] = options.get('cube_dataset', 0)
+        sampling['cube_field_type'] = options.get('cube_field_type', 'auto')
     return sampling
 
 

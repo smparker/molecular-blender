@@ -90,7 +90,7 @@ def set_orbital_choice(op, value):
 
 
 @lru_cache(maxsize=None)
-def _dataset_item(index, label):
+def dataset_item(index, label):
     # Blender keeps pointers to the strings returned by dynamic enum callbacks.
     name = 'Dataset {}'.format(index + 1)
     if label is not None:
@@ -101,9 +101,9 @@ def _dataset_item(index, label):
 def dataset_items(op, context):
     _, labels = surface_source(browser_path(op, context), op.frame_start)
     if labels is None or len(labels) > MAX_DATASET_MENU:
-        return [_dataset_item(0, None)]
+        return [dataset_item(0, None)]
     has_ids = not isinstance(labels, range)
-    return [_dataset_item(i, label if has_ids else None) for i, label in enumerate(labels)]
+    return [dataset_item(i, label if has_ids else None) for i, label in enumerate(labels)]
 
 
 def dataset_index(index, labels):
@@ -155,6 +155,10 @@ def draw_surface_controls(box, op, kind, labels=None, path=None, *, trajectory=F
             if not isinstance(labels, range) and op.cube_dataset < len(labels):
                 box.label(text='Dataset ID {}'.format(labels[op.cube_dataset]))
 
+    draw_sampling_controls(box, op, kind, path)
+
+
+def draw_sampling_controls(box, op, kind, path=None):
     box.prop(op, 'level_mode')
     box.prop(op, 'isovalues', text='Fractions' if op.cumulative else 'Isovalues')
     if kind == 'cube' and op.cumulative:
@@ -183,15 +187,30 @@ def response_path(path, start):
 
 
 @lru_cache(maxsize=None)
-def _pair_item(index, pair, value):
+def pair_item(index, pair, value):
     return str(pair), f'Eigenpair {pair}  ·  {value:.7g}', 'DIPL eigenpair and eigenvalue', index
 
 
 def response_items(op, context):
     path = response_path(browser_path(op, context), op.frame_start)
     pairs = _preview(response_headers, path) if path else ()
-    return [_pair_item(i, pair, value) for i, (pair, value) in enumerate(pairs or ())] or [
+    return [pair_item(i, pair, value) for i, (pair, value) in enumerate(pairs or ())] or [
         ('0', 'First eigenpair', 'Read the response file at import', 0)]
+
+
+def saved_response_pairs(record):
+    if 'response_pairs' in record:
+        return record['response_pairs']
+    # Older blends did not store the DIPL headers. Preview just the imported frame.
+    if record['orbitals'] and file_format(record['source']) == 'json':
+        settings = record['settings']
+        start, end, step = (settings[k] for k in ('frame_start', 'frame_end', 'frame_step'))
+        manifest = _preview(_manifest_source, record['source'], start)
+        if manifest and manifest[0] == 'molden' and manifest[3]:
+            last = manifest[2] - 1 if end < 0 else min(end, manifest[2] - 1)
+            if last - start < step:
+                return _preview(response_headers, manifest[3]) or ()
+    return ()
 
 
 def get_response_choice(op):

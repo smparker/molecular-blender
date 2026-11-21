@@ -1,6 +1,7 @@
 """Molecule sidebar edits use the saved owner, even across renames and selection changes."""
 import tempfile
 import unittest
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -329,6 +330,75 @@ class TestSidebarActions(unittest.TestCase):
         path.write_text(header.replace('2 7 23', '2 23 7') + values)
         with self.assertRaisesRegex(ValueError, 'datasets'):
             surface_model(owner, record, cube=True).surface_input.load(options)
+
+    def test_add_second_cube_dataset_and_recompute_each_plane_independently(self):
+        from molecular_blender import scene_panel
+        from molecular_blender.plotter import BlendMoleculeSetup, draw_surfaces
+        from molecular_blender.scene_state import read_record, write_record
+        from molecular_blender.scene_surfaces import surface_groups
+        from molecular_blender.surface_operator import SurfaceJobOperator
+        path = self.path.with_suffix('.cube')
+        header = 'x and y\ntwo planes\n-1 0 0 0\n-3 1 0 0\n-3 0 1 0\n-3 0 0 1\n1 0 0 0 0\n2 41 73\n'
+        path.write_text(header + ' '.join(f'{x} {y}' for x in range(3) for y in range(3) for z in range(3)))
+        model, styler, opts = BlendMoleculeSetup(bpy.context, str(path), cube_dataset=1, cube_both_signs=False,
+            cumulative=False, isovalues='.4', remesh=0)
+        draw_surfaces(model, styler, bpy.context, opts)
+        owner = model.scene_owner
+        self.select(owner)
+        record = read_record(owner)
+        del record['surfaces'][0]['sampling']['cube_dataset']  # Existing scenes used the molecule's index.
+        write_record(owner, record)
+        self.assertIn('ID 41', scene_panel._source_field_items(owner, None)[0][1])
+        with patch.object(SurfaceJobOperator, 'start_surface_job', finish_surface_job):
+            actions = bpy.ops.molecular_blender
+            self.assertEqual(actions.add_surface(cube_dataset=0, isovalues='.55'), {'FINISHED'})
+            (first, g1), (second, g2) = surface_groups(owner, read_record(owner)).items()
+            self.assertEqual((g1['label'], g2['label']), ('Cube · dataset 73', 'Cube · dataset 41'))
+            g1['objects'][0].mb_surface_color = (.8, .1, .2)
+            actions.recompute_surface(group=first, isovalues='.75')
+            actions.recompute_surface(group=second, isovalues='1.5')
+            for axis, g, expected in (('y', g1, .75), ('x', g2, 1.5)):
+                obj, = g['objects']
+                self.assertGreater(len(obj.data.vertices), 3)
+                for v in obj.data.vertices:
+                    self.assertAlmostEqual(getattr(v.co, axis), expected)
+            self.assertNotEqual(g1['objects'][0].active_material, g2['objects'][0].active_material)
+            self.assertEqual(read_record(owner)['settings']['cube_dataset'], 1)
+
+    def test_add_and_recompute_response_by_dipl_id(self):
+        from molecular_blender import import_dialog, scene_panel
+        from molecular_blender.plotter import BlendMoleculeSetup
+        from molecular_blender.scene_state import read_record
+        from molecular_blender.scene_surfaces import surface_groups
+        from molecular_blender.surface_operator import SurfaceJobOperator
+        path = self.path.with_suffix('.json')
+        path.write_text(json.dumps({'molecules': [{'filename': self.path.name, 'polar': 'dipl'}]}))
+        dipl = self.path.with_name('dipl')
+        dipl.write_text('$symmetry c1\n$scfinstab polly\n$tensor space dimension 10\n$eigenpairs\n'
+                        ' 7 eigenvalue = 1D0\n' + '1.0\n' * 10 +
+                        ' 23 eigenvalue = 2D0\n' + '-1.0\n' * 10 + '$end\n')
+        model, _, _ = BlendMoleculeSetup(bpy.context, str(path), isovalues='', remesh=0)
+        owner = model.scene_owner
+        self.select(owner)
+        record = read_record(owner)
+        self.assertEqual(record['response_pairs'], [[7, 1.], [23, 2.]])
+        self.assertEqual(list(map(list, import_dialog.saved_response_pairs(
+            {k: v for k, v in record.items() if k != 'response_pairs'}))), record['response_pairs'])
+        self.assertEqual([i[0] for i in scene_panel._source_field_items(owner, None)], ['7', '23'])
+        with patch.object(SurfaceJobOperator, 'start_surface_job', finish_surface_job):
+            actions = bpy.ops.molecular_blender
+            for pair in (23, 7):
+                self.assertEqual(actions.add_surface(response_eigenpair=pair, cumulative=False,
+                    isovalues='.02', resolution=.3), {'FINISHED'})
+            (key, first), (_, second) = surface_groups(owner, read_record(owner)).items()
+            self.assertEqual([first['field'], second['field']], ['response 23', 'response 7'])
+            self.assertEqual(actions.recompute_surface(group=key, isovalues='.04'), {'FINISHED'})
+            self.assertEqual(surface_groups(owner, read_record(owner))[key]['levels'], {-.04, .04})
+            dipl.write_text(dipl.read_text().replace('23 eigenvalue = 2', '23 eigenvalue = 3'))
+            with self.assertRaisesRegex(RuntimeError, 'eigenpairs have changed'):
+                actions.add_surface(response_eigenpair=23)
+            dipl.unlink()
+            self.assertEqual(len(scene_panel._source_field_items(owner, None)), 2)
 
     def test_recontour_mapped_molden_density_and_retain_edited_ramp(self):
         import numpy as np

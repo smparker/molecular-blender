@@ -23,17 +23,19 @@ class SavedSurfaceSource:
     atoms: list
     orbitals: list
     datasets: list = None
+    response_pairs: list = None
 
     @classmethod
     def from_record(cls, path, record):
         atoms = [(a['index'], a['element'], tuple(a['position'])) for a in record['atoms']]
         fields = record.get('fields')
-        return cls(path, atoms, record['orbitals'], fields['datasets'] if fields else None)
+        return cls(path, atoms, record['orbitals'], fields['datasets'] if fields else None,
+                   record.get('response_pairs'))
 
     def load(self, options):
         from .importers import molecule_from_file
         from .molecule import Molecule
-        from .scene_state import orbital_metadata
+        from .scene_state import orbital_metadata, response_metadata
 
         data = molecule_from_file(self.path, options)
         model = Molecule.from_dict('surface-worker', data)
@@ -43,8 +45,10 @@ class SavedSurfaceSource:
         if self.datasets is not None:
             if model.volume is None or model.volume.labels != self.datasets or model.volume_trajectory:
                 raise ValueError('Source cube datasets or frame count have changed. Reimport the source file.')
-        elif orbital_metadata(model.orbitals) != self.orbitals:
+        elif model.orbitals_trajectory or orbital_metadata(model.orbitals) != self.orbitals:
             raise ValueError('Source orbital metadata has changed. Reimport the Molden file.')
+        elif self.response_pairs is not None and response_metadata(data) != self.response_pairs:
+            raise ValueError('Source DIPL eigenpairs have changed. Reimport the manifest.')
         return model
 
 

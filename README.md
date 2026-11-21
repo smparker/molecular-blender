@@ -292,6 +292,9 @@ Cube imports retain every dataset and its file label. **Dataset** appears for
 multi-dataset cubes and shows file IDs when available. Very large sets use a
 zero-based index field. Python callers can pass `cube_dataset=1` to select the
 second dataset. The default remains the first dataset.
+After importing a single frame, select the molecule and open **Molecule → Scientific data**.
+Choose another dataset and click **Add Surface…**. Each group keeps its dataset ID,
+contours and colors and appears separately in **Export Surface PNGs…**.
 `VolumeData.datasets` stores all fields, `labels` retains their identifiers,
 and `select_dataset(index)` changes the active three-dimensional `data` array.
 Comment lines are preserved without guessing physical field types or units.
@@ -327,6 +330,11 @@ its DIPL ID and eigenvalue. Both signs of the induced density share an absolute
 contour level. Try `examples/phenanth_polar.json`, which contains six eigenpairs.
 For the Python setup API, use `volume="response", response_eigenpair=3` to
 select eigenpair 3. Zero selects the first pair listed in the file.
+For a single-frame manifest, **Molecule → Scientific data → Eigenpair** shows the
+DIPL IDs and eigenvalues. Choose **Add Response Density…** to add a signed
+surface alongside the others. Use **Solo** to switch between them or export
+the groups as a series. Calculating a surface needs the manifest, Molden and
+DIPL files. The finished surfaces and saved eigenpair list travel with the blend file.
 
 For frontier names, the occupation scale is 1 when the maximum occupation is
 at most 1, otherwise 2. Occupations strictly above half that scale are occupied;
