@@ -570,6 +570,19 @@ will contain one transparent PNG per orbital.
 blender --background --factory-startup --python-exit-code 1 --python examples/edit_orbitals.py -- /tmp/water-orbitals
 ```
 
+Render ethene from two other quantum-chemistry writers using the included inputs.
+
+```sh
+blender -b --factory-startup --python-exit-code 1 --python examples/render_ethene.py -- turbomole /tmp/turbomole-homo
+blender -b --factory-startup --python-exit-code 1 --python examples/render_ethene.py -- xtb /tmp/xtb-density
+```
+
+The TURBOMOLE example draws both signs of the RHF/def2-SVP π HOMO from a default
+`tm2molden batch` export using **Legacy TURBOMOLE**. The xTB example draws the
+GFN2-xTB valence density at 0.035 e/bohr³ from its native cube. Both write a
+transparent PNG and run with Blender alone. [Figure script](examples/render_ethene.py)
+and [input generation](examples/ethene_fields/README.md).
+
 To try a trajectory, import `examples/water_bend.json` with **Ignore Hydrogens**
 off and scrub frames 1, 5 and 9. The manifest selects two illustrative poses
 from a multi-record SDF and returns to the first pose.

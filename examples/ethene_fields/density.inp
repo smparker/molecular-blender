@@ -1,0 +1,5 @@
+$write
+ density=true
+$cube
+ step=0.35
+$end
