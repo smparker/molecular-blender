@@ -490,6 +490,18 @@ class TestSidebarActions(unittest.TestCase):
         self.assertTrue(all(visibility_state(o) == state for o, state in states.items()))
         self.assertEqual(bpy.context.selected_objects, [owner])
 
+        from mathutils import Quaternion
+        cameras = set(bpy.data.cameras)
+        with patch.object(surface_export, 'bpy', wraps=bpy) as api:
+            api.data = bpy.data
+            api.path.clean_name = bpy.path.clean_name
+            api.ops.render.render.return_value = {'CANCELLED'}
+            with self.assertRaisesRegex(RuntimeError, 'did not finish'):
+                surface_export.export_surface_pngs(bpy.context, owner, groups, keys, directory, fit_rotation=Quaternion())
+        self.assertEqual(scene.camera, camera)
+        self.assertEqual(set(bpy.data.cameras), cameras)
+        self.assertTrue(all(visibility_state(o) == state for o, state in states.items()))
+
     def test_legacy_animated_groups_preserve_keyframes_and_save_visibility(self):
         from molecular_blender.scene_state import tag, read_record, write_record
         from molecular_blender.scene_surfaces import surface_groups, surface_visible, set_surface_visibility

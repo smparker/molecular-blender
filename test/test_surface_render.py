@@ -232,6 +232,32 @@ class TestSurfacePNG(unittest.TestCase):
                     result = run('Missing group')
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn('Available surfaces', result.stderr + result.stdout)
+                fitted = Path(directory) / 'portrait'
+                fitted.mkdir()
+                scene.render.resolution_x, scene.render.resolution_y = 56, 80
+                original_camera = scene.camera
+                original_camera.rotation_euler.z = .2
+                bpy.context.view_layer.update()
+                definitions[0]['mesh'].hide_viewport = definitions[0]['mesh'].hide_render = True
+                self.assertEqual(bpy.ops.molecular_blender.export_surface_series(
+                    directory=str(fitted), fit_camera=True), {'FINISHED'})
+                self.assertNotEqual(scene.camera, original_camera)
+                self.assertTrue(definitions[0]['mesh'].hide_render and definitions[0]['mesh'].hide_viewport)
+                masks = []
+                for path in sorted(fitted.glob('*.png')):
+                    image = bpy.data.images.load(str(path))
+                    try:
+                        mask = np.array(image.pixels[:]).reshape(80, 56, 4)[:, :, 3] > .5
+                        self.assertTrue(mask.any())
+                        self.assertFalse(mask[[0, -1]].any() or mask[:, [0, -1]].any())
+                        masks.append(mask)
+                    finally:
+                        bpy.data.images.remove(image)
+                self.assertEqual(len(masks), 2)
+                _, xs = np.where(masks[0] | masks[1])
+                self.assertGreater(xs.max() - xs.min(), 42)
+                self.assertEqual(original_camera.data.ortho_scale, 5)
+                self.addCleanup(bpy.data.cameras.remove, scene.camera.data)
             self.assertFalse(scene.render.film_transparent)
             self.assertEqual(scene.render.image_settings.file_format, 'JPEG')
         finally:

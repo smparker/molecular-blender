@@ -447,6 +447,11 @@ settings afterward and adds a numeric suffix if a filename already exists.
 Enable **Include field legends** to save an SVG beside each mapped PNG.
 The pair shares a filename stem, including when an existing PNG or SVG
 requires a new suffix. Ordinary orbital panels produce just a PNG.
+Enable **Fit series camera from view** to use the current viewport orientation
+for all checked panels. The exporter frames the molecule and the selected
+surfaces together at the current frame, with a margin for the output aspect
+ratio. It makes a reusable orthographic camera active so the framing is saved
+with the scene. You can return to your original camera in Scene Properties.
 For an ordinary still, **Output Properties → Output → Use Transparent PNG**
 sets transparent film and RGBA PNG output for the scene.
 
