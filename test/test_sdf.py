@@ -91,3 +91,13 @@ class TestSDF(unittest.TestCase):
         for index, lines in enumerate(cases):
             with self.subTest(case=index), self.assertRaises(ValueError):
                 self.read(lines)
+
+    def test_diagnostics_use_physical_line_in_second_record(self):
+        for offset, bad, context in [(4, 'bad', 'atom 1'), (13, '  1 88  1', 'bond 1'),
+                                     (21, 'M  CHG  1  99   1', 'M  CHG')]:
+            second = self.lines.copy()
+            second[offset] = bad
+            physical = len(self.lines) + offset + 1
+            with self.subTest(context=context), self.assertRaisesRegex(
+                    ValueError, f'model.sdf:{physical}: SDF record 1, {context}'):
+                self.read(self.lines + second, sdf_record=1)

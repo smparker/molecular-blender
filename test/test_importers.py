@@ -592,3 +592,22 @@ class TestTurbomoleReader(unittest.TestCase):
         nums = parser._parse_fixed_width_numbers(line)
         assert len(nums) == 2
         assert abs(nums[0] - 0.14237842212942e-3) < 1e-15
+
+    def test_polar_manifest_errors_identify_file_line_section_and_pair(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = root / 'movie.json'
+            manifest.write_text(json.dumps({'molecules': [
+                {'filename': str(Path(EXAMPLES).resolve() / 'water-sto-3g.molden'), 'polar': 'response'}]}))
+            prefix = '\n$symmetry c1\n$scfinstab dynpol\n'
+            for lines, location in [
+                ('$end\n', 'response:5: $eigenpairs'),
+                ('$eigenpairs\n 7 eigenvalue = 1D0\nbad\n$end', 'response:6: $eigenpairs, eigenpair 7'),
+                ('$eigenpairs\n 7 eigenvalue = 1D0\n2.0\n$end', 'response:5: $eigenpairs, eigenpair 7'),
+                ('$eigenpairs\n 7 eigenvalue = 1D0\n2.0\n2.0\n$end', 'response has 1'),
+                ('$tensor space dimension nope', 'response:4: $tensor space dimension')]:
+                (root / 'response').write_text(prefix + lines)
+                with self.subTest(lines=lines), self.assertRaises(ValueError) as failure:
+                    molecule_from_file(str(manifest), {})
+                self.assertIn('movie.json: entry 1', str(failure.exception))
+                self.assertIn(location, str(failure.exception))
