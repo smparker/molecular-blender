@@ -522,8 +522,10 @@ def PlotMolecule(context, molecule, options):
 
     clock.tick_print("link objects")
 
-    # update scene
-    context.view_layer.update()
+    # Hooks need evaluated endpoint matrices, and charge overlays are parented
+    # to newly created atoms. Plain atoms only need the existing root transform.
+    if (options["hook_atoms"] and to_hook) or draw_charges or not to_parent:
+        context.view_layer.update()
 
     clock.tick_print("update scene")
 
