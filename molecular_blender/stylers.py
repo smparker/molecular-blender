@@ -30,6 +30,23 @@ from .geometry_import import track_new
 from .nodes import arrange_nodes
 from .util import darken_color
 
+# Blender 4 renamed these Principled BSDF sockets. Some optional sockets,
+# such as Transmission Roughness, only exist on the older shader.
+_PRINCIPLED_LEGACY = {
+    'Subsurface Weight': 'Subsurface', 'Anisotropic IOR Level': 'Anisotropic',
+    'Sheen Weight': 'Sheen', 'Coat Weight': 'Clearcoat',
+    'Coat Roughness': 'Clearcoat Roughness', 'Transmission Weight': 'Transmission',
+    'Emission Color': 'Emission',
+}
+
+
+def _alpha_blend(mat):
+    if hasattr(mat, 'surface_render_method'):
+        mat.surface_render_method = 'BLENDED'
+    else:
+        mat.blend_method = 'BLEND'
+
+
 class PaletteElementStyler(object):
     """Base class to color atom based on element"""
 
@@ -66,7 +83,7 @@ class PaletteElementStyler(object):
             'Subsurface Color' : subsurface_color,
             'Metallic' : metallic,
             'Roughness'  : roughness,
-            'Anisotropic' : anisotropic,
+            'Anisotropic IOR Level' : anisotropic,
             'Anisotropic Rotation' : anisotropic_rotation,
             'Sheen Weight'      : sheen,
             'Coat Weight'  : clearcoat,
@@ -85,9 +102,12 @@ class PaletteElementStyler(object):
         material_output = nodes.new('ShaderNodeOutputMaterial')
 
         principled = nodes.new('ShaderNodeBsdfPrincipled')
-        for o in options:
-            if o in principled.inputs:
-                principled.inputs[o].default_value = options[o]
+        for name, value in options.items():
+            socket = principled.inputs.get(name)
+            if socket is None and name in _PRINCIPLED_LEGACY:
+                socket = principled.inputs.get(_PRINCIPLED_LEGACY[name])
+            if socket is not None:
+                socket.default_value = value
         links.new(principled.outputs['BSDF'], material_output.inputs['Surface'])
 
         arrange_nodes(nodes, "socket")
@@ -141,9 +161,13 @@ class PaletteElementStyler(object):
             transmission_roughness=0.2,
             emission_strength=0.1,
             IOR=1.25)
-        mat.blend_method = 'BLEND'
-        mat.use_screen_refraction = True
-        mat.refraction_depth = 0.1
+        _alpha_blend(mat)
+        if hasattr(mat, 'use_raytrace_refraction'):
+            mat.use_raytrace_refraction = True
+        elif hasattr(mat, 'use_screen_refraction'):
+            mat.use_screen_refraction = True
+        if hasattr(mat, 'refraction_depth'):
+            mat.refraction_depth = 0.1
 
         return mat
 
@@ -166,7 +190,7 @@ class PaletteElementStyler(object):
 
         mat = track_new(bpy.data.materials.new(isoname))
         mat.use_nodes = True
-        mat.blend_method = 'BLEND'
+        _alpha_blend(mat)
         mat.diffuse_color = base_color
         nodes = mat.node_tree.nodes
         nodes.clear() # remove defaults

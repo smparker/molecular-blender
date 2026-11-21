@@ -32,7 +32,8 @@ def _appearance(mat):
                          getattr(node, 'subsurface_method', None), inputs))
     links = [(indices[link.from_node], link.from_socket.identifier,
               indices[link.to_node], link.to_socket.identifier) for link in mat.node_tree.links]
-    state = (tuple(mat.diffuse_color), mat.blend_method, settings, sorted(links))
+    blend = mat.blend_method if hasattr(mat, 'blend_method') else mat.surface_render_method
+    state = (tuple(mat.diffuse_color), blend, settings, sorted(links))
     return hashlib.sha256(repr(state).encode()).hexdigest()
 
 
