@@ -104,3 +104,34 @@ class TestGeometryRollback(unittest.TestCase):
             self.assertEqual(bpy.data.objects[atom.neg_charge].active_material.name, model.negcharge_mat)
         self.assertNotEqual(models[0].pluscharge_mat, models[1].pluscharge_mat)
         self.assertNotEqual(models[0].negcharge_mat, models[1].negcharge_mat)
+
+    def test_names_fill_holes_and_charge_spheres_animate_independently(self):
+        from pathlib import Path
+        import tempfile
+        from molecular_blender.plotter import BlendMoleculeSetup
+
+        # Simulate names that survived another import after its molecule root was removed.
+        for name in ('probe_c0', 'probe_c2'):
+            self.scene.collection.objects.link(bpy.data.objects.new(name, None))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'probe.xyz'
+            path.write_text('3\nfirst\nC 0 0 0 1.0\nC 3 0 0 -0.5\nO 6 0 0 0\n'
+                            '3\nsecond\nC 1 0 0 -0.5\nC 4 0 0 1.0\nO 7 0 0 0\n')
+            model, _, _ = BlendMoleculeSetup(bpy.context, str(path), charges='scale',
+                charge_offset=1.0, isovalues='', bond_thickness=0, trajectory_interpolation='hold')
+        a, b, oxygen = model.atoms
+        self.assertEqual([a.name, b.name, oxygen.name], ['probe_c1', 'probe_c3', 'probe_o0'])
+        self.assertIsNone(bpy.data.objects['probe_c0'].parent)
+        overlays = model.scene_collection.children['probe-charges']
+        self.assertEqual(len(overlays.objects), 6)
+        self.assertEqual(set(o.users_collection[0] for o in overlays.objects), {overlays})
+        self.assertEqual(len({o.data for o in overlays.objects}), 4)
+        for attr in ('plus_charge', 'neg_charge'):
+            self.assertEqual(overlays.objects[getattr(a, attr)].data, overlays.objects[getattr(b, attr)].data)
+        self.assertNotEqual(overlays.objects[a.plus_charge].data, bpy.data.objects[a.name].data)
+        for frame, values in [(1, (1, 0, 0, -.5)), (2, (0, -.5, 1, 0))]:
+            self.scene.frame_set(frame)
+            for name, value in zip((a.plus_charge, a.neg_charge, b.plus_charge, b.neg_charge), values):
+                obj = overlays.objects[name]
+                self.assertAlmostEqual(obj.scale.x, model.scale(abs(value)).x)
+                self.assertLess((obj.matrix_world.translation - obj.parent.matrix_world.translation).length, 1e-5)

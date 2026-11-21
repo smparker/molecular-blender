@@ -341,8 +341,9 @@ def PlotMolecule(context, molecule, options):
                     junction_scales[atom.index] = max(
                         junction_scales.get(atom.index, 1.0), extent / bond_thickness)
 
-    # local list of keys to keep making unique names
-    obj_keys = bpy.data.objects.keys().copy()
+    # Preserve the first available suffix without rescanning earlier atoms.
+    obj_keys = set(bpy.data.objects.keys())
+    next_suffix = {}
 
     # list of objects that need to be processed after scene creation
     link_to = []
@@ -351,6 +352,8 @@ def PlotMolecule(context, molecule, options):
 
     clock.tick_print("preamble")
 
+    charges_collection = None
+    charge_geometry = {}
     element_objects = {}
     # Check to see if original atom already exists.
     # if yes, create translated linked duplicate, if no, create new object
@@ -358,14 +361,16 @@ def PlotMolecule(context, molecule, options):
         if atom.hidden:
             continue
         base_atom = molecule.name + "_" + atom.element.symbol
-        atom.name = unique_name(base_atom, obj_keys, 0)
+        suffix = next_suffix.get(base_atom, 0)
+        while f"{base_atom}{suffix}" in obj_keys:
+            suffix += 1
+        atom.name = f"{base_atom}{suffix}"
+        next_suffix[base_atom] = suffix + 1
+        obj_keys.add(atom.name)
         if atom.element.symbol in element_objects:
             atom_copy = track_new(element_objects[atom.element.symbol].copy())
             atom_copy.location = atom.position
             atom_copy.name = atom.name
-
-            # add new name to local list of keys
-            obj_keys.append(atom.name)
 
             # store object in link_to list
             link_to.append((atom_copy, atom_collection))
@@ -397,8 +402,6 @@ def PlotMolecule(context, molecule, options):
             element_objects[atom.element.symbol] = atom_obj
             top_collection.objects.unlink(atom_obj)
 
-            obj_keys.append(atom.name)
-
             atom_obj.data.materials.append(
                 bpy.data.materials[molecule.materials[atom.element.symbol]])
 
@@ -411,34 +414,22 @@ def PlotMolecule(context, molecule, options):
             atom_obj.scale = (junction_scales.get(atom.index, 1.0),) * 3
 
         if draw_charges:  # set a sphere on top of atom that will show charge
-            charges_collection = track_new(bpy.data.collections.new("{}-charges".format(molecule.name)))
-            molecule_collection.children.link(charges_collection)
-
-            plus_obj = track_new(atom_obj.copy())
-            plus_obj.data = track_new(plus_obj.data.copy())
-            plus_obj.data.materials[0] = bpy.data.materials[molecule.pluscharge_mat]
-            plus_obj.name = atom.name + "_plus"
-            atom.plus_charge = plus_obj.name
-            link_to.append((plus_obj, charges_collection))
-
-            neg_obj = track_new(atom_obj.copy())
-            neg_obj.data = track_new(neg_obj.data.copy())
-            neg_obj.data.materials[0] = bpy.data.materials[molecule.negcharge_mat]
-            neg_obj.name = atom.name + "_neg"
-            atom.neg_charge = neg_obj.name
-            link_to.append((neg_obj, charges_collection))
-
-            # initialize scale
-            pc = max(0.0, atom.charge)
-            plus_obj.scale = molecule.scale(pc)
-
-            to_parent.append((plus_obj, atom_obj))
-
-            # initialize scale
-            nc = -min(0.0, atom.charge)
-            neg_obj.scale = molecule.scale(nc)
-
-            to_parent.append((neg_obj, atom_obj))
+            if charges_collection is None:
+                charges_collection = track_new(bpy.data.collections.new(f"{molecule.name}-charges"))
+                molecule_collection.children.link(charges_collection)
+            for sign, material, charge in (('plus', molecule.pluscharge_mat, atom.charge),
+                                           ('neg', molecule.negcharge_mat, -atom.charge)):
+                key = (atom_obj.data, material)
+                if key not in charge_geometry:
+                    geometry = track_new(atom_obj.data.copy())
+                    geometry.materials[0] = bpy.data.materials[material]
+                    charge_geometry[key] = geometry
+                overlay = track_new(bpy.data.objects.new(f"{atom.name}_{sign}", charge_geometry[key]))
+                setattr(atom, sign + '_charge', overlay.name)
+                overlay.location = atom.position
+                overlay.scale = molecule.scale(max(0.0, charge))
+                link_to.append((overlay, charges_collection))
+                to_parent.append((overlay, atom_obj))
 
     clock.tick_print("atom creation")
 
@@ -459,7 +450,7 @@ def PlotMolecule(context, molecule, options):
             to_split = plot_style.split_bond and iatom.element != jatom.element
             bond.name = [ unique_name(b, obj_keys) for b in bond.make_names(
                 molecule.name, to_split) ]
-            obj_keys.extend(bond.name)
+            obj_keys.update(bond.name)
             if to_split:
                 coords = [iatom.position, jatom.position]
 
