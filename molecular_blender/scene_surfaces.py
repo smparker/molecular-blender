@@ -4,11 +4,14 @@ import os
 import bpy
 from bpy.props import StringProperty
 
+from .diagnostics import report_exception
 from . import import_dialog
 from .importers import FORMAT_SUFFIXES, file_format
 from .molecule import Atom, Molecule
 from .options import molden_convention, validated_options
-from .plotter import create_surface_mesh_data, field_geometry, process_options
+from .scene_meshes import create_surface_mesh_data
+from .surface_geometry import field_geometry
+from .options import process_options
 from .scene_edit import _set_color, _set_opacity, _surface_output
 from .scene_state import ID, new_id, surface_sampling, owned_objects, read_record, resolve_owner, write_record
 from .surface_jobs import SavedSurfaceSource
@@ -354,7 +357,7 @@ class MB_OT_locate_source(bpy.types.Operator):
             record['source'] = path
             write_record(owner, record)
         except Exception as exc:
-            self.report({'ERROR'}, str(exc) or 'Could not read the Molden source')
+            report_exception(self, exc)
             return {'CANCELLED'}
         self.report({'INFO'}, 'Linked ' + os.path.basename(path))
         return {'FINISHED'}
@@ -431,7 +434,7 @@ class MB_OT_add_surface(MoldenSurfaceProperties, SurfaceJobOperator, bpy.types.O
                     overrides['molden_convention'] = record['settings']['molden_convention']
             return start_field_job(self, context, owner, record, overrides, cube=cube)
         except (KeyError, ValueError) as exc:
-            self.report({'ERROR'}, str(exc))
+            report_exception(self, exc)
             return {'CANCELLED'}
 
 
@@ -586,7 +589,7 @@ class MB_OT_recompute_surface(MoldenSurfaceProperties, SurfaceJobOperator, bpy.t
         try:
             _, group, settings = self._group_settings(self._target)
         except ValueError as exc:
-            self.report({'ERROR'}, str(exc))
+            report_exception(self, exc)
             return {'CANCELLED'}
         self._label = group['label']
         self._cube = group['field'] == 'cube'
@@ -617,7 +620,7 @@ class MB_OT_recompute_surface(MoldenSurfaceProperties, SurfaceJobOperator, bpy.t
             self._original_meshes = {o.data.as_pointer() for o in group['objects']}
             return start_field_job(self, context, owner, record, settings, cube=group['field'] == 'cube')
         except (ValueError, KeyError) as exc:
-            self.report({'ERROR'}, str(exc))
+            report_exception(self, exc)
             return {'CANCELLED'}
 
     def apply_surface_result(self, context, vertex_sets, trajectory_map):

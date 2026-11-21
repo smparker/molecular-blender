@@ -54,7 +54,7 @@ def geometry_import(context):
     try:
         if mode != 'OBJECT':
             bpy.ops.object.mode_set(mode='OBJECT')
-        yield
+        yield blocks
     except Exception:
         if layer.objects.active and layer.objects.active.mode != 'OBJECT':
             bpy.ops.object.mode_set(mode='OBJECT')

@@ -5,6 +5,7 @@ import re
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, IntProperty, StringProperty
 
+from .scene_resources import MB_OT_remove_molecule
 from . import import_dialog, vibrations
 from .representation import MB_OT_representation, can_switch
 from .importers import file_format
@@ -442,6 +443,7 @@ class MB_PT_molecule(bpy.types.Panel):
             box.operator('molecular_blender.delete_bond')
             box.label(text='Manual orders are locked', icon='LOCKED')
             box.operator('molecular_blender.reperceive')
+        layout.operator('molecular_blender.remove_molecule', icon='TRASH')
 
 
 _CLASSES = (MB_OT_select_atoms, MB_OT_select_atom_indices, MB_OT_surface_visibility, MB_OT_solo_surface,
@@ -450,7 +452,7 @@ _CLASSES = (MB_OT_select_atoms, MB_OT_select_atom_indices, MB_OT_surface_visibil
             MB_OT_add_surface, MB_OT_recompute_surface, MB_OT_remove_surface,
             vibrations.MB_OT_preview_mode, vibrations.MB_OT_clear_mode,
             MB_OT_jump_orbital, MB_OT_frame_molecule, MB_OT_view_face_on, MB_OT_view_principal_axes,
-            MB_OT_representation, MB_PT_molecule)
+            MB_OT_representation, MB_OT_remove_molecule, MB_PT_molecule)
 
 
 def register():

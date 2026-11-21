@@ -4,9 +4,11 @@ import math
 import bpy
 from bpy.props import EnumProperty, FloatProperty
 
+from .diagnostics import report_exception
 from .bond_perception import perceive_bond_orders
+from .scene_resources import discard_profile
 from .periodictable import elements
-from .plotter import bind_bond_endpoints
+from .scene_geometry import bind_bond_endpoints, configure_bond_curve
 from .scene_state import (read_record, write_record, resolve_owner, owned_objects,
                           new_id, tag, ID, ROLE, normalize_duplicate_ids)
 from .scene_edit import _private_curve, apply_bond_profile, space_filling_bond, update_junctions
@@ -63,13 +65,7 @@ def _remove_unused_curve(curve):
         return
     profile = curve.bevel_object
     bpy.data.curves.remove(curve)
-    if (profile is not None and profile.get('molecular_blender_bond_profile')
-            and not any(c.bevel_object == profile for c in bpy.data.curves)
-            and profile.users == int(profile.use_fake_user)):
-        data = profile.data
-        bpy.data.objects.remove(profile)
-        if data.users == 0:
-            bpy.data.curves.remove(data)
+    discard_profile(profile)
 
 
 def _new_curves(owner, record, bond, atoms):
@@ -102,19 +98,10 @@ def _new_curves(owner, record, bond, atoms):
             curve = bpy.data.curves.new(owner.name + '_bond', 'CURVE')
             obj = bpy.data.objects.new(owner.name + '_bond', curve)
             objects.append(obj)
+            curve['mb_generated'] = True
             collection.objects.link(obj)
             obj.parent = owner
-            curve.dimensions = '3D'
-            curve.resolution_u = 2
-            curve.bevel_depth = radius
-            curve.use_fill_caps = True
-            spline = curve.splines.new('BEZIER')
-            spline.bezier_points.add(1)
-            for point, co in zip(spline.bezier_points, coords):
-                point.co = co
-                point.handle_left_type = point.handle_right_type = 'AUTO'
-            if split:
-                curve.bevel_factor_start, curve.bevel_factor_end = ((0, 0.5), (0.5, 1))[index]
+            configure_bond_curve(curve, coords, radius, index if split else None)
             if colored:
                 atom = (first, second)[index]
                 if 'mb_accent_color' in atom:
@@ -263,7 +250,7 @@ class MB_OT_set_bond(bpy.types.Operator):
             owner, atoms, bond = selected_bond(context)
             set_manual_bond(owner, int(self.order), atom_ids=atoms, bond_id=bond)
         except (ValueError, KeyError) as exc:
-            self.report({'ERROR'}, str(exc))
+            report_exception(self, exc)
             return {'CANCELLED'}
         return {'FINISHED'}
 
@@ -340,7 +327,7 @@ class MB_OT_set_bond_tilt(bpy.types.Operator):
                 bond['tilt'] = self.tilt
             write_record(owner, record)
         except (ValueError, KeyError) as exc:
-            self.report({'ERROR'}, str(exc))
+            report_exception(self, exc)
             return {'CANCELLED'}
         return {'FINISHED'}
 
@@ -356,7 +343,7 @@ class MB_OT_delete_bond(bpy.types.Operator):
             owner, atoms, bond = selected_bond(context)
             delete_bond(owner, atom_ids=atoms, bond_id=bond)
         except (ValueError, KeyError) as exc:
-            self.report({'ERROR'}, str(exc))
+            report_exception(self, exc)
             return {'CANCELLED'}
         return {'FINISHED'}
 
@@ -372,7 +359,7 @@ class MB_OT_reperceive(bpy.types.Operator):
         try:
             reperceive_bonds(resolve_owner(context.object))
         except (ValueError, KeyError) as exc:
-            self.report({'ERROR'}, str(exc))
+            report_exception(self, exc)
             return {'CANCELLED'}
         return {'FINISHED'}
 

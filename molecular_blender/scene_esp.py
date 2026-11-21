@@ -6,7 +6,8 @@ import bpy
 import numpy as np
 from bpy.props import EnumProperty, FloatProperty, IntProperty, StringProperty
 
-from .esp import sample_cube
+from .diagnostics import report_exception
+from .scalar_fields import CubeField
 from .import_dialog import browser_path
 from .importers import file_format, molecule_from_cube, molecule_from_json
 from .scene_edit import _set_opacity, _surface_output
@@ -169,8 +170,9 @@ def _mapping_grid(record, path, dataset):
 def _sample_mesh(mesh, grid, name):
     points = np.empty(len(mesh.vertices) * 3, dtype=np.float32)
     mesh.vertices.foreach_get('co', points)
+    mesh['mb_generated'] = True
     attr = mesh.attributes.get(name) or mesh.attributes.new(name, 'FLOAT', 'POINT')
-    attr.data.foreach_set('value', sample_cube(grid, points))
+    attr.data.foreach_set('value', CubeField(grid).batch(points.reshape(-1, 3)))
 
 
 def remap_contour(context, record, template, base, grids):
@@ -347,7 +349,7 @@ class MB_OT_map_esp(bpy.types.Operator):
             map_esp(context, record, group, path, self.dataset, units, self.minimum, self.maximum,
                     kind=self.field_kind, label=label)
         except (ValueError, OSError, EOFError, KeyError, RuntimeError, ReferenceError) as exc:
-            self.report({'ERROR'}, str(exc) or 'Cannot map the field onto the surface')
+            report_exception(self, exc)
             return {'CANCELLED'}
         return {'FINISHED'}
 

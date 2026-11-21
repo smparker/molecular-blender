@@ -5,9 +5,10 @@ from bpy.props import EnumProperty
 from .bond_edit import _atom_objects, _remove_curve, _remove_unused_curve, _validate_geometry
 from .geometry_import import rollback_new_ids, track_new
 from .periodictable import elements
-from .plotter import set_bond_order
+from .scene_geometry import set_bond_order
 from .scene_edit import _atom_radius, space_filling_bond, update_junctions
 from .scene_state import ID, normalize_duplicate_ids, owned_objects, read_record, resolve_owner, write_record
+from .scene_materials import element_material, bond_material
 from .stylers import get_styler
 
 STYLES = (('sticks', 'Sticks', 'Element-colored bonds with small atom junctions'),
@@ -56,12 +57,8 @@ def switch_representation(owner, style):
         if atom and 'mb_accent_color' not in atom and atom.active_material:
             return atom.active_material
         if key not in materials:
-            name = key + ('_mat' if atom else '_bond_mat')
-            mat = bpy.data.materials.get(name) if settings['recycle_materials'] else None
-            if mat is None:
-                mat = styler.atom_material(name, elements[key]) if atom else styler.bond_material(name, key)
-                mat['mb_style_material'] = True
-            materials[key] = mat
+            make = element_material if atom else bond_material
+            materials[key] = make(styler, settings, key)
         return materials[key]
 
     # Prepare all replacement curve data before modifying the original objects.

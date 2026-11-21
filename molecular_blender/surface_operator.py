@@ -4,7 +4,7 @@ from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, St
 
 from .diagnostics import report_exception
 from . import import_dialog
-from .plotter import SurfaceMeshStage, create_surface_meshes
+from .scene_meshes import SurfaceMeshStage, create_surface_meshes
 from .surface_jobs import SurfaceJob
 
 

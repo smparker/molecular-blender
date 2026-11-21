@@ -25,7 +25,7 @@ def _private_curve(obj):
 
 def apply_bond_profile(obj, bond, order):
     """Rebuild a profile with its saved orientation, including older scene records."""
-    from .plotter import set_bond_order
+    from .scene_geometry import set_bond_order
     if not obj.data.get('mb_trajectory_tilt') and 'tilt' not in bond and bond['direction'] is not None:
         set_bond_order(obj, order, bond['direction'])
         return
@@ -50,7 +50,7 @@ def space_filling_bond(obj, enabled):
 
 def update_junctions(owner, record):
     """Scale objects, preserving manual nonuniform scaling and linked atom meshes."""
-    from .plotter import _multiple_bond_profile
+    from .scene_geometry import _multiple_bond_profile
     settings = record['settings']
     extent = {}
     for obj in owned_objects(owner, 'bond'):
@@ -321,6 +321,8 @@ def make_molecule_independent(owner):
     users = bpy.data.user_map(subset=materials)
     local_users = objects | geometry
     copies = {m: m.copy() for m in materials if m.library or users[m] - local_users}
+    for copy in copies.values():
+        copy["mb_style_material"] = True
     for data in geometry:
         for i, material in enumerate(data.materials):
             if material in copies:

@@ -52,7 +52,7 @@ class TestGeometryRollback(unittest.TestCase):
 
         args = dict(draw_bond_orders=True, plot_style='sticks', hook_atoms='on',
                     ignore_hydrogen=False, isovalues='')
-        with patch.object(plotter, 'bind_bond_endpoints', fail), self.assertRaisesRegex(ValueError, 'bond failure'):
+        with patch('molecular_blender.scene_geometry.bind_bond_endpoints', fail), self.assertRaisesRegex(ValueError, 'bond failure'):
             plotter.BlendMoleculeSetup(bpy.context, 'examples/bond_orders.sdf', **args)
         self.assertEqual(len(curves), 3)
         self.assertEqual(self.ids(), before | set(other))
@@ -84,8 +84,10 @@ class TestGeometryRollback(unittest.TestCase):
     def test_second_molecule_uses_its_own_charges_and_recycled_ring(self):
         from molecular_blender.plotter import BlendMoleculeSetup
         args = dict(find_aromatic=True, charges='scale', recycle_materials=True, isovalues='')
-        ring = bpy.data.materials.get('ring_mat') or bpy.data.materials.new('ring_mat')
+        foreign = bpy.data.materials.new('ring_mat')
         models = [BlendMoleculeSetup(bpy.context, 'examples/tetracene_dimer.xyz', **args)[0] for _ in range(2)]
+        ring = bpy.data.materials[models[0].materials["ring"]]
+        self.assertNotEqual(ring, foreign)
         for model in models:
             rings = [obj for obj in model.scene_owner.children_recursive if obj.name.startswith(model.name + '_ring')]
             self.assertTrue(rings)
