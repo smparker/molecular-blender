@@ -1,4 +1,5 @@
 """Inspect the molecule owning the current Blender selection."""
+from bisect import bisect_right
 import os
 import re
 
@@ -29,6 +30,10 @@ ORBITALS_PER_PAGE = 5
 _label_handler = None
 
 
+def _bond_sample(record, scene):
+    return max(0, bisect_right(record.get('bond_frames', ()), scene.frame_current + scene.frame_subframe) - 1)
+
+
 def molecule_summary(obj):
     """Summarize the saved molecule, previewing DIPL headers for older manifests."""
     owner = resolve_owner(obj)
@@ -40,11 +45,16 @@ def molecule_summary(obj):
     if obj.get(ROLE) == 'atom':
         atom_id = obj.get(ID)
         atom = next((a for a in record['atoms'] if a['id'] == atom_id), None)
+    frame_index = _bond_sample(record, bpy.context.scene)
+    reports = record.get('perception')
+    if atom and 'frame_charges' in atom:
+        atom['formal_charge'] = atom['frame_charges'][frame_index]
     groups = surface_groups(owner, record)
     return dict(owner=owner, source=record['source'], units=record['units'],
                 selected_atom=atom, convention=record.get('molden_convention', settings['molden_convention']),
                 atoms=len(record['atoms']), visible_atoms=len(owned_objects(owner, 'atom')),
-                bonds=len(record['bonds']), surfaces=sum(len(g['objects']) for g in groups.values()),
+                perception=reports[frame_index] if reports else None,
+                bonds=sum(1 for b in record['bonds'] if 'frame_orders' not in b or b['frame_orders'][frame_index]), surfaces=sum(len(g['objects']) for g in groups.values()),
                 groups=groups,
                 response_pairs=import_dialog.saved_response_pairs(record),
                 representation=REPRESENTATIONS[settings['plot_style']],
@@ -191,7 +201,10 @@ class MB_OT_select_atoms(bpy.types.Operator):
             ids = {a['id'] for a in record['atoms'] if a['element'] == atom['mb_element']}
         else:
             adjacency = {}
+            sample = _bond_sample(record, context.scene)
             for bond in record['bonds']:
+                if 'frame_orders' in bond and not bond['frame_orders'][sample]:
+                    continue
                 left, right = bond['atoms']
                 adjacency.setdefault(left, set()).add(right)
                 adjacency.setdefault(right, set()).add(left)
@@ -309,6 +322,12 @@ class MB_PT_molecule(bpy.types.Panel):
         box.label(text='Atoms: {}    Bonds: {}'.format(summary['atoms'], summary['bonds']))
         if summary['object_type'] != 'wireframe' and summary['visible_atoms'] != summary['atoms']:
             box.label(text='Displayed atoms: {}'.format(summary['visible_atoms']))
+        report = summary.get('perception')
+        if report:
+            label = {'unique': 'Unique assignment', 'multiple': 'Multiple equal-cost assignments',
+                     'undetermined': 'Uniqueness unresolved'}[report['ambiguity']]
+            box.label(text=f"{label} · {report['fragments']} fragment(s)")
+            box.label(text=f"Bond search: {report['iterations']} nodes, {report['seconds']*1000:.1f} ms")
         box.label(text='Coordinates: ' + summary['units'])
         box.label(text='Molecular charge setting: {:+d}'.format(summary['charge']))
         box.label(text='{} ({})'.format(summary['representation'], summary['object_type']))

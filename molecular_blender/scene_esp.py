@@ -26,8 +26,9 @@ REMESH = 'mb_esp_original_remesh'
 def density_group(group):
     density = (group['field'] in ('density', 'alpha', 'beta') or
                group['field'] == 'cube' and group['cube_kind'] in ('density', 'unknown'))
+    from .trajectory_meshes import TIMES
     return density and not any(
-        obj.animation_data and obj.animation_data.action for obj in group['objects'])
+        TIMES in obj.data or obj.animation_data and obj.animation_data.action for obj in group['objects'])
 
 
 def scale_nodes(material):

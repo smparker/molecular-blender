@@ -72,8 +72,17 @@ are not inferred. Resonance rings receive one valid integer Kekule assignment;
 equivalent or ambiguous forms need not have a unique result. Bond lengths guide
 the search rather than proving chemical identity.
 
-For trajectories, only `animate_bonds="staticfirst"` is supported with perception.
-Orders stay fixed. With endpoint hooks enabled, double and triple bonds follow
+For an XYZ or JSON trajectory, choose **Dynamic** bonds and enable **Draw bond
+orders** to solve each sampled geometry. A forming or breaking bond appears or
+disappears on that sample. Single, double and triple profiles switch together on
+both colored halves. The solver distributes the specified molecular charge across
+all fragments at every sample. The sidebar shows the selected atom's formal
+charge and whether other equally low-charge assignments exist. A failed sample
+reports its input frame and stops the import. The Python options are
+`animate_bonds="dynamic", perceive_bond_orders=True, draw_bond_orders=True`.
+
+Choose **Static: first frame** to perceive once and keep the orders fixed.
+With endpoint hooks enabled, double and triple bonds follow
 the molecular plane at each sampled pose. For a ring bond, the smallest ring
 containing it defines the plane. For an open chain, a neighboring atom defines it.
 When the atoms become collinear, the previous orientation follows the bond axis.
@@ -569,7 +578,7 @@ In a multi-entry JSON manifest, each entry reads one structure. Paths are
 relative to the manifest and `sdf_record` selects a zero-based SDF record.
 Optional `frame` values are strictly increasing nonnegative integers. The
 first defaults to zero and each omitted value advances one step. Blender
-places the key at `1 + frame × keystride`. Atom identities and explicit SDF
+places the key at `1 + frame × keystride` with the default timing. Atom identities and explicit SDF
 topology must match across frames. Molden frames retain their own coefficients
 and occupations and share a compatible basis and orbital channels. Cube frames
 can have different grid origins and spacings and must use the same dataset IDs.
@@ -633,9 +642,17 @@ For XYZ and JSON imports, **First input frame** and **Last input frame** are
 inclusive, zero-based positions. A last frame of `-1` reads through the end.
 **Read every Nth frame** counts from the first selected position. For example,
 `100` through `500` with a step of `10` loads 41 frames. Explicit JSON frame
-times survive sampling, and **Keystride** still controls the spacing of Blender
-keyframes. The Python options are `frame_start`, `frame_end`, and `frame_step`.
+times survive sampling. In **Frame stride** mode, **Keystride** controls the spacing
+of Blender keyframes. The Python options are `frame_start`, `frame_end`, and `frame_step`.
 A single JSON entry wrapping an XYZ trajectory samples the XYZ frames.
+
+Under **Animation → Timing**, choose **Physical time** to enter the time per
+input step in fs or ps, and how many simulated ps should play each second.
+For snapshots 0.5 ps apart, at 1 ps per second and 30 FPS the keys land on
+frames 1, 16 and 31. Skipping the middle snapshot leaves the last key on 31.
+The FPS field uses the current scene rate at zero. Entering a rate sets it for
+the scene. Python accepts `trajectory_timing="physical", time_step=0.5,
+time_unit="ps", playback_ps_per_second=1.0, playback_fps=30`.
 
 Under **Animation → Playback**, **Hold** keeps each sampled pose and charge
 size until the next key. **Linear** moves atoms and changes charge sizes at a
@@ -646,8 +663,13 @@ sampled positions and vectors.
 
 Cube and Molden trajectory surfaces are built one snapshot at a time. Press
 **Esc** during calculation to discard the partial surface series and keep the
-imported molecular geometry. The finished meshes are stored in the blend file
-for scrubbing and rendering.
+imported molecular geometry. For JSON sequences, **Trajectory meshes → Keep all
+meshes** stores each snapshot as editable Blender geometry. **Load on demand**
+packs the sampled triangles inside the blend file and reuses one mesh per
+contour level and sign. Scrubbing and rendering decode the current sample
+with the add-on enabled, including after moving the blend file. Edits to those
+vertices last until another sample is loaded. This mode enables Blender's
+**Lock Interface** during rendering. In Python, set `trajectory_meshes="packed"`.
 
 For a JSON sequence of Molden files, choose **Molecular orbital** and enable
 **Align orbital phase across frames** to keep lobe colors consistent. In Python,

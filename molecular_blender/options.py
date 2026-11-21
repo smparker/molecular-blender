@@ -63,6 +63,17 @@ OPTIONS = {
             ('wireframe', 'Wireframe', 'Wireframe'))),
     'keystride': option(1, name='Keystride',
         description='Striding between keyframes in animation'),
+    'trajectory_timing': option('frames', name='Timing', items=(
+        ('frames', 'Frame stride', 'Space input steps by a number of Blender frames'),
+        ('physical', 'Physical time', 'Map simulation time to playback seconds'))),
+    'time_step': option(1.0, name='Time per input step', min=0.000001, precision=6),
+    'time_unit': option('fs', name='Time unit', items=(('fs', 'fs', 'Femtoseconds'), ('ps', 'ps', 'Picoseconds'))),
+    'playback_ps_per_second': option(0.024, name='Simulation ps per playback second', min=0.000001, precision=6),
+    'playback_fps': option(0, name='Scene FPS (0 = current)', min=0, max=32767,
+                           description='Set the scene frame rate for physical playback, or use the current rate'),
+    'trajectory_meshes': option('resident', name='Trajectory meshes', items=(
+        ('resident', 'Keep all meshes', 'Store a separate editable mesh for every contour and snapshot'),
+        ('packed', 'Load on demand', 'Keep compressed samples in the blend file and decode the displayed frame'))),
     'trajectory_interpolation': option('blender', name='Playback',
         items=(
             ('blender', 'Blender Default', 'Use the keyframe interpolation from Blender preferences'),
@@ -79,7 +90,7 @@ OPTIONS = {
         items=(
             ('staticfirst', 'Static: first frame', 'Use bonds from only the first frame'),
             ('staticall', 'Static: all frames', 'Draw all bonds that are formed during any frame'),
-            ('dynamic', 'Dynamically draw frames', 'Dynamically form and break bonds during animation'))),
+            ('dynamic', 'Dynamic', 'Form and break bonds at each sampled geometry, and update perceived orders when enabled'))),
     'bond_break_margin': option(5.0, name='Break margin (%)',
         description='Extra distance above the formation cutoff before an inferred bond disappears', min=0, soft_max=25),
     'universal_bonds': option(True, name='Universal bonds',
@@ -204,12 +215,14 @@ def validated_options(values):
             out[name] = float(value)
         elif not isinstance(value, str):
             raise ValueError(name + ' must be text')
-    for name in ('resolution', 'keystride', 'bond_order_max_iterations'):
+    for name in ('resolution', 'keystride', 'bond_order_max_iterations', 'time_step', 'playback_ps_per_second'):
         if out[name] <= 0:
             raise ValueError(name + ' must be positive')
     for name in ('bond_thickness', 'bond_break_margin', 'cube_dataset', 'sdf_record', 'remesh', 'response_eigenpair'):
         if out[name] < 0:
             raise ValueError(name + ' must not be negative')
+    if not 0 <= out['playback_fps'] <= 32767:
+        raise ValueError('Playback FPS must be between 0 and 32767')
     trajectory_range(out)
     if out['atom_scale'] <= 0:
         raise ValueError('Atom size multiplier must be positive')
@@ -268,6 +281,10 @@ def process_options(options, *, cube=False):
 def get_frame_mapper(options, frame_numbers=None):
     """Map a snapshot position to a Blender frame, including explicit manifest timing."""
     stride = options["keystride"]
+    if options.get('trajectory_timing') == 'physical':
+        fps = options.get('playback_fps') or options.get('scene_fps', 24.)
+        step_ps = options['time_step'] * (0.001 if options['time_unit'] == 'fs' else 1.)
+        stride = step_ps * fps / options['playback_ps_per_second']
     def f(i):
         return (frame_numbers[i] if frame_numbers is not None else i) * stride + 1
     return f

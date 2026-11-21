@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 """Blender import driver and historical plotting entry points."""
+from math import ceil
 from pathlib import Path
 
 from .bond_perception import BondPerceptionError
@@ -42,6 +43,9 @@ def BlendMoleculeSetup(context, filename, **options):
     options = validated_options(options)
     name = Path(filename).stem
     input_data = molecule_from_file(filename, options)
+    physical = options['plot_type'] == 'animate' and options['trajectory_timing'] == 'physical'
+    if physical:
+        options['scene_fps'] = context.scene.render.fps / context.scene.render.fps_base
     try:
         molecule = Molecule.from_dict(name, input_data)
         molecule.determine_bonding(options)
@@ -86,6 +90,13 @@ def BlendMoleculeSetup(context, filename, **options):
                              colors=molecule.settings['colors'],
                              surface_opacity=molecule.settings.get('surface_opacity', 1.0))
         mark_import_resources(molecule.scene_owner, created)
+    if physical:
+        scene = context.scene
+        if options['playback_fps']:
+            scene.render.fps = options['playback_fps']
+            scene.render.fps_base = 1.
+        last = get_frame_mapper(options, molecule.frame_numbers)(len(molecule.atoms[0].trajectory) - 1)
+        scene.frame_end = max(scene.frame_end, ceil(last))
     return molecule, styler, options
 
 

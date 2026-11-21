@@ -59,6 +59,8 @@ def surface_groups(owner, record):
             groups[key] = dict(label=label, field=field, spin=entry.get('orbital_spin', settings['orbital_spin']),
                                sampling=entry.get('sampling'), levels=set(), objects=[], phases={}, ids=set())
         group = groups[key]
+        if entry.get('ambiguous_phase_frames'):
+            group.setdefault('ambiguous_phase_frames', set()).update(entry['ambiguous_phase_frames'])
         if 'ambiguous_phase_frame' in entry:
             group.setdefault('ambiguous_phase_frames', set()).add(entry['ambiguous_phase_frame'])
         if field == 'cube':

@@ -116,6 +116,16 @@ def persist_molecule(molecule, source, settings):
                   atoms=atoms, bonds=bonds, surfaces=[], orbitals=orbital_metadata(molecule.orbitals),
                   fields=(dict(datasets=list(molecule.volume.labels), field_type=molecule.volume.field_type)
                           if molecule.volume is not None else None))
+    if molecule.perception:
+        record['perception'] = molecule.perception
+        if any(a.frame_charges for a in molecule.atoms):
+            from .options import get_frame_mapper
+            mapper = get_frame_mapper(settings, molecule.frame_numbers)
+            record['bond_frames'] = [mapper(i) for i in range(len(molecule.perception))]
+            for bond, entry in zip(molecule.bonds, bonds):
+                entry['frame_orders'] = bond.frame_orders
+            for atom, entry in zip(molecule.atoms, atoms):
+                entry['frame_charges'] = atom.frame_charges
     if 'molden_convention' in molecule.surface_input:
         record['molden_convention'] = molecule.surface_input['molden_convention']
     if record['orbitals'] and record['source'].lower().endswith('.json'):
@@ -140,7 +150,7 @@ def persist_molecule(molecule, source, settings):
             if obj is not None:
                 tag(obj, owner, 'bond', entry['id'])
                 obj['mb_endpoints'] = entry['atoms']
-                obj['mb_order'] = entry['order'] if settings['draw_bond_orders'] else 1
+                obj['mb_order'] = obj.get('mb_profile_order', entry['order']) if settings['draw_bond_orders'] else 1
                 obj['mb_radius'] = obj.data.bevel_depth
                 obj['mb_nominal_radius'] = settings['bond_thickness']
                 if settings['plot_style'] == 'vdw' and settings['plot_type'] != 'animate':
@@ -184,6 +194,8 @@ def persist_surfaces(owner, definitions, options):
         record['surfaces'].append(dict(id=identifier, field=field, group=groups[field],
                                        orbital_spin=options.get('orbital_spin', 'all'),
                                        isovalue=float(definition['isovalue'])))
+        if definition.get('ambiguous_phase_frames'):
+            record['surfaces'][-1]['ambiguous_phase_frames'] = definition['ambiguous_phase_frames']
         if 'ambiguous_phase_frame' in definition:
             record['surfaces'][-1]['ambiguous_phase_frame'] = definition['ambiguous_phase_frame']
         if 'isovalues' in options and (record['orbitals'] or field == 'cube'):

@@ -88,6 +88,7 @@ class Atom(object):
         self.trajectory = trajectory if trajectory is not None else []
         self.hidden = hidden
         self.formal_charge = formal_charge
+        self.frame_charges = ()
 
     def __repr__(self):
         """String representation"""
@@ -111,6 +112,7 @@ class Bond(object):
         self.iatom = iatom
         self.jatom = jatom
         self.order = order
+        self.frame_orders = ()
         self.direction = direction
         self.threshold = self.cutoff_scale * (iatom.element.covalent + jatom.element.covalent)
 
@@ -222,6 +224,7 @@ class Molecule(object):
         self.orbitals = orbitals
         self.orbitals_trajectory = orbitals_trajectory
         self.frame_numbers = frame_numbers
+        self.perception = []
 
     @classmethod
     def from_dict(cls, name, inp):
@@ -249,47 +252,82 @@ class Molecule(object):
     @stopwatch("determine_bonding")
     def determine_bonding(self, options: dict) -> None:
         """builds list of bonded pairs"""
-        self.bonds = []
-        self.rings = []
+        atoms = self.atoms
         if not options["bonds"]:
+            self.bonds, self.rings, self.perception = [], [], []
+            for atom in atoms:
+                atom.frame_charges = ()
             return
 
-        atoms = self.atoms
         if self.explicit_bonds is not None:
+            explicit = []
             for entry in self.explicit_bonds:
                 i, j = entry["atoms"]
                 if not (0 <= i < len(atoms) and 0 <= j < len(atoms)) or i == j:
                     raise ValueError(f"Invalid atom offsets {i}, {j} in explicit bond")
-                self.bonds.append(self.bond_type(atoms[i], atoms[j], order=entry["order"]))
+                explicit.append(self.bond_type(atoms[i], atoms[j], order=entry["order"]))
+            self.bonds, self.rings, self.perception = explicit, [], []
+            for atom in atoms:
+                atom.frame_charges = ()
             self._orient_multiple_bonds()
             if options["find_aromatic"]:
                 self.rings = find_planar_cycles(self)
             return
         perceive = options.get("perceive_bond_orders", False)
-        if (perceive and options["plot_type"] == "animate"
-                and options["animate_bonds"] != "staticfirst"):
-            raise BondPerceptionError("Perception requires a static graph; use staticfirst for animations")
-        static = options["plot_type"] == "frame" or options["animate_bonds"] == "staticfirst"
+        animated = options["plot_type"] == "animate"
+        mode = options["animate_bonds"]
+        if perceive and animated and mode == "staticall":
+            raise BondPerceptionError("Choose dynamic bonds for per-frame perception or staticfirst for one fixed graph")
+        edges = bonded_pairs(atoms, not animated or mode == "staticfirst")
+        bonds = [self.bond_type(atoms[i], atoms[j]) for i, j in edges]
 
-        self.bonds = [self.bond_type(atoms[i], atoms[j]) for i, j in bonded_pairs(atoms, static)]
-
+        reports = []
         if perceive:
-            indices = {atom: AtomOffset(i) for i, atom in enumerate(atoms)}
-            edges = [(indices[b.iatom], indices[b.jatom]) for b in self.bonds]
-            lengths = [math.dist(b.iatom.position, b.jatom.position) /
-                       (b.iatom.element.covalent + b.jatom.element.covalent)
-                       for b in self.bonds]
-            orders, charges = perceive_bond_orders(
-                [a.element.symbol for a in atoms], edges,
-                charge=options.get("molecular_charge", 0), bond_lengths=lengths,
-                atom_ids=[a.index for a in atoms],
-                max_iterations=options.get("bond_order_max_iterations", 100000))
-            for bond, order in zip(self.bonds, orders):
-                bond.order = order
-            for atom, charge in zip(atoms, charges):
-                atom.formal_charge = charge
-            self._orient_multiple_bonds()
+            dynamic = animated and mode == "dynamic"
+            if dynamic and (not atoms or not atoms[0].trajectory or
+                            any(len(a.trajectory) != len(atoms[0].trajectory) for a in atoms)):
+                raise BondPerceptionError('Dynamic perception needs aligned trajectory snapshots for every atom')
+            masks = self.bond_mask(options, bonds) if dynamic else {}
+            symbols = [a.element.symbol for a in atoms]
+            identifiers = [a.index for a in atoms]
+            radii = [bond.iatom.element.covalent + bond.jatom.element.covalent for bond in bonds]
+            samples, charges_by_frame = [], []
+            for frame in range(len(atoms[0].trajectory) if dynamic else 1):
+                active = [k for k, bond in enumerate(bonds) if not dynamic or
+                          masks[(bond.iatom.index, bond.jatom.index)][frame]]
+                positions = [a.trajectory[frame].position if dynamic else a.position for a in atoms]
+                lengths = [math.dist(positions[edges[k][0]], positions[edges[k][1]]) / radii[k] for k in active]
+                report = {}
+                try:
+                    orders, charges = perceive_bond_orders(symbols, [edges[k] for k in active],
+                        charge=options.get("molecular_charge", 0), bond_lengths=lengths, atom_ids=identifiers,
+                        max_iterations=options.get("bond_order_max_iterations", 100000), diagnostics=report)
+                except BondPerceptionError as exc:
+                    if not dynamic:
+                        raise
+                    source_frame = self.frame_numbers[frame] if self.frame_numbers else frame
+                    raise BondPerceptionError(f'Input frame {source_frame}: {exc}', reason=exc.reason,
+                                              diagnostics=dict(exc.diagnostics, frame=source_frame)) from exc
+                frame_orders = [0] * len(bonds)
+                for k, order in zip(active, orders):
+                    frame_orders[k] = order
+                samples.append(frame_orders)
+                charges_by_frame.append(charges)
+                reports.append(report)
+            for k, bond in enumerate(bonds):
+                if dynamic:
+                    bond.frame_orders = tuple(sample[k] for sample in samples)
+                bond.order = next(sample[k] for sample in samples if sample[k])
+            for i, atom in enumerate(atoms):
+                atom.formal_charge = charges_by_frame[0][i]
+                atom.frame_charges = tuple(sample[i] for sample in charges_by_frame) if dynamic else ()
+        else:
+            for atom in atoms:
+                atom.frame_charges = ()
 
+        self.bonds, self.rings, self.perception = bonds, [], reports
+        if perceive:
+            self._orient_multiple_bonds()
         if options["find_aromatic"]:
             self.rings = find_planar_cycles(self)
 
@@ -302,11 +340,13 @@ class Molecule(object):
             neighbors[bond.iatom.index].append(bond.jatom)
             neighbors[bond.jatom.index].append(bond.iatom)
         for bond in self.bonds:
-            if bond.order == 1:
+            if max(bond.frame_orders, default=bond.order) <= 1:
                 continue
             axis = np.asarray(bond.jatom.position) - bond.iatom.position
             length = np.linalg.norm(axis)
             if length < 1e-8:
+                if bond.frame_orders:
+                    continue
                 raise ValueError(f"Multiple bond has coincident endpoints at atoms {bond.iatom.index}, {bond.jatom.index}")
             axis /= length
             candidates = []
@@ -321,11 +361,11 @@ class Molecule(object):
                 if np.linalg.norm(direction) > 1e-8:
                     bond.direction = self.atom_type.vector(direction)
 
-    def bond_mask(self, options: dict) -> dict[tuple[AtomId, AtomId], list[bool]]:
+    def bond_mask(self, options: dict, bonds=None) -> dict[tuple[AtomId, AtomId], list[bool]]:
         """Construct mask determining whether a bond should be drawn at each frame"""
         outmask = {}
         break_scale = 1 + options.get("bond_break_margin", DEFAULTS["bond_break_margin"]) / 100
-        for bond in self.bonds:
+        for bond in self.bonds if bonds is None else bonds:
             iatom, jatom = bond.iatom, bond.jatom
 
             pairmask = []

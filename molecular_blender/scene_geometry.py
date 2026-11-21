@@ -176,8 +176,9 @@ def PlotMolecule(context, molecule, options):
     junction_scales = {}
     if draw_bonds and options["draw_bond_orders"] and plot_style.atom_size == "bond":
         for bond in molecule.bonds:
-            if bond.order > 1 and not (bond.iatom.hidden or bond.jatom.hidden):
-                _, _, extent = _multiple_bond_profile(bond_thickness, bond.order)
+            max_order = max(bond.frame_orders, default=bond.order)
+            if max_order > 1 and not (bond.iatom.hidden or bond.jatom.hidden):
+                _, _, extent = _multiple_bond_profile(bond_thickness, max_order)
                 for atom in (bond.iatom, bond.jatom):
                     junction_scales[atom.index] = max(
                         junction_scales.get(atom.index, 1.0), extent / bond_thickness)
@@ -292,24 +293,30 @@ def PlotMolecule(context, molecule, options):
                 rad = elements[bond.style].vdw * plot_style.bond_scaling
 
             to_split = plot_style.split_bond and iatom.element != jatom.element
-            bond.name = [ unique_name(b, obj_keys) for b in bond.make_names(
-                molecule.name, to_split) ]
-            obj_keys.update(bond.name)
-            for i, name in enumerate(bond.name):
-                atom = (iatom, jatom)[i]
-                material = (molecule.materials[atom.element.symbol] if plot_style.split_bond
-                            else molecule.bond_materials[bond.style])
-                curve = track_new(bpy.data.curves.new(name, type='CURVE'))
-                curve.materials.append(bpy.data.materials[material])
-                coords = (end.position - molecule_obj.location for end in (iatom, jatom))
-                configure_bond_curve(curve, coords, rad, i if to_split else None)
-                obj = track_new(bpy.data.objects.new(name, curve))
-                if options["draw_bond_orders"] and bond.order != 1:
-                    set_bond_order(obj, bond.order, bond.direction)
-                obj.parent = molecule_obj
-                link_to.append((obj, bond_collection))
-                bond.name[i] = obj.name
-                to_hook.append((obj, atom_objects[iatom], atom_objects[jatom]))
+            orders = sorted(set(bond.frame_orders or (bond.order,)) - {0}) if options['draw_bond_orders'] else [1]
+            base_names = bond.make_names(molecule.name, to_split)
+            bond.name = []
+            for order in orders:
+                suffix = f'_order{order}' if len(orders) > 1 else ''
+                names = [unique_name(base + suffix, obj_keys) for base in base_names]
+                obj_keys.update(names)
+                for i, name in enumerate(names):
+                    atom = (iatom, jatom)[i]
+                    material = (molecule.materials[atom.element.symbol] if plot_style.split_bond
+                                else molecule.bond_materials[bond.style])
+                    curve = track_new(bpy.data.curves.new(name, type='CURVE'))
+                    curve.materials.append(bpy.data.materials[material])
+                    coords = (end.position - molecule_obj.location for end in (iatom, jatom))
+                    configure_bond_curve(curve, coords, rad, i if to_split else None)
+                    obj = track_new(bpy.data.objects.new(name, curve))
+                    if order > 1:
+                        set_bond_order(obj, order, bond.direction)
+                    obj.parent = molecule_obj
+                    link_to.append((obj, bond_collection))
+                    if bond.frame_orders:
+                        obj['mb_profile_order'] = order
+                    bond.name.append(obj.name)
+                    to_hook.append((obj, atom_objects[iatom], atom_objects[jatom]))
 
     clock.tick_print("bond creation")
 

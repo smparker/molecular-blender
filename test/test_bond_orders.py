@@ -405,10 +405,10 @@ class TestBondOrders(unittest.TestCase):
         molecule = Molecule.from_dict('explicit_orders', data)
         molecule.determine_bonding(options)
         self.assertEqual([b.order for b in molecule.bonds], [2, 1, 2, 1, 3, 1, 1, 1])
-        # Union/dynamic trajectory graphs are not suitable for a single valence assignment.
+        # Dynamic perception needs the sampled coordinates for every atom.
         molecule = Molecule('trajectory', [Atom('c', (0, 0, 0), 0)])
         options.update(plot_type='animate', animate_bonds='dynamic', molecular_charge=0)
-        with self.assertRaisesRegex(ValueError, 'static'):
+        with self.assertRaisesRegex(ValueError, 'trajectory snapshots'):
             molecule.determine_bonding(options)
 
     def test_perceive_fused_aromatic_dimer(self):

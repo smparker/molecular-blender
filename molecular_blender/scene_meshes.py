@@ -16,7 +16,7 @@ from .surface_geometry import field_geometry
 from .util import stopwatch
 
 
-def _write_indexed_triangles(mesh, vertices, faces):
+def fill_indexed_triangles(mesh, vertices, faces):
     """Fill Blender's vertex, loop and polygon arrays without a second mesh or weld."""
     mesh.vertices.add(len(vertices))
     mesh.vertices.foreach_set('co', vertices.ravel())
@@ -34,7 +34,7 @@ def create_surface_mesh_data(name, verts, faces, weld_distance):
     try:
         me['mb_generated'] = True
         if weld_distance is None:
-            _write_indexed_triangles(me, verts, faces)
+            fill_indexed_triangles(me, verts, faces)
             return me
         me.from_pydata(verts, [], faces)
         me.update()
@@ -97,8 +97,23 @@ class SurfaceMeshStage:
         self.options = options
         self.definitions = []
         self.frames = {}
+        self.tracks = {}
 
     def add(self, surfaces, frames):
+        if frames and self.options.get('trajectory_meshes') == 'packed':
+            from .trajectory_meshes import pack_sample
+            frame, = frames
+            self.frames[frame] = []
+            for surface in surfaces:
+                series = surface.get('series', surface['name'])
+                level = surface['isovalue']
+                track = self.tracks.setdefault((series, level), dict(name=series, series=series,
+                    isovalue=level, samples={}, ambiguous_phase_frames=[]))
+                geometry = field_geometry(surface, surface.get('grid_spacing', self.options['resolution']))
+                track['samples'][frame] = pack_sample(*geometry)
+                if 'ambiguous_phase_frame' in surface:
+                    track['ambiguous_phase_frames'].append(frame)
+            return
         self.frames.update(frames)
         for surface in surfaces:
             name = f"{self.molecule.name}_{surface['name']}_{surface['isovalue']}"
@@ -114,14 +129,34 @@ class SurfaceMeshStage:
         from .scene_state import RECORD
         owner = getattr(self.molecule, 'scene_owner', None)
         old_record = owner.get(RECORD) if owner else None
+        definitions = list(self.definitions)
         try:
             with rollback_new_ids():
+                if self.tracks:
+                    from . import trajectory_meshes as cache
+                    times = sorted(self.frames)
+                    for track in self.tracks.values():
+                        mesh = track_new(bpy.data.meshes.new(self.molecule.name + '_' + track['name']))
+                        mesh['mb_generated'] = True
+                        mesh[cache.TIMES] = list(map(float, times))
+                        samples = track.pop('samples')
+                        mesh[cache.ARCHIVE] = {str(i): samples[t] for i, t in enumerate(times) if samples.get(t)}
+                        cache.show_sample(mesh, context.scene.frame_current + context.scene.frame_subframe)
+                        track['mesh_data'] = mesh
+                        definitions.append(track)
                 create_surface_meshes(self.molecule, self.styler, context, self.options,
-                                      self.definitions, self.frames)
+                                      definitions, {} if self.tracks else self.frames)
+                if self.tracks:
+                    cache.register()
+                    context.scene[cache.ARCHIVE] = True
+                    # The render frame handler replaces mesh data. Keep viewport
+                    # drawing on the main thread from reading it simultaneously.
+                    context.scene.render.use_lock_interface = True
         except Exception:
             if old_record is not None:
                 owner[RECORD] = old_record
             raise
+        self.tracks.clear()
         self.definitions.clear()
         self.frames.clear()
 
@@ -130,6 +165,7 @@ class SurfaceMeshStage:
                   if s['mesh_data'].as_pointer() and not s['mesh_data'].users]
         if unused:
             bpy.data.batch_remove(unused)
+        self.tracks.clear()
         self.definitions.clear()
         self.frames.clear()
 

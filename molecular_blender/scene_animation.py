@@ -68,27 +68,46 @@ def AnimateMolecule(context, molecule, options):
         for bond in molecule.bonds:
             i, j = bond.iatom.index, bond.jatom.index
             for bond_obj in [ bpy.data.objects[b] for b in bond.name ]:
-                for (iframe, mask) in enumerate(bondmask[(i, j)]):
+                visible = bondmask[(i, j)]
+                if bond.frame_orders and options['draw_bond_orders']:
+                    visible = [order == bond_obj['mb_profile_order'] for order in bond.frame_orders]
+                for iframe, mask in enumerate(visible):
+                    if iframe and mask == visible[iframe-1]:
+                        continue
                     bond_obj.hide_viewport = not mask
                     bond_obj.keyframe_insert(
                         data_path="hide_viewport", frame=frame_map(iframe))
                     bond_obj.hide_render = not mask
                     bond_obj.keyframe_insert(
                         data_path="hide_render", frame=frame_map(iframe))
+        context.scene.frame_set(context.scene.frame_current, subframe=context.scene.frame_subframe)
     return
 
 
 def _animate_strand_tilts(molecule, frame_map, interpolation):
-    bonds = [bond for bond in molecule.bonds if bond.order > 1 and bond.name]
+    bonds = [bond for bond in molecule.bonds if max(bond.frame_orders, default=bond.order) > 1 and bond.name]
     if not bonds:
         return
-    neighbors = {atom: [] for atom in molecule.atoms}
-    for bond in molecule.bonds:
-        neighbors[bond.iatom].append(bond.jatom)
-        neighbors[bond.jatom].append(bond.iatom)
+    def adjacency(edges):
+        graph = {atom: [] for atom in molecule.atoms}
+        for edge in edges:
+            graph[edge.iatom].append(edge.jatom)
+            graph[edge.jatom].append(edge.iatom)
+        return graph
+    neighbors = adjacency(molecule.bonds)
+    frame_graphs = None
+    if bonds[0].frame_orders:
+        frame_graphs = []
+        graphs = {}
+        for i in range(len(bonds[0].frame_orders)):
+            edges = tuple(b for b in molecule.bonds if b.frame_orders[i])
+            if edges not in graphs:
+                graphs[edges] = adjacency(edges)
+            frame_graphs.append(graphs[edges])
     for bond in bonds:
-        curves = [bpy.data.objects[name].data for name in bond.name]
-        for i, tilt in enumerate(trajectory_tilts(bond, neighbors)):
+        curves = [bpy.data.objects[name].data for name in bond.name
+                  if bpy.data.objects[name].get('mb_profile_order', bond.order) > 1]
+        for i, tilt in enumerate(trajectory_tilts(bond, neighbors, frame_graphs)):
             for curve in curves:
                 for point in curve.splines[0].bezier_points:
                     point.tilt = tilt

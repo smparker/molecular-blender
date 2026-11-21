@@ -43,16 +43,24 @@ def _bond_ring(first, second, neighbors):
     return []
 
 
-def trajectory_tilts(bond, neighbors):
+def trajectory_tilts(bond, neighbors, frame_graphs=None):
     """Yield sampled profile angles. A pair of strands is unchanged by a half turn."""
     first, second = bond.iatom, bond.jatom
-    ring = _bond_ring(first, second, neighbors)
-    candidates = [(end, atom) for end, other in ((first, second), (second, first))
-                  for atom in neighbors[end] if atom is not other]
+    previous_graph = None
     reference = None
     last_axis = last_direction = None
     angle = 0.0
     for frame, (a, b) in enumerate(zip(first.trajectory, second.trajectory)):
+        graph = frame_graphs[frame] if frame_graphs is not None else neighbors
+        if bond.frame_orders and bond.frame_orders[frame] < 2:
+            yield angle
+            continue
+        if graph is not previous_graph:
+            previous_graph = graph
+            reference = None
+            ring = _bond_ring(first, second, graph)
+            candidates = [(end, atom) for end, other in ((first, second), (second, first))
+                          for atom in graph[end] if atom is not other]
         axis = b.position - a.position
         if axis.length < 1e-8:
             yield angle

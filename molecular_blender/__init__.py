@@ -95,6 +95,12 @@ if _HAS_BPY:
         animate_bonds: option_property('animate_bonds')
 
         keystride: option_property('keystride')
+        trajectory_timing: option_property('trajectory_timing')
+        time_step: option_property('time_step')
+        time_unit: option_property('time_unit')
+        playback_ps_per_second: option_property('playback_ps_per_second')
+        playback_fps: option_property('playback_fps')
+        trajectory_meshes: option_property('trajectory_meshes')
 
         trajectory_interpolation: option_property('trajectory_interpolation')
 
@@ -158,8 +164,20 @@ if _HAS_BPY:
             box = layout.box()
             box.label(text="Animation")
             box.row().prop(self, "animate_bonds")
-            box.row().prop(self, "keystride")
-            if importers.file_format(import_dialog.browser_path(self, context)) in ('xyz', 'json'):
+
+            input_format = importers.file_format(import_dialog.browser_path(self, context))
+            if input_format in ('xyz', 'json'):
+                box.prop(self, 'trajectory_timing')
+                if self.trajectory_timing == 'physical':
+                    row = box.row(align=True)
+                    row.prop(self, 'time_step')
+                    row.prop(self, 'time_unit', text='')
+                    box.prop(self, 'playback_ps_per_second')
+                    box.prop(self, 'playback_fps')
+                else:
+                    box.prop(self, 'keystride')
+                if input_format == 'json':
+                    box.prop(self, 'trajectory_meshes')
                 box.prop(self, "trajectory_interpolation")
                 if self.animate_bonds == 'dynamic':
                     box.prop(self, "bond_break_margin")
@@ -238,11 +256,12 @@ def register():
     register_class(MolecularBlender)
     bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
     bpy.app.handlers.load_pre.append(cancel_all_jobs)
-    from . import scene_state, scene_panel, scene_edit, bond_edit, render_cli
+    from . import scene_state, scene_panel, scene_edit, bond_edit, render_cli, trajectory_meshes
     scene_state.register()
     scene_edit.register()
     bond_edit.register()
     scene_panel.register()
+    trajectory_meshes.register()
     render_cli.register()
 
 def unregister():
@@ -250,7 +269,8 @@ def unregister():
         raise ImportError("unregister() requires bpy (must be run inside Blender)")
     from bpy.utils import unregister_class
     cancel_all_jobs()
-    from . import scene_state, scene_panel, scene_edit, bond_edit, render_cli
+    from . import scene_state, scene_panel, scene_edit, bond_edit, render_cli, trajectory_meshes
+    trajectory_meshes.unregister()
     render_cli.unregister()
     scene_panel.unregister()
     bond_edit.unregister()

@@ -174,6 +174,9 @@ def set_manual_bond(owner, order, *, atom_ids=None, bond_id=None):
             _apply_order(objects, bond)
         else:
             _new_curves(owner, record, bond, atoms)
+    if 'frame_orders' in bond:
+        bond['frame_orders'] = [order if prior else 0 for prior in bond['frame_orders']]
+    record.pop('perception', None)
     update_junctions(owner, record)
     write_record(owner, record)
     return bond['id']
@@ -188,6 +191,7 @@ def delete_bond(owner, *, atom_ids=None, bond_id=None):
         if obj[ID] == bond['id']:
             _remove_curve(obj)
     record['bonds'].remove(bond)
+    record.pop('perception', None)
     # Topology, including deleted edges, is authoritative for later perception.
     record.setdefault('deleted_bonds', []).append(dict(atoms=bond['atoms'], provenance='manual'))
     update_junctions(owner, record)
@@ -218,16 +222,18 @@ def reperceive_bonds(owner):
     symbols = [a['element'] for a in atom_records]
     lengths = [(coords[i] - coords[j]).length / (elements[symbols[i]].covalent + elements[symbols[j]].covalent)
                for i, j in edges]
+    report = {}
     orders, charges = perceive_bond_orders(symbols, edges,
         charge=record['settings']['molecular_charge'], bond_lengths=lengths,
         max_iterations=record['settings']['bond_order_max_iterations'],
-        atom_ids=[a['id'] for a in atom_records], fixed_orders=fixed)
+        atom_ids=[a['id'] for a in atom_records], fixed_orders=fixed, diagnostics=report)
     curves = owned_objects(owner, 'bond')
     _validate_geometry(curves)
     for index, (bond, order) in enumerate(zip(record['bonds'], orders)):
         if index not in fixed:
             bond.update(order=order, provenance='perceived')
         _apply_order([obj for obj in curves if obj[ID] == bond['id']], bond)
+    record['perception'] = [report]
     for atom, charge in zip(atom_records, charges):
         atom['formal_charge'] = charge
     update_junctions(owner, record)
@@ -261,6 +267,10 @@ def _selected_multiple_bond(context):
     bond = _find_bond(record, atoms, bond_id)
     parts = [] if bond is None else [
         obj for obj in owned_objects(owner, 'bond') if obj[ID] == bond['id']]
+    if bond and 'frame_orders' in bond:
+        if not any(not obj.hide_viewport and obj.get('mb_order', 1) > 1 for obj in parts):
+            raise ValueError('Select a bond with multiple strands at the current frame')
+        parts = [obj for obj in parts if obj.get('mb_order', 1) > 1]
     if not parts or any(obj.get('mb_order', 1) < 2 for obj in parts):
         raise ValueError('Select a displayed double or triple bond, or its two atoms')
     _validate_geometry(parts)

@@ -6,9 +6,7 @@ Keep the current curve-extrusion approach for bonds as the baseline. Keep bond-o
 
 ## Suggested starting points
 
-- **Extend post-import editing.** The sidebar already supports restyling, bond edits and surface management. Reloading coordinates and orbitals from a changed source is open.
 - **Extend field maps.** External scalar cubes can color density surfaces. The sidebar exports field legends for compositing. Molden wavefunctions also supply all-electron ESP directly on the displayed vertices.
-- **Extend bond perception.** Diagnostics and manual overrides are available. Solver scaling and per-frame bond-order assignment remain open.
 
 ## 1. Post-import editing and scene interaction
 
@@ -28,11 +26,9 @@ Imports retain their settings and object identities in the blend file. The sideb
 - [x] **Show optional atom labels.** The active molecule can display its saved atom indices as viewport overlays.
 - [x] **Solo a surface.** Switch between calculations and restore the molecule's previous viewport and render visibility.
 - [x] **Relink a moved Molden source.** Check saved atom identities, coordinates, and orbital metadata before updating the source path.
-- [ ] **Refresh source data while preserving presentation.** Reload coordinates or orbitals and retain user colors, visibility, transforms, and locked edits where atom identities still match. Report incompatible atom lists rather than silently rebinding objects.
 - [x] **Support undo and redo for sidebar edits.** Molecule restyling, manual bond edits, and surface removal support Blender Undo/Redo. Moving atoms changes the displayed geometry. Wavefunction surfaces use the original calculation coordinates.
 - [x] **Reset atom and bond style.** The sidebar restores the original atom size, bond thickness and palette, and clears accents for the selected molecule. Older scene records use their saved settings as the baseline.
 - [x] **Switch sticks, ball-and-stick and space-filling after import.** The sidebar converts single-frame molecules using their current geometry, preserving atom accents, manual bond edits, and existing surfaces.
-- [ ] **Add a general Rebuild Geometry action.** Scope cleanup to the owning molecule. The sidebar already covers single-frame representation changes.
 - [x] **Make a molecule independent.** Detach shared geometry, multiple-bond bevel sources and materials while retaining sharing within the molecule.
 
 ## 2. Electrostatic-potential maps
@@ -77,7 +73,7 @@ Current implementation includes covalent-radius connectivity, bounded valence/ch
 
 - [x] **Make failures explainable.** Report the offending atom IDs/elements, degrees, candidate valences, requested charge, and search budget. Distinguish bad connectivity, unsupported chemistry, missing hydrogens, incompatible charge, and exhausted search. Commit `a4c6961`.
 - [x] **Allow manually specifying bonds and bond orders after import.** Select two atoms to create or change a single, double, or triple bond. Both halves of a split-color bond update together. [Bond edit tests](test/test_bond_edit.py)
-- [ ] **Scale the solver and expose ambiguity.** Partition independent graph work where possible, propagate charge constraints across fragments, add timing/node diagnostics, and benchmark symmetric/fused systems. Preserve search limits and atomic application of successful results.
+- [x] **Scale the solver and expose ambiguity.** Connected fragments share one charge constraint and search budget. Reports give search nodes, elapsed time, and whether an equally good assignment exists or uniqueness is still undetermined. Six fused rings took 2.95 ms versus 8.95 ms previously, and eight independent benzenes took 2.23 ms versus 47.55 ms (local medians of three). [Bond benchmark](benchmarks/bond_perception.py)
 - [x] **Keep multiple-bond orientation coherent across frames.** Hooked trajectory bonds follow the smallest ring containing the bond or a local neighbor. Degenerate frames carry the preceding direction forward. Sidebar tilt offsets apply to both halves across the animation.
 
 ## 5. Import, export, and data fidelity
@@ -104,12 +100,12 @@ Entry points: `AnimateMolecule`, `compute_surface_vertex_sets`, and `create_surf
 - [x] **Expose trajectory sampling.** XYZ and JSON imports accept inclusive input ranges and a sampling stride. Only selected snapshots are allocated and original key times are preserved.
 - [x] **Choose trajectory interpolation.** Hold or linearly interpolate sampled positions and charge sizes, or use Blender's keyframe preference.
 - [x] **Reduce surface visibility keyframes.** Each lobe records its initial viewport and render visibility, then keys only transitions, including transitions through empty frames.
-- [ ] **Expose physical playback timing.** Add time units and frame rate options.
+- [x] **Expose physical playback timing.** Map fs or ps per input step to simulated ps per playback second, using the current scene FPS or a selected rate. Sparse source times survive sampling.
 - [x] **Stabilize dynamic inferred bonds.** Separate formation and breaking distances with an adjustable break margin.
-- [ ] **Design per-frame bond-order perception.** Handle strand appearance/disappearance and charge conservation.
+- [x] **Perceive bond orders per frame.** Solve sampled dynamic connectivity at the requested total charge. Animate each observed strand profile and both split-color halves. The sidebar reports the current charge, neighbors and ambiguity. [Trajectory tests](test/test_trajectory_playback.py)
 - [x] **Align orbital phases across frames.** Molden trajectories can use sampled real-space overlap to stabilize lobe colors. The sidebar identifies frames with ambiguous phase.
 - [x] **Stream trajectory surface construction.** Cube and Molden trajectories build Blender meshes a frame at a time. The interactive worker queues at most two completed frames on disk. Escape, worker failure and add-on shutdown discard staged surfaces. A 24-frame signed cube benchmark produced the same 48 meshes and 1,498,176 faces, with peak memory falling from 333 to 307 MiB in Blender and from 341 to 302 MiB in the worker.
-- [ ] **Load trajectory meshes on demand during playback.** Completed scenes currently retain all final meshes for scrubbing, rendering and saving.
+- [x] **Load trajectory meshes on demand during playback.** Optional packed contours retain one live mesh per level and sign. A 24-frame signed cube produced 233,888 faces in both modes. Packing reduced 48 mesh objects to 2 and an uncompressed blend file from 12.85 to 2.35 MiB. Median frame changes took 3.41 ms packed and 0.21 ms resident. [Playback benchmark](benchmarks/trajectory_meshes.py)
 
 ## 7. Architecture and data ownership
 
@@ -147,13 +143,15 @@ These are concrete targets spotted in the current code, not a claim that every p
 Entry points: [molecule.py](molecular_blender/molecule.py), [compute_ao_cy.pyx](molecular_blender/compute_ao_cy.pyx), [marching_cube_cy.pyx](molecular_blender/marching_cube_cy.pyx), and [marching_profile.py](marching_profile.py).
 
 - [x] **Replace all-pairs connectivity with spatial neighbor search.** Cell lists find static and trajectory neighbors using the original element cutoffs and deterministic ordering. On a 20 × 20 × 3 carbon lattice at 1.45 Å spacing, both methods found 3,080 bonds. Median connectivity time over three local Blender 4.3.2 runs was 6.5 ms with cells and 407 ms with exhaustive search. Tests also compare trajectories against exhaustive search.
-- [ ] **Benchmark alternative scene representations.** Offer instanced/Geometry Nodes atom rendering for large systems and compare it with linked objects. Preserve editable curve bonds as a supported mode; measure whether hook creation or object count is the actual bottleneck first.
+- [x] **Benchmark alternative scene representations.** For 1,536 carbon sites, building and evaluating an atom-only Geometry Nodes prototype took 0.54 ms versus 53.05 ms for linked sphere objects. Both produced the expected instance positions. [Import benchmark](benchmarks/bonded_import.py)
+- [ ] **Decide whether to offer Geometry Nodes atoms for large systems.** The prototype measures atom representation alone. A production mode would need a design for atom selection and bond endpoints.
 - [x] **Remove repeated scene-wide deselection from trajectory keyframing.** On the 20-atom, four-frame benzopentyl example in Blender 4.3.2, median keyframing time over three imports fell from 0.79 to 0.27 ms in an empty scene and from 10.57 to 0.29 ms with 1,000 other objects. [Benchmark](benchmarks/trajectory_import.py)
 - [x] **Bind imported bonds directly to their atoms.** Geometry imports and sidebar bond edits share direct endpoint hooks for full and split curves. Importing all 52 atoms of `examples/zine.molden` as sticks in Blender 4.3.2 took 0.66 s versus 1.44 s previously (median of three runs each). All 93 curves met their expected endpoints at peak displacement of mode 7.
 - [x] **Remove repeated selection and parenting operators from geometry imports.** Atoms, charge spheres, gradients and rings are parented directly. The 20-atom trajectory imported in 13.8 ms versus 36.4 ms in an empty scene and 111.5 ms versus 455.0 ms with 1,000 extra objects (medians of three local Blender 4.3.2 runs). [Benchmark](benchmarks/trajectory_import.py)
 - [x] **Avoid repeated atom name searches.** Preserve the first free suffix per element. Importing 1,000 carbon atoms in Blender 4.3.2 went from 1.30 s to 0.09 s in an empty scene and from 1.53 s to 0.11 s with another molecule present (medians of three).
 - [x] **Share charge overlay geometry.** Each molecule has one charge collection. Spheres of the same element and sign share geometry and retain their own transforms and animation.
-- [ ] **Reduce remaining geometry construction overhead.** Profile primitive creation, material assignment and dependency-graph updates during larger imports.
+- [x] **Profile geometry construction at two sizes.** Median ball-and-stick imports with hooks off/on took 78/116 ms for 384 atoms and 528/733 ms for 1,536 atoms. In the larger case, recording atom and bond identities took 180/181 ms, curve creation 140/139 ms, and parenting 130/172 ms. Scene evaluation overlapped these stages and totaled 139/308 ms. Separate call profiles attributed roughly 150–160 ms to 3,761 Blender object lookups inside record creation. Assigning materials to an atom template and 2,225 curve slots took 1.28 ms in isolation. [Import benchmark](benchmarks/bonded_import.py)
+- [ ] **Choose import-speed changes from the measurements.** Candidates are retaining object references for tagging, reducing scene evaluation with hooks, and changing how large bonded scenes are represented.
 - [x] **Profile a bonded ball-and-stick import.** The [384-atom, 537-bond benchmark](benchmarks/bonded_import.py) measures atoms, curves, hooks and scene evaluation. In local Blender 4.3.2, skipping a redundant update for a static import with hooks off reduced total time from 93.9 to 70.2 ms (medians of three). With hooks enabled, total time was 124.0 ms, of which 55.0 ms was dependency-graph evaluation.
 - [x] **Build indexed orbital and density meshes.** Molden calculations share vertices before passing surfaces to Blender. The initial import and sidebar recomputation write indexed faces directly, using the grid spacing to resolve duplicate intersections. [Mesh benchmark](benchmarks/orbital_mesh.py)
 - [x] **Extend indexed meshes to cube data.** Cube and JSON field surfaces share vertices using each frame’s smallest voxel spacing. Tests cover rotated anisotropic grids, both signs of a difference field and field mapping on a remeshed density.
@@ -164,7 +162,6 @@ Entry points: [molecule.py](molecular_blender/molecule.py), [compute_ao_cy.pyx](
 There is already useful coverage for readers, numerical routines, geometry, bond orders, and an optional RDKit comparison. Extend those foundations rather than adding tests that only mirror implementation details.
 
 - [x] **Test persisted scene edits and worker cancellation.** Tests cover save/reopen, undo/redo, renames, duplicated molecules, shared materials, scoped bond and surface deletion, and discarded worker results. [Bond lifecycle](test/test_bond_edit.py), [surface lifecycle](test/test_scene_surfaces.py) and [worker lifecycle](test/test_surface_jobs.py)
-- [ ] **Test source refresh.** Cover compatible and incompatible changes when reload is implemented.
 - [x] **Check transparency and transformed surface geometry in actual renders.** A fixed CPU Cycles scene checks the location, coverage and alpha of each exported surface in its PNG.
 - [x] **Check mapped scalar fields in a render.** A CPU Cycles regression checks the red and blue sides of a remeshed density surface colored by an analytic potential.
 - [x] **Check split-color multiple bonds in a render.** A CPU Cycles regression checks two distinct carbonyl strands, the color change at the midpoint, and coverage to the projected atom positions. [Render test](test/test_surface_render.py)
@@ -174,7 +171,8 @@ There is already useful coverage for readers, numerical routines, geometry, bond
 - [x] **Compare final Python/Cython mesh geometry.** Both evaluator/mesher pairs produce closed signed lobes with matching component and face counts and vertices within 0.00002 Å on diffuse orbital and open-shell spin-density fixtures. The check exposed an absolute interpolation tolerance that distorted weak fields. Both meshers now interpolate independently of field scale.
 - [x] **Fix the empty orbital surface in the pure-Python fallback.** Discovered on 2026-11-15: with compiled `.so`/`.pyd` extensions excluded from an isolated checkout, `TestMoldenIsosurface.test_small_orbital` in `test/test_isosurfaces.py` fails because orbital 1 of `examples/fake-atom.molden`, at isovalue `0.05` and resolution `0.3`, produces no triangles. Reproduced with Python 3.14 and NumPy 2.5.3; the full Blender 4.3.2 suite with compiled extensions passes. Fixed the shell-bound formula (`l` → `l + 1`), which collapsed s-shell bounds to zero. Added analytic and s–g backend-parity bounds checks; the complete isolated fallback suite passes, and fallback CI now runs full test discovery. Commit `614be0b`.
 - [x] **Validate against analytic surfaces and electron counts.** Tests check the radius of a Gaussian isosurface, the location of a rotated cube plane, and integrated densities with fractional occupations. [Gaussian surface](test/test_isosurfaces.py), [cube plane](test/test_cube_datasets.py) and [density tests](test/test_orbitals.py)
-- [ ] **Grow independent scientific references.** Expand fixtures for distorted geometry. Neutral and ionic ESP reference values are covered above. The bond-perception suite already covers ions, resonance and invalid chemistry. Add a dedicated environment for its optional RDKit comparison.
+- [x] **Run the bond-perception reference comparison independently.** A dedicated CI job installs RDKit and runs the existing comparison across 24 molecular graphs, including the documented sulfur convention.
+- [ ] **Grow independent scientific references.** Expand fixtures for distorted geometry. Neutral and ionic ESP reference values are covered above.
 - [x] **Test the installed artifacts, not just the checkout.** Standalone wheel tests require both compiled extensions from the installed package and exercise known Gaussian/surface results independently of test ordering. Missing installations/binaries fail; a separate CI job verifies Python fallback. Commit `9f085b1`.
 - [ ] **Finish test isolation and performance baselines.** The test runner handles external working directories and paths with spaces. Reader tests exercise malformed Molden, SDF and cube input. Verify scene/datablock cleanup across the suite and add peak-memory and runtime baselines.
 
