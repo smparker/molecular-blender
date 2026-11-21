@@ -25,6 +25,12 @@ def main(directory):
     try:
         with (directory / 'request.pkl').open('rb') as stream:
             data, options, stream_frames = pickle.load(stream)
+        from molecular_blender.esp_jobs import ContourESPRequests, ESPRequest
+        if isinstance(data, (ESPRequest, ContourESPRequests)):
+            result = data.calculate(Progress())
+            with (directory / 'result.pkl').open('wb') as stream:
+                pickle.dump(result, stream, protocol=4)
+            return
         if isinstance(data, SavedSurfaceSource):
             molecule = data.load(options)
         else:

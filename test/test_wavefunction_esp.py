@@ -1,11 +1,16 @@
 from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 
 import numpy as np
 
 from molecular_blender import wavefunction_esp as esp
+from molecular_blender.esp_jobs import ESPRequest
 from molecular_blender.importers import molecule_from_molden
+from molecular_blender.molecular_data import Molecule
+from molecular_blender.orbitals import orbital_metadata
+from molecular_blender.surface_jobs import SavedSurfaceSource
 
 ROOT = Path(__file__).resolve().parents[1]
 REF = ROOT / 'test/fixtures/wavefunction_esp'
@@ -55,3 +60,25 @@ class TestWavefunctionESP(unittest.TestCase):
         data['mo'][0]['coeff'][0] *= .5
         with self.assertRaisesRegex(ValueError, 'Integrated density'):
             esp.WavefunctionESP(data, 1)
+
+    def test_cached_points_units_and_source_invalidation(self):
+        from molecular_blender.constants import bohr2ang
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)/'ion.molden'
+            path.write_bytes((REF/'heh.molden').read_bytes())
+            data = molecule_from_molden(path, {})
+            model = Molecule.from_dict('ion', data)
+            saved = SavedSurfaceSource(str(path), [(a.index, a.element.symbol, tuple(a.position)) for a in model.atoms],
+                                       orbital_metadata(model.orbitals))
+            reference = np.loadtxt(REF/'heh.dat')
+            req = ESPRequest(saved, 'auto', 1, 'final', 'V', reference[:, :3]*bohr2ang, Path(tmp))
+            np.testing.assert_allclose(req.calculate({}), reference[:, -1]*esp.HARTREE_IN_VOLTS, atol=4e-6)
+            with patch.object(esp.WavefunctionESP, 'batch', side_effect=AssertionError('cache miss')):
+                req.units = 'Hartree/e'
+                np.testing.assert_allclose(req.calculate({}), reference[:, -1], atol=5e-7)
+            with patch.object(SavedSurfaceSource, 'read', side_effect=AssertionError('density cache miss')):
+                req.quality = 'preview'
+                req.calculate({})
+            path.write_text(path.read_text()+'\n[Core]\n1 : 2\n')
+            with self.assertRaisesRegex(ValueError, 'core or ECP'):
+                req.calculate({})

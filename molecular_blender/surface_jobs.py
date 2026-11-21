@@ -34,6 +34,9 @@ class SavedSurfaceSource:
                    record.get('response_pairs'))
 
     def load(self, options):
+        return self.read(options)[1]
+
+    def read(self, options):
         from .importers import molecule_from_file
         from .molecular_data import Molecule
         from .orbitals import orbital_metadata, response_metadata
@@ -50,7 +53,7 @@ class SavedSurfaceSource:
             raise ValueError('Source orbital metadata has changed. Reimport the Molden file.')
         elif self.response_pairs is not None and response_metadata(data) != self.response_pairs:
             raise ValueError('Source DIPL eigenpairs have changed. Reimport the manifest.')
-        return model
+        return data, model
 
 
 class SurfaceJob:
