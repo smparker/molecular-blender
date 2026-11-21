@@ -25,6 +25,7 @@
 
 from collections import namedtuple
 from itertools import chain
+from math import cos, sin, tau
 import re
 
 import bpy
@@ -531,33 +532,70 @@ def PlotMolecule(context, molecule, options):
 
         clock.tick_print("set hooks")
 
-    if options["gradient"]:
-        for atom in molecule.atoms:
-            if atom.hidden:
-                continue
-            if atom.gradient.length > 1.0e-30:
-                curve = track_new(bpy.data.curves.new(atom.name + "_gradient", type='CURVE'))
-                curve.dimensions = '3D'
-                curve.resolution_u = 2
-                gradline = curve.splines.new('BEZIER')
-                gradline.bezier_points.add(1)
-                gradline.bezier_points[0].co = atom.position
-                gradline.bezier_points[1].co = atom.position + atom.gradient
-                for p in gradline.bezier_points:
-                    p.handle_right_type = p.handle_left_type = 'AUTO'
-                curveOB = track_new(bpy.data.objects.new(atom.name + "_gradient", curve))
-
-                curveOB.data.use_fill_caps = True
-                context.collection.objects.link(curveOB)
-                to_parent.append((curveOB, molecule_obj))
-
     _parent_geometry(context, to_parent)
     clock.tick_print("set parentage")
+    if options["gradient"]:
+        plot_gradients(molecule, options)
 
     return
 
 
-def PlotWireFrame(context, molecule, _options):
+def _gradient_arrow_mesh(name):
+    """Closed unit arrow along +Z. The tip is exactly one vector length from the atom."""
+    sides = 16
+    circle = [(cos(tau * i / sides), sin(tau * i / sides)) for i in range(sides)]
+    vertices = [(r*x, r*y, z) for r, z in ((1, 0), (1, .73), (2.5, .73)) for x, y in circle]
+    tip = len(vertices)
+    vertices.append((0, 0, 1))
+    faces = [tuple(reversed(range(sides)))]
+    for i in range(sides):
+        j = (i + 1) % sides
+        for base in (0, sides):
+            faces.append((base+i, base+j, base+sides+j, base+sides+i))
+        faces.append((2*sides+i, 2*sides+j, tip))
+    mesh = track_new(bpy.data.meshes.new(name))
+    mesh.from_pydata(vertices, [], faces)
+    mesh.update()
+    return mesh
+
+
+def plot_gradients(molecule, options):
+    mesh = None
+    owner = molecule.scene_owner
+    frame_for = get_frame_mapper(options, molecule.frame_numbers)
+    animate = options['plot_type'] == 'animate' and options['object_type'] != 'wireframe'
+    interpolation = {'hold': 'CONSTANT', 'linear': 'LINEAR'}.get(options['trajectory_interpolation'])
+    for atom in molecule.atoms:
+        samples = atom.trajectory if animate else (atom,)
+        if atom.hidden or not any(sample.gradient.length > 1e-30 for sample in samples):
+            continue
+        if mesh is None:
+            mesh = _gradient_arrow_mesh(molecule.name + '_gradient')
+        name = atom.name or f"{molecule.name}_{atom.element.symbol}{atom.index}"
+        arrow = track_new(bpy.data.objects.new(name + '_gradient', mesh))
+        molecule.scene_collection.objects.link(arrow)
+        arrow.parent = owner
+        arrow.matrix_parent_inverse = owner.matrix_world.inverted_safe()
+        arrow.rotation_mode = 'QUATERNION'
+        for i, sample in enumerate(samples):
+            arrow.location = sample.position
+            length = sample.gradient.length
+            radius = .04 * min(length, 1.)
+            arrow.scale = (radius, radius, length)
+            if length > 1e-30:
+                rotation = sample.gradient.to_track_quat('Z', 'Y')
+                rotation.make_compatible(arrow.rotation_quaternion)
+                arrow.rotation_quaternion = rotation
+            if animate:
+                for path in ('location', 'rotation_quaternion', 'scale'):
+                    arrow.keyframe_insert(data_path=path, frame=frame_for(i))
+        if animate and interpolation:
+            for curve in arrow.animation_data.action.fcurves:
+                for key in curve.keyframe_points:
+                    key.interpolation = interpolation
+
+
+def PlotWireFrame(context, molecule, options):
     """driver for wireframe plotter"""
     for item in context.selectable_objects:
         item.select_set(False)
@@ -589,6 +627,8 @@ def PlotWireFrame(context, molecule, _options):
     collection.objects.link(context.object)
     context.collection.objects.unlink(context.object)
     molecule.scene_collection = collection
+    if options["gradient"]:
+        plot_gradients(molecule, options)
 
 def AnimateMolecule(context, molecule, options):
     """Keyframes position of atoms and opacity of bonds"""

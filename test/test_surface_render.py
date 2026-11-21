@@ -83,6 +83,66 @@ class TestSurfacePNG(unittest.TestCase):
             bpy.context.window.scene = previous
             bpy.data.batch_remove(blocks() - before)
 
+    def test_gradient_arrow_projects_from_atom_to_tip(self):
+        from mathutils import Vector
+        from molecular_blender.plotter import BlendMoleculeSetup
+        previous = bpy.context.window.scene
+        kinds = ('scenes', 'cameras', 'collections', 'objects', 'meshes', 'materials', 'actions')
+        def blocks():
+            return {item for kind in kinds for item in getattr(bpy.data, kind)}
+        before = blocks()
+        try:
+            scene = bpy.data.scenes.new('Gradient render test')
+            bpy.context.window.scene = scene
+            with tempfile.TemporaryDirectory() as directory:
+                xyz = Path(directory) / 'gradient.xyz'
+                xyz.write_text(''.join(f'3\nvector\nC {line}\nO 3 0 0 0 0 0 0\nH 0 1 0 0 2 0 0\n'
+                                       for line in ('1 2 0 0 2 0 0', '2 3 0 0 0 -1 0', '3 4 0 0 0 0 0')))
+                model, _, _ = BlendMoleculeSetup(bpy.context, str(xyz), gradient=True, bond_thickness=0,
+                                                  trajectory_interpolation='hold', keystride=2, isovalues='')
+                arrow, = [o for o in model.scene_collection.objects if o.name.endswith('_gradient')]
+                for atom in model.atoms:
+                    if not atom.hidden:
+                        bpy.data.objects[atom.name].hide_render = True
+                model.scene_owner.location.x += .5
+                camera = bpy.data.cameras.new('Gradient camera')
+                scene.camera = bpy.data.objects.new(camera.name, camera)
+                scene.collection.objects.link(scene.camera)
+                scene.camera.location = (2.5, 2, 5)
+                camera.type = 'ORTHO'
+                camera.ortho_scale = 3
+                scene.render.engine = 'CYCLES'
+                scene.cycles.samples = 4
+                scene.cycles.device = 'CPU'
+                scene.cycles.use_denoising = False
+                scene.render.film_transparent = True
+                scene.render.resolution_x, scene.render.resolution_y = 192, 64
+                scene.render.resolution_percentage = 100
+                scene.render.filepath = str(Path(directory) / 'gradient.png')
+                scene.frame_set(1)
+                bpy.ops.render.render(write_still=True)
+                image = bpy.data.images.load(scene.render.filepath)
+                try:
+                    mask = np.array(image.pixels[:]).reshape(64, 192, 4)[:, :, 3] > .5
+                finally:
+                    bpy.data.images.remove(image)
+                # Source and tip project to x=32 and x=160. The head widens, then tapers.
+                filled = np.flatnonzero(mask.any(axis=0))
+                self.assertAlmostEqual(filled[0], 32, delta=1)
+                self.assertAlmostEqual(filled[-1], 159, delta=3)
+                shaft, head, near_tip = mask[:, [70, 127, 151]].sum(axis=0)
+                self.assertGreater(shaft, 2)
+                self.assertGreater(head, 1.7 * shaft)
+                self.assertLess(near_tip, shaft)
+                scene.frame_set(3)
+                np.testing.assert_allclose(arrow.matrix_world.translation, (2.5, 3, 0), atol=1e-5)
+                np.testing.assert_allclose(arrow.matrix_world @ Vector((0, 0, 1)), (2.5, 2, 0), atol=1e-5)
+                scene.frame_set(5)
+                self.assertEqual(tuple(arrow.scale), (0, 0, 0))
+        finally:
+            bpy.context.window.scene = previous
+            bpy.data.batch_remove(blocks() - before)
+
     def test_translated_parent_and_two_distinct_alpha_masks(self):
         from molecular_blender import scene_panel
         from molecular_blender.plotter import BlendMoleculeSetup, create_surface_meshes
