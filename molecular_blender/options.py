@@ -34,6 +34,7 @@ DEFAULTS = {"bonds": True,
                 "cube_field_type": "auto",
                 "orbital": "homo",
                 "orbital_spin": "all",
+                "response_eigenpair": 0,
                 "align_orbital_phase": False,
                 "remesh" : 6,
                 "resolution": 0.05,
@@ -51,7 +52,7 @@ ENUMS = {
     'animate_bonds': ('staticfirst', 'staticall', 'dynamic'),
     'trajectory_interpolation': ('blender', 'hold', 'linear'),
     'charges': ('none', 'scale'),
-    'volume': ('orbital', 'density', 'alpha', 'beta', 'spin'),
+    'volume': ('orbital', 'density', 'alpha', 'beta', 'spin', 'response'),
     'cube_field_type': ('auto', 'orbital', 'density', 'signed'),
     'molden_convention': ('auto', 'standard', 'orca'),
     'orbital_spin': ('all', 'alpha', 'beta'),
@@ -112,7 +113,7 @@ def validated_options(values):
     for name in ('resolution', 'keystride', 'bond_order_max_iterations'):
         if out[name] <= 0:
             raise ValueError(name + ' must be positive')
-    for name in ('bond_thickness', 'bond_break_margin', 'cube_dataset', 'sdf_record', 'remesh'):
+    for name in ('bond_thickness', 'bond_break_margin', 'cube_dataset', 'sdf_record', 'remesh', 'response_eigenpair'):
         if out[name] < 0:
             raise ValueError(name + ' must not be negative')
     trajectory_range(out)

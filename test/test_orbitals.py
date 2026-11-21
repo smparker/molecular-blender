@@ -89,6 +89,10 @@ class TestMODataPolarizability(unittest.TestCase):
 
     def test_polar_density_available(self):
         assert self.modata.is_density("polar 0")
+        self.assertEqual(self.modata.response_field(0), 'response 1')
+        self.assertIs(self.modata.densities[self.modata.response_field(3)], self.modata.densities["polar 2"])
+        with self.assertRaisesRegex(ValueError, 'unavailable'):
+            self.modata.response_field(100)
 
     def test_polar_density(self):
         polar = self.modata.get_density("polar 0")

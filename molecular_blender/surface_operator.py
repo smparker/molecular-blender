@@ -13,6 +13,7 @@ DENSITIES = (('density', 'Total density', 'Total electron density'),
              ('spin', 'Spin density', 'Alpha minus beta density'))
 ORBITAL_SPINS = (('all', 'All', 'All orbitals'), ('alpha', 'Alpha', 'Alpha frontier orbitals'),
                  ('beta', 'Beta', 'Beta frontier orbitals'))
+MOLDEN_FIELDS = DENSITIES + (('orbital', 'Molecular orbital', 'Plot positive and negative orbital lobes'),)
 
 
 class MoldenSurfaceProperties:
@@ -40,7 +41,7 @@ class MoldenSurfaceProperties:
     volume: EnumProperty(
         name="Field",
         description="Field to calculate from the Molden wavefunction",
-        items=DENSITIES + (('orbital', 'Molecular orbital', "Plot orbitals (positive and negative isovalues)"),),
+        items=MOLDEN_FIELDS,
         default='orbital')
 
     orbital_spin: EnumProperty(

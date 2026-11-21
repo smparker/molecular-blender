@@ -44,7 +44,7 @@ if _HAS_BPY:
     import bpy_extras
     from . import import_dialog
     from .plotter import BlendMolecule, BlendMoleculeSetup, compute_surface_vertex_sets, create_surface_meshes
-    from .surface_operator import MoldenSurfaceProperties, SurfaceJobOperator
+    from .surface_operator import MOLDEN_FIELDS, MoldenSurfaceProperties, SurfaceJobOperator
     from .surface_jobs import cancel_all_jobs
     from bpy.app.handlers import persistent
     cancel_all_jobs = persistent(cancel_all_jobs)
@@ -173,6 +173,22 @@ if _HAS_BPY:
         cube_dataset: IntProperty(
             name="Cube dataset index", description="Zero-based dataset index within a cube file",
             default=0, min=0)
+
+        def _set_response_field(self, value):
+            self['show_response'] = value == len(MOLDEN_FIELDS)
+            if not self['show_response']:
+                self.volume = MOLDEN_FIELDS[value][0]
+
+        field_with_response: EnumProperty(name='Field',
+            items=MOLDEN_FIELDS + (('response', 'Response density', 'Signed Turbomole polarization density'),),
+            get=lambda op: len(MOLDEN_FIELDS) if op.get('show_response') else
+                           next(i for i, field in enumerate(MOLDEN_FIELDS) if field[0] == op.volume),
+            set=_set_response_field)
+        response_eigenpair: IntProperty(name='DIPL eigenpair', default=0, min=0,
+            description='Eigenpair ID in the DIPL file, or zero for the first listed pair')
+        response_choice: EnumProperty(name='Eigenpair', items=import_dialog.response_items,
+            get=import_dialog.get_response_choice, set=import_dialog.set_response_choice,
+            options={'SKIP_SAVE'})
 
         dataset_choice: EnumProperty(
             name="Dataset", items=import_dialog.dataset_items, get=import_dialog.get_dataset_choice,
@@ -313,6 +329,7 @@ if _HAS_BPY:
                 isovalues=self.isovalues,
                 cumulative=self.cumulative,
                 volume=self.volume,
+                response_eigenpair=self.response_eigenpair,
                 cube_dataset=self.cube_dataset,
                 cube_field_type=self.cube_field_type,
                 orbital=self.orbital,
@@ -326,6 +343,13 @@ if _HAS_BPY:
 
             if source is not None:
                 kind, labels = source
+                if (kind == 'molden' and self.field_with_response == 'response'
+                        and import_dialog.response_path(self.filepath, self.frame_start)):
+                    options['volume'] = 'response'
+                    if from_browser:
+                        items = import_dialog.response_items(self, None)
+                        if str(self.response_eigenpair) not in {item[0] for item in items}:
+                            options['response_eigenpair'] = int(items[0][0])
                 if kind in ('xyz', 'sdf'):
                     options['isovalues'] = ''
                 elif kind == 'cube':

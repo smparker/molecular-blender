@@ -854,7 +854,7 @@ def iter_surface_frames(molecule, options, progress_state=None, *, indexed=False
         if molecule.volume is not None:
             total = 1 + (len(molecule.volume_trajectory) if molecule.volume_trajectory else 0)
         elif molecule.orbitals is not None:
-            total = (1 if options["volume"] in ("density", "alpha", "beta", "spin") else
+            total = (1 if options["volume"] != 'orbital' else
                      len([x.strip() for x in options["orbital"].split(',')]))
             total *= 1 + len(molecule.orbitals_trajectory or [])
         else:
@@ -899,8 +899,12 @@ def iter_surface_frames(molecule, options, progress_state=None, *, indexed=False
         orbitals = molecule.orbitals
         channel = options.get('orbital_spin', 'all')
         channel = None if channel == 'all' else channel
-        orbnames = ([options["volume"]] if options["volume"] in ('density', 'alpha', 'beta', 'spin') else
-                    [x.strip().lower() for x in options['orbital'].split(',')])
+        if options['volume'] == 'response':
+            orbnames = [orbitals.response_field(options.get('response_eigenpair', 0))]
+        elif options['volume'] == 'orbital':
+            orbnames = [x.strip().lower() for x in options['orbital'].split(',')]
+        else:
+            orbnames = [options['volume']]
         isovals = options["isovalues"]
         resolution = options["resolution"]
 
@@ -909,6 +913,8 @@ def iter_surface_frames(molecule, options, progress_state=None, *, indexed=False
 
         def field_surface(model, name, label, levels, frame):
             ambiguous = False
+            if options['volume'] == 'response' and not model.is_density(name):
+                raise ValueError(f'Blender frame {frame} is missing DIPL {name}')
             if model.is_density(name):
                 if not np.any(model.density_matrix(name)[0]):
                     return [], levels
@@ -1156,7 +1162,7 @@ def process_options(options, *, cube=False):
         if not isovals:
             raise Exception("Isovalues must be specified")
 
-        both_signs = options["volume"] in ("orbital", "spin")
+        both_signs = options["volume"] in ("orbital", "spin", "response")
         if cube:
             both_signs = options.get("cube_both_signs", both_signs)
         if both_signs:

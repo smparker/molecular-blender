@@ -8,6 +8,7 @@ import stat
 import bpy
 
 from .importers import cube_dataset_labels, file_format, preview_molden_convention
+from .turbomole_reader import response_headers
 
 MAX_DATASET_MENU = 256
 
@@ -30,9 +31,10 @@ def _manifest_source(path, first_frame):
         entries = json.load(stream)['molecules']
     first = entries[0 if len(entries) == 1 else first_frame]
     if 'linear_combination' in first:
-        return 'cube', None, len(entries)
+        return 'cube', None, len(entries), None
     child = os.path.join(os.path.dirname(path), first['filename'])
-    return file_format(child), child, len(entries)
+    polar = first.get('polar')
+    return file_format(child), child, len(entries), os.path.join(os.path.dirname(path), polar) if polar else None
 
 
 @lru_cache(maxsize=16)
@@ -58,7 +60,7 @@ def surface_source(path, first_frame=0):
     """The first frame supplies a JSON trajectory's field, just as in the reader."""
     kind = file_format(path)
     if kind == 'json':
-        kind, path, _ = _preview(_manifest_source, path, first_frame) or (None, None, 0)
+        kind, path, _, _ = _preview(_manifest_source, path, first_frame) or (None, None, 0, None)
         if kind == 'cube' and path is None:
             return 'cube', range(1)
     labels = _preview(cube_dataset_labels, path) if kind == 'cube' else None
@@ -123,17 +125,21 @@ def draw_surfaces(layout, op, context):
     box = layout.box()
     box.label(text='Surfaces')
     trajectory = False
+    responses = False
     if kind == 'molden' and file_format(path) == 'json':
-        _, path, count = _preview(_manifest_source, path, op.frame_start)
+        _, path, count, polar = _preview(_manifest_source, path, op.frame_start)
+        responses = bool(polar)
         last = min(count - 1, op.frame_end) if op.frame_end >= 0 else count - 1
         trajectory = last - op.frame_start >= op.frame_step
-    draw_surface_controls(box, op, kind, labels, path, trajectory=trajectory)
+    draw_surface_controls(box, op, kind, labels, path, trajectory=trajectory, responses=responses)
 
 
-def draw_surface_controls(box, op, kind, labels=None, path=None, *, trajectory=False):
+def draw_surface_controls(box, op, kind, labels=None, path=None, *, trajectory=False, responses=False):
     if kind == 'molden':
-        box.prop(op, 'volume')
-        if op.volume == 'orbital':
+        box.prop(op, 'field_with_response' if responses else 'volume')
+        if responses and op.field_with_response == 'response':
+            box.prop(op, 'response_choice')
+        elif op.volume == 'orbital':
             box.prop(op, 'orbital_choice')
             if op.orbital_choice == 'custom':
                 box.prop(op, 'orbital', text='Selection')
@@ -167,3 +173,33 @@ def draw_surface_controls(box, op, kind, labels=None, path=None, *, trajectory=F
         else:
             box.prop(op, 'cube_both_signs')
         box.prop(op, 'remesh')
+
+
+def response_path(path, start):
+    if file_format(path) == 'json':
+        manifest = _preview(_manifest_source, path, start)
+        if manifest and manifest[0] == 'molden':
+            return manifest[3]
+
+
+@lru_cache(maxsize=None)
+def _pair_item(index, pair, value):
+    return str(pair), f'Eigenpair {pair}  ·  {value:.7g}', 'DIPL eigenpair and eigenvalue', index
+
+
+def response_items(op, context):
+    path = response_path(browser_path(op, context), op.frame_start)
+    pairs = _preview(response_headers, path) if path else ()
+    return [_pair_item(i, pair, value) for i, (pair, value) in enumerate(pairs or ())] or [
+        ('0', 'First eigenpair', 'Read the response file at import', 0)]
+
+
+def get_response_choice(op):
+    items = response_items(op, bpy.context)
+    return next((item[3] for item in items if item[0] == str(op.response_eigenpair)), 0)
+
+
+def set_response_choice(op, index):
+    items = response_items(op, bpy.context)
+    if 0 <= index < len(items):
+        op.response_eigenpair = int(items[index][0])

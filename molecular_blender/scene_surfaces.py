@@ -44,6 +44,8 @@ def surface_groups(owner, record):
                 datasets = (record['fields'] or {}).get('datasets', [])
                 if len(datasets) > 1:
                     label += ' · dataset {}'.format(datasets[settings['cube_dataset']])
+            elif field.startswith('response '):
+                label = 'Response density · eigenpair ' + field.split()[1]
             else:
                 label = DENSITY_LABELS.get(field, 'Orbital ' + field.upper())
                 spin = entry.get('orbital_spin', settings['orbital_spin'])

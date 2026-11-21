@@ -228,6 +228,15 @@ class MOData:
     def is_density(self, densityname):
         return densityname in ["density", "spin", "alpha", "beta"] or densityname in self.densities.keys()
 
+    def response_field(self, eigenpair):
+        fields = [name for name in self.densities if name.startswith('response ')]
+        if not fields:
+            raise ValueError('Response density requires a Molden manifest entry with a DIPL file')
+        name = f'response {eigenpair}' if eigenpair else fields[0]
+        if name not in fields:
+            raise ValueError(f'DIPL eigenpair {eigenpair} is unavailable')
+        return name
+
     @classmethod
     def from_dict(cls, geo):
         """Builds MOData out of the dict object available in MolecularBlender"""
@@ -260,15 +269,11 @@ class MOData:
             # turbomole polarizabilities in occ-virt MO are stored in geo
             nvir = nmo - nocc
             for i, pair in enumerate(geo["polar"]):
-                eigenvalue = pair["eigenvalue"]
-                if False:
-                    vec = pair["vector"].reshape(nvir, nocc)
-                    dens = np.einsum("au,ai,iv->uv", coeff[nocc:, :], vec, coeff[:nocc, :])
-                    densities[f"polar{i:2d}"] = 2.0 * (dens + dens.T)
-                else:
-                    vec = pair["vector"].reshape(nocc, nvir)
-                    dens = np.einsum("iu,ia,av->uv", coeff[:nocc, :], vec, coeff[nocc:, :])
-                    densities[f"polar{i:2d}"] = 2.0*(dens + dens.T)
+                vec = pair["vector"].reshape(nocc, nvir)
+                dens = np.einsum("iu,ia,av->uv", coeff[:nocc, :], vec, coeff[nocc:, :])
+                matrix = 2.0 * (dens + dens.T)
+                densities[f"polar{i:2d}"] = matrix
+                densities[f"response {pair.get('index', i + 1)}"] = matrix
 
         return cls(shells, coeff, nocc, occupations, spins, densities,
                    energies=[float(orb['ene']) if 'ene' in orb else None for orb in geo['mo']],

@@ -161,7 +161,7 @@ def persist_molecule(molecule, source, settings):
 
 def surface_sampling(options):
     levels = options['isovalues']
-    if options['volume'] in ('orbital', 'spin'):
+    if options['volume'] in ('orbital', 'spin', 'response'):
         levels = sorted({abs(level) for level in levels})
     return dict(isovalues=', '.join(str(level) for level in levels),
                 cumulative=options['cumulative'], resolution=options['resolution'],

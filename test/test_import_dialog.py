@@ -27,7 +27,7 @@ class TestAdaptiveImport(unittest.TestCase):
             self.addCleanup(bpy.utils.unregister_class, MolecularBlender)
         props = getattr(bpy.ops, 'import').molecular_blender.get_rna_type().properties
         self.op = SimpleNamespace(**{p.identifier: p.default for p in props
-                                     if p.identifier != 'dataset_choice' and hasattr(p, 'default')})
+                                     if p.identifier not in {'dataset_choice', 'response_choice'} and hasattr(p, 'default')})
         self.op.filepath = str(self.folder / 'stale.xyz')
         self.params = SimpleNamespace(directory=bytes(self.folder), filename='')
         self.context = SimpleNamespace(space_data=SimpleNamespace(type='FILE_BROWSER', params=self.params),
@@ -50,6 +50,28 @@ class TestAdaptiveImport(unittest.TestCase):
         self.op.frame_step = 1
         self.op.volume = 'spin'
         self.assertNotIn('align_orbital_phase', self.visible(manifest.name))
+
+    def test_dipl_picker_uses_actual_pair_ids_and_ignores_an_unrelated_file(self):
+        from molecular_blender import MolecularBlender
+        manifest = self.folder / 'response.json'
+        manifest.write_text(json.dumps({'molecules': [{'filename': 'wave.molden', 'polar': 'response.dipl'}]}))
+        path = self.folder / 'response.dipl'
+        path.write_text('$eigenpairs\n 7 eigenvalue = 1D-2\n123\n 13 eigenvalue = 2D-2\n$end\n')
+        self.op.field_with_response = 'response'
+        props = self.visible(manifest.name)
+        self.assertIn('response_choice', props)
+        self.assertFalse(props & {'orbital_choice', 'orbital_spin'})
+        self.assertEqual([(i[0], i[3]) for i in self.ui.response_items(self.op, self.context)],
+                         [('7', 0), ('13', 1)])
+        self.op.filepath = str(manifest)
+        self.ui.set_response_choice(self.op, 1)
+        self.assertEqual(self.ui.get_response_choice(self.op), 1)
+        opts = MolecularBlender._build_options(self.op, ('molden', None), from_browser=True)
+        self.assertEqual((opts['volume'], opts['response_eigenpair']), ('response', 13))
+        self.op.filepath = str(self.folder / 'wave.molden')
+        self.assertNotIn('response_choice', self.visible('wave.molden'))
+        opts = MolecularBlender._build_options(self.op, ('molden', None), from_browser=True)
+        self.assertEqual(opts['volume'], self.op.volume)
 
     def test_molden_fields_follow_selection(self):
         self.assertIn('orbital_spin', self.visible('ORCA.MOLDEN.INPUT'))

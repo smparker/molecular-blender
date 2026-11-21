@@ -321,6 +321,13 @@ beta, and alpha-minus-beta spin density. Choosing a density hides the orbital
 controls. Closed-shell zero spin produces no surface. Missing spin labels use
 the visualization defaults above.
 
+For a JSON entry that pairs a Molden file with a Turbomole DIPL file through
+`polar`, choose **Field → Response density**, then select an **Eigenpair** by
+its DIPL ID and eigenvalue. Both signs of the induced density share an absolute
+contour level. Try `examples/phenanth_polar.json`, which contains six eigenpairs.
+For the Python setup API, use `volume="response", response_eigenpair=3` to
+select eigenpair 3. Zero selects the first pair listed in the file.
+
 For frontier names, the occupation scale is 1 when the maximum occupation is
 at most 1, otherwise 2. Occupations strictly above half that scale are occupied;
 exactly half and lower are empty. Actual density weights remain fractional.

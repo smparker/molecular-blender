@@ -29,6 +29,25 @@ from dataclasses import dataclass
 
 import numpy as np
 
+PAIR_HEADER = re.compile(r'(\d+)\s+eigenvalue\s*=\s*(\S+)')
+
+
+def response_headers(path):
+    """Preview the eigenpair IDs and values without allocating response vectors."""
+    pairs = []
+    inside = False
+    with open(path) as source:
+        for row in source:
+            line = row.strip()
+            if line.startswith('$'):
+                inside = line == '$eigenpairs'
+            elif inside and 'eigenvalue' in line:
+                match = PAIR_HEADER.fullmatch(line)
+                if not match:
+                    raise ValueError('Invalid eigenpair header')
+                pairs.append((int(match[1]), DiplParser._parse_scientific_notation(match[2])))
+    return tuple(pairs)
+
 @dataclass
 class Eigenpair:
     index: int
@@ -80,7 +99,7 @@ class DiplParser:
                 if not line:
                     continue
             if section == 'eigenpairs':
-                match = re.fullmatch(r'(\d+)\s+eigenvalue\s*=\s*(\S+)', line)
+                match = PAIR_HEADER.fullmatch(line)
                 if match:
                     index = int(match[1])
                     if index in self.pair_lines:
@@ -142,5 +161,5 @@ def read_turbomole_polarizability(dipl_file, *, orbital_pairs=None):
                              f"Molden file has {orbital_pairs} occupied–virtual pairs, "
                              f"response has {count // nrpa}")
         vec = np.asarray(pair.vector, dtype=np.float32).reshape(nrpa, -1)
-        polarizations.append({"eigenvalue": pair.eigenvalue, "vector": vec[0]})
+        polarizations.append({"index": pair.index, "eigenvalue": pair.eigenvalue, "vector": vec[0]})
     return polarizations
