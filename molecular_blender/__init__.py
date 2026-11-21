@@ -55,7 +55,7 @@ if _HAS_BPY:
 bl_info = {  # pylint: disable=invalid-name
     "name": "Molecular Blender",
     "author": "Shane Parker and Josh Szekely",
-    "version": (0, 6, 3),
+    "version": (0, 7, 0),
     "location": "File > Import",
     "blender" : (3, 6, 7),
     "description": "Import XYZ, SDF/MOL, Molden, cube, and JSON molecular data",
