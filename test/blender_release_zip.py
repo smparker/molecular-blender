@@ -29,7 +29,7 @@ def main(archive):
 
     assert Path(addon.__file__).resolve().parent == installed
     assert addon.AO_CYTHON_ENABLED and addon.CYTHON_ENABLED
-    for name in ('compute_ao_cy', 'marching_cube_cy'):
+    for name in ('compute_ao_cy', 'marching_cube_cy', 'esp_kernel'):
         module = importlib.import_module('molecular_blender.' + name)
         assert isinstance(module.__loader__, ExtensionFileLoader)
         assert Path(module.__file__).resolve().parent == installed

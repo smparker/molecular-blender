@@ -21,15 +21,15 @@ class TestWheelInstallation(unittest.TestCase):
         checkout_dir = Path(__file__).resolve().parents[1] / 'molecular_blender'
         if cls.package_dir == checkout_dir:
             raise AssertionError('Wheel checks must load the installed package, not the checkout')
-        # Load both extensions before any test, independently of test ordering.
+        # Load all extensions before any test, independently of test ordering.
         cls.extensions = {
             name: importlib.import_module(f'molecular_blender.{name}')
-            for name in ('compute_ao_cy', 'marching_cube_cy')
+            for name in ('compute_ao_cy', 'marching_cube_cy', 'esp_kernel')
         }
         print(f'Testing installed package: {cls.package_dir}', flush=True)
 
     def test_imports(self):
-        """Both compiled extensions must belong to the installed package."""
+        """All compiled extensions must belong to the installed package."""
         for name, module in self.extensions.items():
             with self.subTest(module=name):
                 self.assertIsInstance(module.__loader__, importlib.machinery.ExtensionFileLoader)

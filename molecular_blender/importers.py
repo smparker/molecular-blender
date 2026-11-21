@@ -352,7 +352,8 @@ def molden_read_atoms(f, ignore_h=False, animate=False):
         section = f"[Atoms] atom row {row}"
         context = dict(row=row)
         try:
-            element, identifier, _atomic_number, x, y, z = fields
+            element, identifier, number, x, y, z = fields
+            atomic_number = molden_float(number)
             index = int(identifier)
             section = f"[Atoms] atom {index}"
             context["atom"] = index
@@ -367,6 +368,7 @@ def molden_read_atoms(f, ignore_h=False, animate=False):
         seen.add(index)
         gradient = [0., 0., 0.]
         atom = make_atom_dict(element, pos, index, 0., gradient, ignore_h and element == "h")
+        atom["nuclear_charge"] = atomic_number
         if animate:
             atom["trajectory"].append(make_snap_dict(pos, 0., gradient))
         out.append(atom)
@@ -596,6 +598,7 @@ def molecule_from_molden(filename, _options):
 
     marks = {"molden": MOLDEN_RE, "title": TITLE_RE,
              "atoms": ATOMS_RE,
+             "core": re.compile(r"\[\s*(?:core|ecp)\s*\]", re.I),
              "freq": re.compile(r"\[\s*FREQ\s*\]", re.I),
              "fr-coord": re.compile(r"\[\s*FR-COORD\s*\]", re.I),
              "fr-norm-coord": re.compile(r"\[\s*FR-NORM-COORD\s*\]", re.I),
@@ -632,6 +635,7 @@ def molecule_from_molden(filename, _options):
                 mode = convention_from_title(f.f)
         out['molden_convention'] = mode
         out['denorm'] = mode == 'standard'
+        out['has_ecp'] = f.is_marked('core')
         if f.is_marked("atoms"):
             out["atoms"] = molden_read_atoms(f, ignore_h, animate=animate)
         elif not f.is_marked("fr-coord"):

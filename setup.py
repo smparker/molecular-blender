@@ -44,6 +44,13 @@ extensions = [
         language="c++",
     ),
     Extension(
+        "molecular_blender.esp_kernel",
+        sources=["molecular_blender/esp_kernel.pyx"],
+        include_dirs=[np.get_include()],
+        extra_compile_args=extra_compile_args,
+        language="c++",
+    ),
+    Extension(
         "molecular_blender.marching_cube_cy",
         sources=["molecular_blender/marching_cube_cy.pyx"],
         include_dirs=[np.get_include()],
