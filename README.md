@@ -15,8 +15,11 @@ error is reported so an incompatible binary or missing dependency can be diagnos
 - support for animations (input as multiframe .xyz files) including dynamically
   drawing bonds
 - find and fill in aromatic rings
-- draw spheres sitting on atoms to represent atomic charges and dynamically
-  scale them during an animation
+- toggle a molecule’s charge spheres together in its **-charges** collection in the
+  Outliner. Each sphere scales independently during playback
+- render XYZ gradients as arrows with **Plot gradient**. Supply rows in the form
+  `element x y z charge gx gy gz`. Each arrow starts at its atom and points to
+  `(x + gx, y + gy, z + gz)`. A zero gradient produces no visible arrow
 - draw molecular orbital and density isosurfaces with .cube files or .molden files
 
 ## Explicit double and triple bonds
@@ -596,7 +599,13 @@ Under **Animation → Playback**, **Hold** keeps each sampled pose and charge
 size until the next key. **Linear** moves atoms and changes charge sizes at a
 constant rate between keys. **Blender Default** uses your keyframe preference.
 The Python option is `trajectory_interpolation="hold"`, `"linear"`, or `"blender"`.
-Bond and surface visibility switch on snapshot frames.
+Bond and surface visibility switch on snapshot frames. Gradient arrows follow the
+sampled positions and vectors.
+
+Cube and Molden trajectory surfaces are built one snapshot at a time. Press
+**Esc** during calculation to discard the partial surface series and keep the
+imported molecular geometry. The finished meshes are stored in the blend file
+for scrubbing and rendering.
 
 With dynamic inferred bonds, **Break margin (%)** keeps an existing bond
 visible until its length exceeds the formation cutoff by the chosen percentage.

@@ -101,7 +101,8 @@ Entry points: `AnimateMolecule`, `compute_surface_vertex_sets`, and `create_surf
 - [x] **Stabilize dynamic inferred bonds.** Separate formation and breaking distances with an adjustable break margin.
 - [ ] **Design per-frame bond-order perception.** Handle strand appearance/disappearance and charge conservation.
 - [ ] **Improve orbital animation continuity.** Track orbital overlap/phase across frames and expose the limitations around crossings and near-degenerate orbitals rather than trusting an unchanged index alone.
-- [ ] **Avoid retaining every surface frame in memory.** Offer lazy calculation, a bounded disk cache, and staged scene updates instead of storing all triangle sets and all mesh objects simultaneously.
+- [x] **Stream trajectory surface construction.** Cube and Molden trajectories build Blender meshes a frame at a time. The interactive worker queues at most two completed frames on disk. Escape, worker failure and add-on shutdown discard staged surfaces. A 24-frame signed cube benchmark produced the same 48 meshes and 1,498,176 faces, with peak memory falling from 333 to 307 MiB in Blender and from 341 to 302 MiB in the worker.
+- [ ] **Load trajectory meshes on demand during playback.** Completed scenes currently retain all final meshes for scrubbing, rendering and saving.
 
 ## 7. Architecture and data ownership
 
@@ -142,6 +143,8 @@ Entry points: [molecule.py](molecular_blender/molecule.py), [compute_ao_cy.pyx](
 - [x] **Remove repeated scene-wide deselection from trajectory keyframing.** On the 20-atom, four-frame benzopentyl example in Blender 4.3.2, median keyframing time over three imports fell from 0.79 to 0.27 ms in an empty scene and from 10.57 to 0.29 ms with 1,000 other objects. [Benchmark](benchmarks/trajectory_import.py)
 - [x] **Bind imported bonds directly to their atoms.** Geometry imports and sidebar bond edits share direct endpoint hooks for full and split curves. Importing all 52 atoms of `examples/zine.molden` as sticks in Blender 4.3.2 took 0.66 s versus 1.44 s previously (median of three runs each). All 93 curves met their expected endpoints at peak displacement of mode 7.
 - [x] **Remove repeated selection and parenting operators from geometry imports.** Atoms, charge spheres, gradients and rings are parented directly. The 20-atom trajectory imported in 13.8 ms versus 36.4 ms in an empty scene and 111.5 ms versus 455.0 ms with 1,000 extra objects (medians of three local Blender 4.3.2 runs). [Benchmark](benchmarks/trajectory_import.py)
+- [x] **Avoid repeated atom name searches.** Preserve the first free suffix per element. Importing 1,000 carbon atoms in Blender 4.3.2 went from 1.30 s to 0.09 s in an empty scene and from 1.53 s to 0.11 s with another molecule present (medians of three).
+- [x] **Share charge overlay geometry.** Each molecule has one charge collection. Spheres of the same element and sign share geometry and retain their own transforms and animation.
 - [ ] **Reduce remaining geometry construction overhead.** Profile primitive creation, material assignment and dependency-graph updates during larger imports.
 - [x] **Build indexed orbital and density meshes.** Molden calculations share vertices before passing surfaces to Blender. The initial import and sidebar recomputation write indexed faces directly, using the grid spacing to resolve duplicate intersections. [Mesh benchmark](benchmarks/orbital_mesh.py)
 - [x] **Extend indexed meshes to cube data.** Cube and JSON field surfaces share vertices using each frame’s smallest voxel spacing. Tests cover rotated anisotropic grids, both signs of a difference field and field mapping on a remeshed density.
@@ -156,7 +159,7 @@ There is already useful coverage for readers, numerical routines, geometry, bond
 - [x] **Check transparency and transformed surface geometry in actual renders.** A fixed CPU Cycles scene checks the location, coverage and alpha of each exported surface in its PNG.
 - [x] **Check mapped scalar fields in a render.** A CPU Cycles regression checks the red and blue sides of a remeshed density surface colored by an analytic potential.
 - [x] **Check split-color multiple bonds in a render.** A CPU Cycles regression checks two distinct carbonyl strands, the color change at the midpoint, and coverage to the projected atom positions. [Render test](test/test_surface_render.py)
-- [ ] **Extend controlled render regressions to gradients.**
+- [x] **Render and test gradient arrows.** A transparent Cycles render checks the shaft, head and projected tip. Timeline checks cover displacement, a change of direction and a zero vector.
 - [x] **Check shell bounds and fractional density across backends.** Tests compare Python and Cython bounds for s–g shells and check fractional electron counts and density values. CI exercises the installed compiled wheels and an isolated Python fallback. [Backend parity tests](test/test_compute_ao.py)
 - [x] **Check diffuse open-shell evaluator parity.** Compare point, plane and grid values and cumulative levels for a diffuse orbital and signed spin density across both backends.
 - [x] **Compare final Python/Cython mesh geometry.** Both evaluator/mesher pairs produce closed signed lobes with matching component and face counts and vertices within 0.00002 Å on diffuse orbital and open-shell spin-density fixtures. The check exposed an absolute interpolation tolerance that distorted weak fields. Both meshers now interpolate independently of field scale.
