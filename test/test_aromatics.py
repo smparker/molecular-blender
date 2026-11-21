@@ -9,30 +9,9 @@ from molecular_blender.aromatics import (
 )
 
 
-class _Vec:
-    """Minimal vector class mimicking mathutils.Vector for testing is_planar."""
-
-    def __init__(self, xyz):
-        self._v = np.array(xyz, dtype=float)
-
-    def __sub__(self, other):
-        return _Vec(self._v - other._v)
-
-    def normalize(self):
-        n = np.linalg.norm(self._v)
-        if n > 0:
-            self._v /= n
-
-    def dot(self, other):
-        return float(np.dot(self._v, other._v))
-
-    def cross(self, other):
-        return _Vec(np.cross(self._v, other._v))
-
-
 class _MockAtom:
     def __init__(self, x, y, z):
-        self.position = _Vec([x, y, z])
+        self.position = np.array([x, y, z])
 
 
 class TestCreateGraph(unittest.TestCase):

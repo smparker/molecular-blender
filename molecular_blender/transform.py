@@ -24,14 +24,17 @@
 """Classes and functions to transform MOs (partially) using spherical
 AOs to using only cartesian AOs (CAOs)."""
 
+from typing import Collection, Sequence
+
 import numpy as np
 from math import sqrt
 
 cartdegen = {"s": 1, "sp": 4, "p": 3, "d": 6, "f": 10, "g": 15}
 sphdegen = {"s": 1, "sp": 4, "p": 3, "d": 5, "f": 7, "g": 9}
 
-def transform_sph_to_cart(orbitals, spherical, basis, *, orca=False):
-    """Convert MO coefficients, honoring orca_2mkl phases when requested."""
+def transform_sph_to_cart(orbitals: list[dict], spherical: Collection[str], basis: Sequence[list],
+                          *, orca: bool = False) -> list[dict]:
+    """Replace each (nao,) coefficient row in place with its Molden Cartesian expansion."""
     nao = len(orbitals[0]["coeff"])
     ncao = sum([sum([cartdegen[x["shell"]] for x in atom])
                        for atom in basis])
@@ -69,7 +72,7 @@ def transform_sph_to_cart(orbitals, spherical, basis, *, orca=False):
 
     return orbitals
 
-def get_sph_to_cart(sh):
+def get_sph_to_cart(sh: str) -> np.ndarray:
     """Expand normalized real harmonics in normalized Cartesian Gaussians.
 
     Rows follow Molden Cartesian order. Columns follow m = 0, +1, -1, ...

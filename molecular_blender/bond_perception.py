@@ -9,7 +9,13 @@ https://github.com/jensengroup/xyz2mol
 All atoms (including hydrogens) must be supplied. No radical, metal coordination,
 stereochemistry or aromaticity model is inferred. Rings get integer Kekule orders.
 """
+from __future__ import annotations
+
 import math
+from typing import Hashable, Iterable, Mapping, NewType, Sequence
+
+AtomId = NewType("AtomId", int)  # A source-file label, potentially sparse or one-based.
+AtomOffset = NewType("AtomOffset", int)  # Position in the input atom sequence.
 
 
 # (bond-order sum, formal charge). Main-group closed-shell states, including
@@ -34,14 +40,17 @@ VALENCE_STATES = {
 class BondPerceptionError(ValueError):
     """No supported, fully validated assignment could be obtained."""
 
-    def __init__(self, message, *, reason=None, diagnostics=None):
-        super().__init__(message)
+    def __init__(self, message, *, reason=None, diagnostics=None, source=None):
+        super().__init__(f"{source}: Bond perception: {message}" if source else message)
+        self.path = source
         self.reason = reason
         self.diagnostics = {} if diagnostics is None else diagnostics
 
 
-def perceive_bond_orders(symbols, edges, charge=0, bond_lengths=None,
-                         max_iterations=100000, atom_ids=None, fixed_orders=None):
+def perceive_bond_orders(symbols: Sequence[str], edges: Iterable[tuple[AtomOffset, AtomOffset]],
+                         charge: int = 0, bond_lengths: Sequence[float] | None = None,
+                         max_iterations: int = 100000, atom_ids: Sequence[Hashable] | None = None,
+                         fixed_orders: Mapping[int, int] | None = None) -> tuple[list[int], list[int]]:
     """Return (orders in input edge order, formal charges in atom order).
 
     Every edge starts with order one and can rise to at most three. Propagation

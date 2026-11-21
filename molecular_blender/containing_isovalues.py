@@ -21,7 +21,13 @@
 #  If not, see <http://www.gnu.org/licenses/>.
 #
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 import numpy as np
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike
 
 
 def _prepare(values, field, dV, square):
@@ -45,7 +51,8 @@ def _prepare(values, field, dV, square):
     return fractions, amplitudes, weights
 
 
-def isovalue_containing_proportion(values, volume_data_sh, dV, square=True, method='binary'):
+def isovalue_containing_proportion(values: ArrayLike, volume_data_sh: ArrayLike, dV: float,
+                                  square: bool = True, method: str = 'binary') -> list[float]:
     """Return signed thresholds for fractions of a sampled field's integral.
 
     square=True integrates psi squared; False integrates absolute field values

@@ -1,13 +1,19 @@
 """Trilinear sampling of cube fields in source coordinates (angstrom)."""
+from __future__ import annotations
+
 from itertools import product
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike, NDArray
 
 import numpy as np
 
 
-def sample_cube(grid, positions):
-    """Trilinear interpolation on the cube's row-vector axes, including boundary faces."""
+def sample_cube(grid: dict, positions: ArrayLike) -> NDArray[np.float32]:
+    """Return one native scalar per xyz triple in angstroms, including boundary faces."""
     points = np.asarray(positions, dtype=np.float64).reshape(-1, 3)
-    coordinates = (points - grid['origin']) @ np.linalg.inv(grid['axes'].astype(np.float64))
+    coordinates = (points - grid['origin']) @ np.linalg.inv(np.asarray(grid['axes'], dtype=np.float64))
     return _interpolate(grid, coordinates).astype(np.float32)
 
 
@@ -26,8 +32,8 @@ def _interpolate(grid, coordinates):
     return values
 
 
-def add_resampled_cube(total, target, source, weight):
-    """Accumulate on the first term's grid in bounded batches, without extrapolation."""
+def add_resampled_cube(total: np.ndarray, target: dict, source: dict, weight: float) -> None:
+    """Add to total[nx,ny,nz] in place using source and target row-vector axes in angstroms."""
     inverse = np.linalg.inv(source['axes'].astype(np.float64))
     offset = (target['origin'].astype(np.float64) - source['origin']) @ inverse
     transform = target['axes'] @ inverse

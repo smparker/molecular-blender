@@ -32,6 +32,7 @@ from itertools import product
 import numpy as np
 import math
 
+from .scalar_fields import CubeField, ScalarField
 from .constants import ang2bohr, bohr2ang
 from .marching_cube import marching_cube_box, marching_cube_outline
 
@@ -71,8 +72,19 @@ def molden_isosurface(orbital, isovalues, resolution, name="iso", wm=None, metho
                       method=method, rough_resolution=rough_resolution)
 
 
+def field_isosurface(field: ScalarField, levels, resolution: float, name="iso", method="tiled"):
+    """Contour a ScalarField on its angstrom bounds at the requested angstrom spacing."""
+    if isinstance(field, CubeField):
+        lattice = field.lattice
+        return cube_isosurface(lattice['data'], lattice['origin'], lattice['axes'], levels, name)
+    threshold = min((abs(x) for x in levels if x), default=0.01) * 0.001
+    lo, hi = field.bounds(threshold)
+    return isosurface(lo, hi, resolution, levels, field.grid, np.eye(3, dtype=DTYPE),
+                      name, method=method, rough_resolution=0.6, units_per_angstrom=1.)
+
+
 def isosurface(p0, p1, resolution, isovalues, box_func, axes, name, wm=None, method="adaptive",
-        rough_resolution=0.3, max_subdivide=8):
+        rough_resolution=0.3, max_subdivide=8, *, units_per_angstrom=ang2bohr):
     """Sample Bohr-coordinate bounds with an angstrom target grid spacing.
 
     axes maps sampled coordinates to the output geometry. The low-level simple
@@ -86,9 +98,9 @@ def isosurface(p0, p1, resolution, isovalues, box_func, axes, name, wm=None, met
         raise ValueError('Rough resolution must be finite and positive')
 
     if method == "adaptive":
-        return isosurface_adaptive(p0, p1, rough_resolution*ang2bohr, resolution*ang2bohr,
+        return isosurface_adaptive(p0, p1, rough_resolution*units_per_angstrom, resolution*units_per_angstrom,
                                   max_subdivide, isovalues, box_func, axes, name, wm)
-    npoints = [max(1, math.ceil((b-a)/(resolution*ang2bohr))) for a, b in zip(p0, p1)]
+    npoints = [max(1, math.ceil((b-a)/(resolution*units_per_angstrom))) for a, b in zip(p0, p1)]
     if method == 'tiled':
         return isosurface_tiled(p0, p1, npoints, isovalues, box_func, axes, name)
     return isosurface_simple(p0, p1, npoints, isovalues, box_func, axes, name, wm)
@@ -202,12 +214,12 @@ def isosurface_simple(p0, p1, nvoxels, isovalues, box_func, axes, name, wm=None)
     yvals, ystep = np.linspace(p0[1], p1[1], num=nvoxels[1]+1, retstep=True, endpoint=True, dtype=DTYPE)
     zvals, zstep = np.linspace(p0[2], p1[2], num=nvoxels[2]+1, retstep=True, endpoint=True, dtype=DTYPE)
 
-    scaled_axes = np.array(axes, dtype=DTYPE) * np.array([xstep, ystep, zstep], dtype=DTYPE)
+    scaled_axes = np.array(axes, dtype=DTYPE) * np.array([xstep, ystep, zstep], dtype=DTYPE)[:, None]
 
     box_values = box_func(xvals, yvals, zvals)
     tri_list = marching_cube_box(box_values, isovalues)
 
-    origin = np.array(p0, dtype=DTYPE) * bohr2ang
+    origin = np.array(p0, dtype=DTYPE) @ axes
     for iiso in range(len(isovalues)):
         triangle_sets[iiso]["triangles"] = transform_triangles(
             tri_list[iiso], origin, scaled_axes)

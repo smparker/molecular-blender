@@ -22,6 +22,8 @@
 
 """Creates a graph structure from list of atoms and bonds"""
 
+import numpy as np
+
 from .util import Timer
 
 def create_graph(atomlist, connectivitylist):
@@ -45,13 +47,13 @@ def is_planar(atomlist, cycle):
     for x in range(3, len(testlist)):
         c1, c2, c3, c4 = [
             atomlist[testlist[x - i]].position for i in range(4)]
-        v21 = c2 - c1
-        v43 = c4 - c3
-        v31 = c3 - c1
-        v21.normalize()
-        v43.normalize()
-        v31.normalize()
-        threshold = v31.dot(v21.cross(v43))
+        directions = np.array([c2 - c1, c4 - c3, c3 - c1], dtype=float)
+        lengths = np.linalg.norm(directions, axis=1)
+        if np.all(lengths):
+            directions /= lengths[:, None]
+        else:
+            continue
+        threshold = np.dot(directions[2], np.cross(directions[0], directions[1]))
         if abs(threshold) > 0.2:
             return False
     return True
@@ -113,7 +115,8 @@ def find_planar_cycles(molecule):
     timer = Timer()
 
     atomlist = molecule.atoms
-    bondlist = [(b.iatom.index, b.jatom.index) for b in molecule.bonds]
+    offsets = {atom: i for i, atom in enumerate(atomlist)}
+    bondlist = [(offsets[b.iatom], offsets[b.jatom]) for b in molecule.bonds]
     timer.tick_print("generate lists")
 
     graph = create_graph(atomlist, bondlist)

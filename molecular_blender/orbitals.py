@@ -20,7 +20,10 @@
 #  along with Molecular Blender; see COPYING.
 #  If not, see <http://www.gnu.org/licenses/>.
 #
+from __future__ import annotations
+
 import re
+from typing import Sequence
 import numpy as np
 
 from .compute_ao import *
@@ -56,7 +59,9 @@ def sampled_orbital_overlap(previous, current):
     return float(np.clip(np.dot(left, right) / norm, -1, 1)) if norm > 0 else 0.0
 
 
-def frontier_index(occupations, spins, energies, kind, spin=None, offset=0):
+def frontier_index(occupations: Sequence[float], spins: Sequence[str] | None,
+                   energies: Sequence[float | None], kind: str, spin: str | None = None,
+                   offset: int = 0) -> int:
     """Resolve a one-based frontier index from orbital metadata alone."""
     if kind not in ('homo', 'lumo') or isinstance(offset, bool) or not isinstance(offset, (int, np.integer)) or offset < 0:
         raise ValueError('Invalid frontier kind or offset')
@@ -152,7 +157,7 @@ class MOData:
     def lumo(self, spin=None):
         return self.frontier('lumo', spin)
 
-    def resolve_orbital(self, expression, spin=None):
+    def resolve_orbital(self, expression: str | int, spin: str | None = None) -> int:
         """Resolve e.g. beta:lumo+1; explicit positive numbers remain input indices."""
         text = str(expression).strip().lower()
         match = re.fullmatch(r'(?:(alpha|beta):)?(homo|lumo)(?:\s*([-+])\s*(\d+))?', text)
@@ -204,8 +209,8 @@ class MOData:
             self.occupations, self.spins, self.coeff.shape[0])
         return _spin_weights(occupations, spins)
 
-    def density_matrix(self, densityname='density'):
-        """Return the AO matrix and population for a known field."""
+    def density_matrix(self, densityname: str = 'density') -> tuple[np.ndarray, float]:
+        """Return the float32 (nao, nao) matrix and its electron population."""
         if not isinstance(densityname, str) or not self.is_density(densityname):
             raise ValueError('Unknown density {!r}; choose from {}'.format(
                 densityname, ', '.join(['density', 'alpha', 'beta', 'spin'] + sorted(self.densities))))
@@ -224,6 +229,16 @@ class MOData:
         """Return a Bohr-coordinate evaluator for the requested AO density matrix."""
         matrix, population = self.density_matrix(densityname)
         return DensityCalculator(self.shells, matrix, population)
+
+    def scalar_field(self, selection, spin=None, *, flip_phase=False):
+        """Resolve a named density or MO to an angstrom-coordinate ScalarField."""
+        from .scalar_fields import WavefunctionField
+        source = getattr(self, 'source', '')
+        if self.is_density(selection):
+            return WavefunctionField(self.get_density(selection), source=source, selection=selection)
+        index = self.resolve_orbital(selection, spin)
+        return WavefunctionField(self.get_orbital(index, flip_phase=flip_phase), source=source,
+                                 selection=str(index), orbital=True)
 
     def is_density(self, densityname):
         return densityname in ["density", "spin", "alpha", "beta"] or densityname in self.densities.keys()
@@ -275,6 +290,23 @@ class MOData:
                 densities[f"polar{i:2d}"] = matrix
                 densities[f"response {pair.get('index', i + 1)}"] = matrix
 
-        return cls(shells, coeff, nocc, occupations, spins, densities,
+        model = cls(shells, coeff, nocc, occupations, spins, densities,
                    energies=[float(orb['ene']) if 'ene' in orb else None for orb in geo['mo']],
                    symmetries=[orb.get('sym') for orb in geo['mo']])
+        model.source = geo.get('source', '')
+        return model
+
+
+def orbital_metadata(model):
+    if model is None:
+        return []
+    return [dict(index=i+1, energy=float(e) if e is not None and np.isfinite(e) else None,
+                 symmetry=sym, occupation=float(occ), spin=model.spins[i] if model.spins is not None else None)
+            for i, (e, sym, occ) in enumerate(zip(model.energies, model.symmetries, model.occupations))]
+
+
+def response_metadata(data):
+    """Keep the DIPL IDs and values for a single geometry, without the response vectors."""
+    if data.get('orbital_trajectory'):
+        return []
+    return [[p['index'], p['eigenvalue']] for p in data.get('polar', ())]

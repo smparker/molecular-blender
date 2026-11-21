@@ -6,13 +6,13 @@ A duplication handler allocates a fresh root UUID without rebinding children to
 an unrelated original molecule. Records contain no pickles or executable data.
 """
 import json
-import math
 import os
 import uuid
 
 import bpy
 from bpy.app.handlers import persistent
 
+from .orbitals import orbital_metadata, response_metadata
 from .options import molden_convention, validated_options
 
 RECORD = 'mb_molecule'
@@ -89,21 +89,6 @@ def normalize_duplicate_ids(*_args):
             seen.add(identifier)
     finally:
         _normalizing = False
-
-
-def orbital_metadata(model):
-    if model is None:
-        return []
-    return [dict(index=i+1, energy=float(e) if e is not None and math.isfinite(e) else None,
-                 symmetry=sym, occupation=float(occ), spin=model.spins[i] if model.spins is not None else None)
-            for i, (e, sym, occ) in enumerate(zip(model.energies, model.symmetries, model.occupations))]
-
-
-def response_metadata(data):
-    """Keep the DIPL IDs and values for a single geometry, without the response vectors."""
-    if data.get('orbital_trajectory'):
-        return []
-    return [[p['index'], p['eigenvalue']] for p in data.get('polar', ())]
 
 
 def atom_bond_style(settings):
