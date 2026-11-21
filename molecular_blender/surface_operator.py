@@ -3,7 +3,7 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 
 from . import import_dialog
-from .plotter import create_surface_meshes
+from .plotter import SurfaceMeshStage, create_surface_meshes
 from .surface_jobs import SurfaceJob
 
 
@@ -94,7 +94,11 @@ class SurfaceJobOperator:
         self._owner = molecule.scene_owner
         self._collection = molecule.scene_collection
         try:
-            self._job = SurfaceJob(bpy.app.binary_path, molecule.surface_input, options)
+            trajectory = bool(molecule.volume_trajectory or molecule.orbitals_trajectory)
+            self._stage = SurfaceMeshStage(molecule, styler, options) if trajectory else None
+            self._job = SurfaceJob(bpy.app.binary_path, molecule.surface_input, options,
+                                   stream_frames=trajectory,
+                                   on_close=self._stage.discard if trajectory else None)
             wm = context.window_manager
             self._timer = wm.event_timer_add(0.1, window=context.window)
             wm.modal_handler_add(self)
@@ -126,7 +130,7 @@ class SurfaceJobOperator:
             context.workspace.status_text_set(None)
 
     def modal(self, context, event):
-        if event.type == 'ESC' or self._cancelled or not self._owner_exists():
+        if event.type == 'ESC' or self._cancelled or not self._owner_exists() or self._job.cancelled:
             self.cancel(context)
             return {'CANCELLED'}
         if event.type != 'TIMER':
@@ -135,25 +139,31 @@ class SurfaceJobOperator:
             progress = self._job.progress()
             context.window_manager.progress_update(
                 int(100 * progress.get('completed', 0) / max(progress.get('total', 1), 1)))
-            if self._job.running:
+            finished = not self._job.running
+            if self._stage is not None:
+                batch = self._job.take_frame()
+                if batch is not None:
+                    self._stage.add(*batch)
+                    return {'RUNNING_MODAL'}
+            if not finished:
                 return {'RUNNING_MODAL'}
-            vertex_sets, trajectory_map = self._job.result()
-            # A renamed owner remains valid; scene generation uses these handles.
-            self._molecule.scene_owner = self._owner
-            self._molecule.scene_collection = self._collection
-            if not self._select_surfaces:
-                vertex_sets = [v for v in vertex_sets if len(v["faces"] if "faces" in v else v["triangles"])]
-                if not vertex_sets:
-                    self.report({'INFO'}, 'No surface at the requested levels')
-                    return {'CANCELLED'}
-            self.apply_surface_result(context, vertex_sets, trajectory_map)
+            if self._stage is not None:
+                self._job.check_finished()
+                self._stage.finish(context)
+            else:
+                vertex_sets, trajectory_map = self._job.result()
+                if not self._select_surfaces:
+                    vertex_sets = [v for v in vertex_sets if len(v["faces"] if "faces" in v else v["triangles"])]
+                    if not vertex_sets:
+                        self._cleanup(context)
+                        self.report({'INFO'}, 'No surface at the requested levels')
+                        return {'CANCELLED'}
+                self.apply_surface_result(context, vertex_sets, trajectory_map)
         except Exception as exc:
             self._cleanup(context)
             self.report({'ERROR'}, str(exc))
             return {'CANCELLED'}
-        finally:
-            if self._job is not None and not self._job.running:
-                self._cleanup(context)
+        self._cleanup(context)
         return {'FINISHED'}
 
     def apply_surface_result(self, context, vertex_sets, trajectory_map):

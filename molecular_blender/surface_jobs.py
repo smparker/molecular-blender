@@ -44,15 +44,18 @@ class SavedMoldenSource:
 
 
 class SurfaceJob:
-    def __init__(self, executable, molecule_data, options):
+    def __init__(self, executable, molecule_data, options, *, stream_frames=False, on_close=None):
         self._temporary = tempfile.TemporaryDirectory(prefix='molecular-surface-')
         self.directory = Path(self._temporary.name)
+        self._next_frame = 0
+        self._on_close = on_close
+        self.stream_frames = stream_frames
         self.process = None
         self.cancelled = False
         self._log = None
         try:
             with (self.directory / 'request.pkl').open('wb') as stream:
-                pickle.dump((molecule_data, options), stream, protocol=4)
+                pickle.dump((molecule_data, options, stream_frames), stream, protocol=4)
             self._log = (self.directory / 'worker.log').open('wb')
             self.process = subprocess.Popen([
                 executable, '--background', '--factory-startup', '--disable-autoexec',
@@ -75,7 +78,20 @@ class SurfaceJob:
         except (OSError, ValueError):
             return {'completed': 0, 'total': 1}
 
-    def result(self):
+    def take_frame(self):
+        """Consume one atomically published batch and free its slot in the worker queue."""
+        path = self.directory / f'frame-{self._next_frame}.pkl'
+        try:
+            stream = path.open('rb')
+        except FileNotFoundError:
+            return None
+        with stream:
+            batch = pickle.load(stream)
+        path.unlink()
+        self._next_frame += 1
+        return batch
+
+    def check_finished(self):
         if self.cancelled:
             raise RuntimeError('Surface calculation was cancelled')
         if self.running:
@@ -86,6 +102,11 @@ class SurfaceJob:
         if self.process is None or self.process.returncode != 0:
             log = (self.directory / 'worker.log').read_text(errors='replace')
             raise RuntimeError('Surface worker failed: ' + log[-2000:])
+        if self.stream_frames and self._next_frame != int((self.directory / 'frame-count').read_text()):
+            raise RuntimeError('Incomplete trajectory surface delivery')
+
+    def result(self):
+        self.check_finished()
         with (self.directory / 'result.pkl').open('rb') as stream:
             return pickle.load(stream)
 
@@ -104,6 +125,9 @@ class SurfaceJob:
             self._log = None
         self._temporary.cleanup()
         _jobs.discard(self)
+        if self._on_close is not None:
+            callback, self._on_close = self._on_close, None
+            callback()
 
     def cancel(self):
         self.cancelled = True

@@ -805,9 +805,12 @@ def create_surface_mesh_data(name, verts, faces, weld_distance):
 
 
 def create_mesh(name, verts, faces, material, context, remesh=8, weld_distance=0.01):
-    me = create_surface_mesh_data(name, verts, faces, weld_distance)
-    ob = bpy.data.objects.new(name, me)  # create a new object
-    ob.data = me          # link the mesh data to the object
+    mesh = create_surface_mesh_data(name, verts, faces, weld_distance)
+    return _surface_object(name, mesh, material, remesh)
+
+
+def _surface_object(name, me, material, remesh):
+    ob = track_new(bpy.data.objects.new(name, me))
     if ob.data.materials:
         ob.data.materials[0] = material
     else:
@@ -839,18 +842,10 @@ def create_geometry(verts):
     return list(chain.from_iterable(verts)), faces
 
 
-def compute_surface_vertex_sets(molecule, options, progress_state=None, *, indexed=False):
-    """Compute isosurface triangle data, synchronously or in an isolated worker process.
-
-    progress_state is an optional dict with keys 'completed' and 'total' that this function
-    updates as isosurfaces are computed, for use by a modal progress bar.
-    With indexed=True, fields carry shared vertices and triangle indices.
-    """
+def iter_surface_frames(molecule, options, progress_state=None, *, indexed=False):
+    """Yield one snapshot's fields and visibility map, including empty trajectory frames."""
     if molecule.volume is None and molecule.orbitals is None:
-        return [], {}
-
-    vertex_sets = []
-    vertex_trajectory_map = {}
+        return
     fmap = get_frame_mapper(options, getattr(molecule, "frame_numbers", None))
 
     # Count total tasks for progress tracking
@@ -882,7 +877,7 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None, *, index
                 if reference is None:
                     for _ in frames:
                         tick()
-                    return [], {}
+                    return
             levels = reference.isovalue_containing_proportion(levels, options.get("cube_field_type", "auto"))
         for i, vol in enumerate(frames):
             name = "cube-{:5d}".format(i) if i else "cube"
@@ -895,10 +890,9 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None, *, index
                 if indexed:
                     surface['vertices'], surface['faces'] = index_field_triangles(
                         surface.pop('triangles'), surface['grid_spacing'])
-            if len(frames) > 1:
-                vertex_trajectory_map[fmap(i)] = [s['name'] for s in surfaces]
-            vertex_sets.extend(surfaces)
+            mapping = {fmap(i): [s['name'] for s in surfaces]} if len(frames) > 1 else {}
             tick()
+            yield surfaces, mapping
 
     elif molecule.orbitals is not None:  # orbital data was read
         orbitals = molecule.orbitals
@@ -906,13 +900,10 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None, *, index
         channel = None if channel == 'all' else channel
         orbnames = ([options["volume"]] if options["volume"] in ('density', 'alpha', 'beta', 'spin') else
                     [x.strip().lower() for x in options['orbital'].split(',')])
-        orblist = [name if orbitals.is_density(name) else orbitals.resolve_orbital(name, channel)
-                   for name in orbnames]
-
         isovals = options["isovalues"]
         resolution = options["resolution"]
 
-        def field_surface(model, name, number, label, levels=None):
+        def field_surface(model, name, label, levels):
             if model.is_density(name):
                 if not np.any(model.density_matrix(name)[0]):
                     return [], levels
@@ -928,26 +919,77 @@ def compute_surface_vertex_sets(molecule, options, progress_state=None, *, index
                     surface['vertices'], surface['faces'] = index_field_triangles(surface.pop('triangles'), resolution)
             return surfaces, levels
 
-        for orbname, orbnumber in zip(orbnames, orblist):
-            vset, orbital_isovals = field_surface(orbitals, orbname, orbnumber, orbname)
-            tick()
-            if vset:
-                vertex_sets.extend(vset)
+        initial_levels = {}
+        for i, snapshot in enumerate(chain((orbitals,), molecule.orbitals_trajectory or ())):
+            surfaces = []
+            for name in orbnames:
+                label = f"{name}-{i:4d}" if i else name
+                fields, levels = field_surface(snapshot, name, label, initial_levels.get(name))
+                if i == 0:
+                    initial_levels[name] = levels
+                if i:
+                    for field in fields:
+                        field['series'] = name
+                surfaces.extend(fields)
+                tick()
+            mapping = {fmap(i): [s['name'] for s in surfaces]} if molecule.orbitals_trajectory is not None else {}
+            yield surfaces, mapping
 
-            if molecule.orbitals_trajectory is not None:
-                f0 = fmap(0)
-                vertex_trajectory_map.setdefault(f0, []).extend([v["name"] for v in vset])
-                for i, orbital_snap in enumerate(molecule.orbitals_trajectory, 1):
-                    snap_name = f"{orbname:s}-{i:4d}"
-                    vsets_snap, _ = field_surface(orbital_snap, orbname, orbnumber, snap_name, orbital_isovals)
-                    for v in vsets_snap:
-                        v['series'] = orbname
-                    tick()
-                    fi = fmap(i)
-                    vertex_trajectory_map.setdefault(fi, []).extend([v["name"] for v in vsets_snap])
-                    vertex_sets.extend(vsets_snap)
 
-    return vertex_sets, vertex_trajectory_map
+def compute_surface_vertex_sets(molecule, options, progress_state=None, *, indexed=False):
+    """Collect numerical results for callers that request the full calculation."""
+    definitions, mapping = [], {}
+    for surfaces, frames in iter_surface_frames(molecule, options, progress_state, indexed=indexed):
+        definitions.extend(surfaces)
+        mapping.update(frames)
+    if molecule.orbitals is not None and molecule.orbitals_trajectory and options['volume'] == 'orbital':
+        # The collecting API historically returns all snapshots of one orbital together.
+        order = {name.strip().lower(): i for i, name in enumerate(options['orbital'].split(','))}
+        definitions.sort(key=lambda field: order[field.get('series', field['name'])])
+    return definitions, mapping
+
+
+class SurfaceMeshStage:
+    """Build final Blender mesh data as frames arrive. Publish the series together."""
+    def __init__(self, molecule, styler, options):
+        self.molecule = molecule
+        self.styler = styler
+        self.options = options
+        self.definitions = []
+        self.frames = {}
+
+    def add(self, surfaces, frames):
+        self.frames.update(frames)
+        for surface in surfaces:
+            name = f"{self.molecule.name}_{surface['name']}_{surface['isovalue']}"
+            vertices, faces = field_geometry(surface, surface.get('grid_spacing', self.options['resolution']))
+            mesh = create_surface_mesh_data(name, vertices, faces, weld_distance=None)
+            self.definitions.append(dict(name=surface['name'], series=surface.get('series', surface['name']),
+                                         isovalue=surface['isovalue'], mesh_data=mesh))
+
+    def finish(self, context):
+        from .geometry_import import rollback_new_ids
+        from .scene_state import RECORD
+        owner = getattr(self.molecule, 'scene_owner', None)
+        old_record = owner.get(RECORD) if owner else None
+        try:
+            with rollback_new_ids():
+                create_surface_meshes(self.molecule, self.styler, context, self.options,
+                                      self.definitions, self.frames)
+        except Exception:
+            if old_record is not None:
+                owner[RECORD] = old_record
+            raise
+        self.definitions.clear()
+        self.frames.clear()
+
+    def discard(self):
+        unused = [s['mesh_data'] for s in self.definitions
+                  if s['mesh_data'].as_pointer() and not s['mesh_data'].users]
+        if unused:
+            bpy.data.batch_remove(unused)
+        self.definitions.clear()
+        self.frames.clear()
 
 
 def create_surface_meshes(molecule, styler, context, options, vertex_sets, vertex_trajectory_map,
@@ -972,13 +1014,15 @@ def create_surface_meshes(molecule, styler, context, options, vertex_sets, verte
         fmeshes = []
         for v in fsets:
             name = "{0}_{1}_{2}".format(molecule.name, v["name"], v["isovalue"])
-            verts, faces = field_geometry(v, v.get('grid_spacing', options['resolution']))
-            vmesh = create_mesh(name, verts, faces, v["material"], context,
-                                remesh=options["remesh"], weld_distance=None)
+            mesh = v.get('mesh_data')
+            if mesh is None:
+                verts, faces = field_geometry(v, v.get('grid_spacing', options['resolution']))
+                mesh = create_surface_mesh_data(name, verts, faces, weld_distance=None)
+            vmesh = _surface_object(name, mesh, v["material"], options["remesh"])
             v["mesh"] = vmesh
             fmeshes.append(vmesh)
 
-        function_collection = bpy.data.collections.new(f"{molecule.name}-isosurface-{func}")
+        function_collection = track_new(bpy.data.collections.new(f"{molecule.name}-isosurface-{func}"))
         function_collection['mb_surface_collection'] = True
         molecule_collection.children.link(function_collection)
         for m in fmeshes:
@@ -999,7 +1043,7 @@ def create_surface_meshes(molecule, styler, context, options, vertex_sets, verte
             from .scene_edit import _set_opacity
             for definition in vertex_sets:
                 obj = definition['mesh']
-                material = obj.active_material.copy()
+                material = track_new(obj.active_material.copy())
                 material['mb_style_material'] = True
                 obj.material_slots[0].link = 'OBJECT'
                 obj.material_slots[0].material = material
@@ -1030,8 +1074,14 @@ def create_surface_meshes(molecule, styler, context, options, vertex_sets, verte
 @stopwatch("draw surfaces")
 def draw_surfaces(molecule, styler, context, options):
     """Draws isosurfaces"""
-    vertex_sets, vertex_trajectory_map = compute_surface_vertex_sets(molecule, options, indexed=True)
-    create_surface_meshes(molecule, styler, context, options, vertex_sets, vertex_trajectory_map)
+    stage = SurfaceMeshStage(molecule, styler, options)
+    try:
+        for batch in iter_surface_frames(molecule, options, indexed=True):
+            stage.add(*batch)
+            del batch
+        stage.finish(context)
+    finally:
+        stage.discard()
 
 @stopwatch("draw rings")
 def plot_rings(context, molecule, options):

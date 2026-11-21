@@ -164,7 +164,7 @@ class PaletteElementStyler(object):
         """Return isosurface material"""
         base_color = self.iso_plus_color if "plus" in isoname else self.iso_minus_color
 
-        mat = bpy.data.materials.new(isoname)
+        mat = track_new(bpy.data.materials.new(isoname))
         mat.use_nodes = True
         mat.blend_method = 'BLEND'
         mat.diffuse_color = base_color
