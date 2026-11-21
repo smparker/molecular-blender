@@ -6,6 +6,14 @@
 import sys
 import os
 import unittest
+from time import perf_counter
+
+try:
+    import bpy
+except ModuleNotFoundError as exc:
+    if exc.name != "bpy":
+        raise
+    bpy = None
 
 
 def blender_extra_args(argv):
@@ -21,6 +29,7 @@ class GroupedTestResult(unittest.TestResult):
     def __init__(self, stream):
         super().__init__()
         self.stream = stream
+        self.started = perf_counter()
         self._current_module = None
 
     def _module_of(self, test):
@@ -39,6 +48,25 @@ class GroupedTestResult(unittest.TestResult):
     def startTest(self, test):
         super().startTest(test)
         self._start_module(test)
+        if bpy is not None:
+            # A fresh scene isolates frame, selection, render and molecule settings.
+            self.original_scene = bpy.context.window.scene
+            self.original_ids = set(bpy.data.user_map())
+            bpy.context.window.scene = bpy.data.scenes.new("Test scene")
+
+    def stopTest(self, test):
+        try:
+            if bpy is not None:
+                bpy.context.window.scene = self.original_scene
+                # Include unlinked meshes, actions, materials and linked libraries.
+                added = set(bpy.data.user_map()) - self.original_ids
+                bpy.data.batch_remove(added)
+                if set(bpy.data.user_map()) != self.original_ids:
+                    raise AssertionError("Blender datablocks changed across " + test.id())
+        except Exception:
+            self.addError(test, sys.exc_info())
+        finally:
+            super().stopTest(test)
 
     def addSuccess(self, test):
         self.stream.write(".")
@@ -75,8 +103,13 @@ class GroupedTestResult(unittest.TestResult):
         errors = len(self.errors)
 
         self.stream.write(f"{'-'*70}\n")
-        parts = [f"Ran {run} tests"]
-        self.stream.write(f"{''.join(parts)}\n\n")
+        self.stream.write(f"Ran {run} tests in {perf_counter() - self.started:.2f} s\n")
+        if sys.platform in ("darwin", "linux"):
+            import resource
+            rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            scale = 1024 ** (2 if sys.platform == "darwin" else 1)
+            self.stream.write(f"Peak process RSS {rss / scale:.1f} MiB\n")
+        self.stream.write("\n")
 
         if self.wasSuccessful():
             status = "OK"

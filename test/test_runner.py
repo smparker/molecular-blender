@@ -49,5 +49,34 @@ class TestRunnerArguments(unittest.TestCase):
                     self.assertEqual(Path(cwd.read_text().strip()).resolve(), root.resolve())
 
 
+
+@unittest.skipUnless(runner.bpy, 'requires Blender')
+class TestSceneIsolation(unittest.TestCase):
+    def test_cleanup_after_failed_setup_before_next_test(self):
+        import io
+        import bpy
+        original = bpy.context.scene
+        baseline = set(bpy.data.user_map())
+
+        class FailingSetup(unittest.TestCase):
+            def setUp(self):
+                bpy.context.scene.frame_set(47)
+                mesh = bpy.data.meshes.new('Leaked mesh')
+                obj = bpy.data.objects.new('Leaked object', mesh)
+                bpy.context.scene.collection.objects.link(obj)
+                bpy.data.materials.new('Orphan material')
+                raise RuntimeError('setup failed')
+
+            def runTest(self):
+                pass
+
+        result = runner.GroupedTestResult(io.StringIO())
+        FailingSetup().run(result)
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn('setup failed', result.errors[0][1])
+        self.assertEqual(bpy.context.scene, original)
+        self.assertEqual(set(bpy.data.user_map()), baseline)
+
+
 if __name__ == '__main__':
     unittest.main()
