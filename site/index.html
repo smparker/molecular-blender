@@ -1,46 +1,124 @@
----
----
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ site.title }}</title>
-  <meta name="description" content="{{ site.description }}">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Raleway:300,400,600,700&amp;display=swap">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.2.0/css/font-awesome.min.css">
-  <link rel="stylesheet" href="combo.css">
-  <link rel="icon" href="{{ site.favicon }}">
-  <link rel="apple-touch-icon" href="{{ site.touch_icon }}">
+  <title>Molecular Blender · Quantum chemistry in Blender</title>
+  <meta name="description" content="Turn molecular structures, orbitals, and trajectories into figures and animations with Molecular Blender, a free Blender add-on.">
+  <link rel="canonical" href="https://quantumparker.com/molecular-blender/">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://quantumparker.com/molecular-blender/">
+  <meta property="og:title" content="Molecular Blender · Quantum chemistry in Blender">
+  <meta property="og:description" content="Render an orbital, map an electrostatic potential, or animate a trajectory from your own calculations.">
+  <meta property="og:image" content="https://quantumparker.com/molecular-blender/img/ethene-preview.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Blender render of ethene with the two signs of its π orbital in purple and green.">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="img/logo.svg" type="image/svg+xml">
+  <link rel="icon" href="img/favicon.ico" sizes="16x16 32x32">
+  <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+  <link rel="preload" href="fonts/raleway-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="site.css">
   <script src="site.js" defer></script>
 </head>
 <body>
-  <nav aria-label="Sections"><ul>
-    {% for post in site.posts reversed %}
-      <li class="p-{{ post.slug }}"><a href="#{{ post.slug }}">{{ post.title }}</a></li>
-    {% endfor %}
-  </ul></nav>
-  <main id="main">
-    {% for post in site.posts reversed %}
-      <section id="{{ post.slug }}" class="section p-{{ post.slug }}" aria-label="{{ post.title }}">
-        {% if post.fa-icon %}
-          <div class="subtlecircle sectiondivider faicon" aria-hidden="true">
-            <span class="fa-stack">
-              <i class="fa fa-circle fa-stack-2x"></i>
-              <i class="fa fa-{{ post.fa-icon }} fa-stack-1x"></i>
-            </span>
-            <span class="icon-title">{{ post.title }}</span>
+  <a class="skip" href="#main">Skip to content</a>
+  <header>
+    <nav class="wrap" aria-label="Main navigation">
+      <a class="brand" href="#intro" aria-label="Molecular Blender home"><img src="img/logo.svg" alt="" width="36" height="36">molecular blender</a>
+      <div class="menu">
+        <a href="#why">Examples</a>
+        <a href="#usage">Install</a>
+        <a href="#gallery">Gallery</a>
+        <a href="https://github.com/smparker/molecular-blender">GitHub</a>
+      </div>
+    </nav>
+  </header>
+  <main id="main" tabindex="-1">
+    <section id="intro" aria-labelledby="intro-title">
+      <div class="wrap hero">
+        <div class="intro-copy">
+          <h1 id="intro-title">Quantum chemistry <span>in Blender.</span></h1>
+          <p>Turn your structures, orbitals, and trajectories into figures and animations with the Molecular Blender add-on.</p>
+          <div class="actions">
+            <a class="button" href="https://github.com/smparker/molecular-blender/releases/latest/download/molecular_blender.zip"><svg aria-hidden="true"><use href="img/icons.svg#download"/></svg>Download for Blender</a>
+            <a href="#usage">Installation guide</a>
           </div>
-        {% endif %}
-        <div class="container {{ post.style }}">{{ post.content }}</div>
-      </section>
-    {% endfor %}
+        </div>
+        <figure class="orbital">
+          <div class="orbital-plate">
+            <img src="img/ethene-homo.webp" width="1080" height="810" fetchpriority="high" alt="Purple and green lobes of ethene’s π orbital sit above and below its carbon atoms.">
+          </div>
+          <figcaption><div><strong>Ethene</strong><span>Highest occupied π orbital</span></div>
+            <a href="https://github.com/smparker/molecular-blender/blob/master/examples/render_ethene.py">Render script</a>
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+    <section id="why" class="band examples" aria-labelledby="examples-title">
+      <div class="wrap">
+        <svg class="divider" aria-hidden="true"><use href="img/icons.svg#molecule"/></svg>
+        <h2 id="examples-title">From calculation to figure</h2>
+        <p class="lead">Bring in XYZ or SDF structures, Molden orbitals, or Cube grids. Use JSON to combine fields or build a sequence.</p>
+        <div class="pairs">
+          <figure class="example">
+            <div class="sample-plate"><img src="img/water-esp.webp" width="480" height="480" loading="lazy" alt="Water’s density surface changes from red near oxygen to blue near the hydrogens."></div>
+            <figcaption><h3>Map a potential</h3><p>Color water’s electron-density surface by electrostatic potential to see its negative and positive regions.</p>
+              <a href="https://github.com/smparker/molecular-blender/blob/master/examples/render_water_esp.py">Render the water example</a>
+            </figcaption>
+          </figure>
+          <figure class="example">
+            <div class="sample-plate frames">
+              <img src="img/twist-1.webp" width="540" height="330" loading="lazy" alt="First XYZ frame with both rings viewed nearly face-on.">
+              <img src="img/twist-4.webp" width="540" height="330" loading="lazy" alt="Fourth frame with the right ring turned nearly edge-on.">
+            </div>
+            <figcaption><h3>Follow a molecular twist</h3><p>These are two frames from one XYZ trajectory. Play it on Blender’s timeline, or enable dynamic bonds to follow a reaction.</p>
+              <a href="https://github.com/smparker/molecular-blender/blob/master/examples/benzopentyl_twist.xyz">Open the XYZ trajectory</a>
+            </figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+    <section id="usage" class="band install" aria-labelledby="install-title">
+      <div class="wrap">
+        <svg class="divider" aria-hidden="true"><use href="img/icons.svg#plug"/></svg>
+        <h2 id="install-title">Install in Blender</h2>
+        <div class="pairs instructions">
+          <div>
+            <h3>Enable the add-on</h3>
+            <ol>
+              <li>Download the <a href="https://github.com/smparker/molecular-blender/releases/latest/download/molecular_blender.zip">Blender add-on ZIP</a> and keep it zipped.</li>
+              <li>In Blender 4.3, open <strong>Edit → Preferences → Add-ons</strong>. Open the top-right menu, choose <strong>Install from Disk…</strong>, and select the ZIP. In Blender 3.6, use <strong>Install…</strong>.</li>
+              <li>Enable <strong>Molecular Blender</strong> in the add-ons list.</li>
+            </ol>
+          </div>
+          <div>
+            <h3>Try your first orbital</h3>
+            <ol>
+              <li><a href="samples/water-sto-3g.molden" download>Download the water sample</a>.</li>
+              <li>Choose <strong>File → Import → Molecular Blender</strong> and select the sample. Set <strong>Field</strong> to <strong>Molecular orbital</strong> and <strong>Orbital</strong> to <strong>HOMO</strong>, then import.</li>
+              <li>To add another orbital, select an atom, press <kbd>N</kbd> in the 3D Viewport, and open the <strong>Molecule</strong> tab.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section id="gallery" class="band gallery" aria-labelledby="gallery-title">
+      <div class="wrap">
+        <svg class="divider" aria-hidden="true"><use href="img/icons.svg#gallery"/></svg>
+        <h2 id="gallery-title">In print</h2>
+        <div class="pairs publications">
+          <figure>
+            <a href="https://doi.org/10.1021/nl501629c"><img src="img/pulling.webp" srcset="img/pulling-512.webp 512w, img/pulling.webp 944w" sizes="(min-width: 84rem) 36rem, (min-width: 42rem) 44vw, 92vw" width="944" height="944" loading="lazy" alt="A molecule suspended between two gold contacts."><span>Pulling on a molecular junction</span></a>
+          </figure>
+          <figure>
+            <a href="https://doi.org/10.1039/C6SC04378J"><img src="img/tio2.webp" srcset="img/tio2-512.webp 512w, img/tio2.webp 948w" sizes="(min-width: 84rem) 36rem, (min-width: 42rem) 44vw, 92vw" width="948" height="948" loading="lazy" alt="Electron, hole, and proton transfers at the surface of a titanium dioxide particle."><span>Water oxidation on titania nanoparticles</span></a>
+          </figure>
+        </div>
+      </div>
+    </section>
   </main>
-  <footer id="footer" class="section text-white">
-    <div class="container">
-      {% capture credits %}{% include footer.md %}{% endcapture %}
-      {{ credits | markdownify }}
-    </div>
-  </footer>
+  <footer><div class="wrap"><a class="wordmark" href="#intro">molecular blender</a><p>Design by <a href="https://smparker.github.io">Shane Parker</a> and <a href="https://jeszekely.github.io">Josh Szekely</a></p></div></footer>
 </body>
 </html>

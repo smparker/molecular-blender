@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle fill="#757679" cx="31.387" cy="17.062" r="8.116"/>
+        <circle fill="#757679" cx="31.387" cy="46.937" r="8.116"/>
+        <circle fill="#757679" cx="18.393" cy="39.351" r="8.117"/>
+        <circle fill="#757679" cx="44.323" cy="24.532" r="8.116"/>
+        <circle fill="#757679" cx="18.452" cy="24.532" r="8.117"/>
+        <circle fill="#757679" cx="44.324" cy="39.469" r="8.117"/>
+        <circle fill="#7B7C7F" cx="31.387" cy="17.062" r="5.221"/>
+        <circle fill="#7B7C7F" cx="44.323" cy="24.532" r="5.222"/>
+        <circle fill="#7B7C7F" cx="44.324" cy="39.469" r="5.223"/>
+        <circle fill="#7B7C7F" cx="31.387" cy="46.937" r="5.221"/>
+        <circle fill="#7B7C7F" cx="18.393" cy="39.35" r="5.223"/>
+        <circle fill="#7B7C7F" cx="18.453" cy="24.532" r="5.222"/>
+        <circle fill="#FFFFFF" stroke="#B8BABC" stroke-miterlimit="10" cx="31.387" cy="6.764" r="4.296"/>
+        <circle fill="#FFFFFF" stroke="#B8BABC" stroke-miterlimit="10" cx="31.387" cy="57.235" r="4.296"/>
+        <circle fill="#FFFFFF" stroke="#B8BABC" stroke-miterlimit="10" cx="10.146" cy="44.618" r="4.297"/>
+        <circle fill="#FFFFFF" stroke="#B8BABC" stroke-miterlimit="10" cx="53.856" cy="19.382" r="4.297"/>
+        <circle fill="#FFFFFF" stroke="#B8BABC" stroke-miterlimit="10" cx="10.146" cy="19.381" r="4.297"/>
+        <circle fill="#FFFFFF" stroke="#B8BABC" stroke-miterlimit="10" cx="53.855" cy="44.618" r="4.298"/>
+</svg>

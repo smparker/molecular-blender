@@ -1,6 +1,6 @@
 # Molecular Blender [![Build](https://github.com/smparker/molecular-blender/actions/workflows/blender-plugin.yml/badge.svg?branch=master)](https://github.com/smparker/molecular-blender/actions/workflows/blender-plugin.yml)
 An import plugin for molecular XYZ, SDF/MOL, Molden, cube, and JSON data used in
-quantum chemistry.
+quantum chemistry. See the [project website](https://quantumparker.com/molecular-blender/) for renders, downloads, and a first import.
 
 The import dialog's **Import Details** panel reports the active orbital evaluator
 and surface mesher separately as **Cython** or **Python**. Python fallbacks work
@@ -271,6 +271,11 @@ For example:
   - `density` would compute the density
 
 ## Development and Contributing
+
+Preview the project website from the repository root with
+`python3 -m http.server --directory site`. Pages publishes from `master`.
+To preview the production links, run `python3 util/prepare_website.py TAG DESTINATION`
+with a published release tag and a new directory, then serve that directory.
 
 ### Selecting cube datasets
 
