@@ -63,17 +63,20 @@
         <p class="lead">Bring in XYZ or SDF structures, Molden orbitals, or Cube grids. Use JSON to combine fields or build a sequence.</p>
         <div class="pairs">
           <figure class="example">
-            <div class="sample-plate"><img src="img/phenanthroline-homo.webp" width="1128" height="480" loading="lazy" alt="Green and purple orbital lobes above and below phenanthroline’s three fused rings."></div>
-            <figcaption><h3>Explore a molecular orbital</h3><p>This is phenanthroline’s highest occupied molecular orbital. Purple and green show the two signs of the orbital across its fused rings.</p>
+            <div class="sample-plate"><img src="img/phenanthroline-homo.webp" width="1128" height="480" loading="lazy" alt="Translucent shells enclose solid green and purple lobes across phenanthroline’s three fused rings."></div>
+            <figcaption><h3>Explore a molecular orbital</h3><p>Purple and green show the two signs of phenanthroline’s highest occupied molecular orbital. The translucent shells trace a lower absolute isovalue.</p>
               <a href="https://github.com/smparker/molecular-blender/blob/master/examples/phenanthroline.molden">Try the bundled phenanthroline file</a>
             </figcaption>
           </figure>
           <figure class="example">
-            <video id="trajectory" class="sample-plate" width="752" height="320" controls muted loop playsinline
-                   preload="none" poster="img/trajectory-poster.webp" aria-label="XYZ trajectory showing one ring rotating relative to the other">
-              <source src="img/trajectory.mp4" type="video/mp4">
-              <a href="img/trajectory.mp4">Watch the trajectory</a>
-            </video>
+            <div class="trajectory-player">
+              <video id="trajectory" class="sample-plate" width="752" height="320" muted loop playsinline
+                     preload="none" poster="img/trajectory-poster.webp" aria-label="XYZ trajectory showing one ring rotating relative to the other">
+                <source src="img/trajectory.mp4" type="video/mp4">
+              </video>
+              <button type="button" id="trajectory-toggle" aria-controls="trajectory" aria-label="Play trajectory" hidden></button>
+              <noscript><a href="img/trajectory.mp4">Play the trajectory video</a></noscript>
+            </div>
             <figcaption><h3>Follow a trajectory</h3><p>Play a multi-frame XYZ file on Blender’s timeline. Here one ring rotates relative to the other. For a reaction, enable dynamic bonds to see bonds form and break.</p>
               <a href="https://github.com/smparker/molecular-blender/blob/master/examples/benzopentyl_twist.xyz">Open the XYZ trajectory</a>
             </figcaption>

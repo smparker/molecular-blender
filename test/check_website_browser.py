@@ -15,7 +15,7 @@ class QuietHandler(SimpleHTTPRequestHandler):
 
 
 def check_viewport(browser, url, width, height, scale, screenshots):
-    page = browser.new_page(viewport={'width': width, 'height': height})
+    page = browser.new_page(viewport={'width': width, 'height': height}, has_touch=width <= 390)
     errors = []
     page.on('pageerror', lambda error: errors.append(str(error)))
     page.on('requestfailed', lambda request: errors.append(request.url))
@@ -50,9 +50,18 @@ def check_viewport(browser, url, width, height, scale, screenshots):
             video = section.locator('video')
             video.scroll_into_view_if_needed()
             page.wait_for_function("document.querySelector('video').currentTime > 0.1")
-            assert video.evaluate('v => v.controls && v.loop && v.muted && v.playsInline && v.videoWidth > 0')
+            assert video.evaluate('v => !v.controls && v.loop && v.muted && v.playsInline && v.videoWidth > 0')
             video.evaluate('v => { v.currentTime = v.duration - 0.2; }')
             page.wait_for_function("document.querySelector('video').currentTime < 1")
+            toggle = section.get_by_role('button', name='Pause trajectory')
+            assert toggle.bounding_box() == video.bounding_box()
+            if width == 390:
+                toggle.tap()
+            else:
+                toggle.click()
+            expect(video).to_have_js_property('paused', True)
+            section.get_by_role('button', name='Play trajectory').click()
+            expect(video).to_have_js_property('paused', False)
         assert page.evaluate('document.documentElement.scrollWidth') == width, (width, scale, anchor)
     hero = page.locator('.intro-copy').bounding_box()
     figure = page.locator('.orbital').bounding_box()
@@ -88,7 +97,7 @@ def check_site(root, channel, screenshots):
                     video = page.locator('video')
                     video.scroll_into_view_if_needed()
                     assert video.evaluate('v => v.paused && v.currentTime === 0 && !!v.poster')
-                    video.focus()
+                    page.get_by_role('button', name='Play trajectory').focus()
                     page.keyboard.press('Space')
                     page.wait_for_function("document.querySelector('video').currentTime > 0.1")
                     page.keyboard.press('Space')
@@ -96,6 +105,7 @@ def check_site(root, channel, screenshots):
                     page.close()
                     page = browser.new_page(java_script_enabled=False)
                     page.goto(url)
+                    expect(page.get_by_role('link', name='Play the trajectory video')).to_have_attribute('href', 'img/trajectory.mp4')
                     page.get_by_role('link', name='Installation guide').click()
                     expect(page).to_have_url(url + '#usage')
                     with page.expect_download() as result:

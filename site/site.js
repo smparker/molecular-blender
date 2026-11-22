@@ -35,11 +35,25 @@ window.addEventListener('scroll', markSection, { passive: true });
 measureLayout();
 
 const trajectory = document.querySelector('#trajectory');
+const trajectoryToggle = document.querySelector('#trajectory-toggle');
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+function playTrajectory() {
+  // Browsers can require a tap before starting even muted video.
+  trajectory.play().catch(() => {});
+}
+
+trajectoryToggle.hidden = false;
+trajectoryToggle.addEventListener('click', () => {
+  if (trajectory.paused) playTrajectory();
+  else trajectory.pause();
+});
+trajectory.addEventListener('play', () => trajectoryToggle.setAttribute('aria-label', 'Pause trajectory'));
+trajectory.addEventListener('pause', () => trajectoryToggle.setAttribute('aria-label', 'Play trajectory'));
 
 function applyMotionPreference() {
   if (reducedMotion.matches) trajectory.pause();
-  else trajectory.play().catch(() => {}); // The native play button also works when autoplay is blocked.
+  else playTrajectory();
 }
 
 reducedMotion.addEventListener('change', applyMotionPreference);
