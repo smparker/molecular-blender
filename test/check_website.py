@@ -29,7 +29,7 @@ class Page(HTMLParser):
             raise ValueError(f'Missing alt attribute on {values.get("src")}')
         if 'srcset' in values:
             self.links.extend(candidate.split()[0] for candidate in values['srcset'].split(','))
-        for key in ('href', 'src'):
+        for key in ('href', 'src', 'poster'):
             if key in values:
                 self.links.append(values[key])
 

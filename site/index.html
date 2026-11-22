@@ -63,17 +63,18 @@
         <p class="lead">Bring in XYZ or SDF structures, Molden orbitals, or Cube grids. Use JSON to combine fields or build a sequence.</p>
         <div class="pairs">
           <figure class="example">
-            <div class="sample-plate"><img src="img/water-esp.webp" width="480" height="480" loading="lazy" alt="Water’s density surface changes from red near oxygen to blue near the hydrogens."></div>
-            <figcaption><h3>Map a potential</h3><p>Color water’s electron-density surface by electrostatic potential to see its negative and positive regions.</p>
-              <a href="https://github.com/smparker/molecular-blender/blob/master/examples/render_water_esp.py">Render the water example</a>
+            <div class="sample-plate"><img src="img/phenanthroline-homo.webp" width="1128" height="480" loading="lazy" alt="Green and purple orbital lobes above and below phenanthroline’s three fused rings."></div>
+            <figcaption><h3>Explore a molecular orbital</h3><p>This is phenanthroline’s highest occupied molecular orbital. Purple and green show the two signs of the orbital across its fused rings.</p>
+              <a href="https://github.com/smparker/molecular-blender/blob/master/examples/phenanthroline.molden">Try the bundled phenanthroline file</a>
             </figcaption>
           </figure>
           <figure class="example">
-            <div class="sample-plate frames">
-              <img src="img/twist-1.webp" width="540" height="330" loading="lazy" alt="First XYZ frame with both rings viewed nearly face-on.">
-              <img src="img/twist-4.webp" width="540" height="330" loading="lazy" alt="Fourth frame with the right ring turned nearly edge-on.">
-            </div>
-            <figcaption><h3>Follow a molecular twist</h3><p>These are two frames from one XYZ trajectory. Play it on Blender’s timeline, or enable dynamic bonds to follow a reaction.</p>
+            <video id="trajectory" class="sample-plate" width="752" height="320" controls muted loop playsinline
+                   preload="none" poster="img/trajectory-poster.webp" aria-label="XYZ trajectory showing one ring rotating relative to the other">
+              <source src="img/trajectory.mp4" type="video/mp4">
+              <a href="img/trajectory.mp4">Watch the trajectory</a>
+            </video>
+            <figcaption><h3>Follow a trajectory</h3><p>Play a multi-frame XYZ file on Blender’s timeline. Here one ring rotates relative to the other. For a reaction, enable dynamic bonds to see bonds form and break.</p>
               <a href="https://github.com/smparker/molecular-blender/blob/master/examples/benzopentyl_twist.xyz">Open the XYZ trajectory</a>
             </figcaption>
           </figure>

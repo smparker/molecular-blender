@@ -46,6 +46,13 @@ def check_viewport(browser, url, width, height, scale, screenshots):
             img.evaluate('(img) => img.decode()')
             bounds = img.bounding_box()
             assert bounds['x'] >= 0 and bounds['x'] + bounds['width'] <= width + 1
+        if anchor == 'why' and width in (390, 1280):
+            video = section.locator('video')
+            video.scroll_into_view_if_needed()
+            page.wait_for_function("document.querySelector('video').currentTime > 0.1")
+            assert video.evaluate('v => v.controls && v.loop && v.muted && v.playsInline && v.videoWidth > 0')
+            video.evaluate('v => { v.currentTime = v.duration - 0.2; }')
+            page.wait_for_function("document.querySelector('video').currentTime < 1")
         assert page.evaluate('document.documentElement.scrollWidth') == width, (width, scale, anchor)
     hero = page.locator('.intro-copy').bounding_box()
     figure = page.locator('.orbital').bounding_box()
@@ -76,6 +83,17 @@ def check_site(root, channel, screenshots):
                     for dimensions in [(1280, 800, 100), (768, 1024, 100), (390, 844, 100),
                                        (320, 640, 100), (320, 640, 200)]:
                         check_viewport(browser, url, *dimensions, screenshots)
+                    page = browser.new_page(reduced_motion='reduce')
+                    page.goto(url + '#why')
+                    video = page.locator('video')
+                    video.scroll_into_view_if_needed()
+                    assert video.evaluate('v => v.paused && v.currentTime === 0 && !!v.poster')
+                    video.focus()
+                    page.keyboard.press('Space')
+                    page.wait_for_function("document.querySelector('video').currentTime > 0.1")
+                    page.keyboard.press('Space')
+                    expect(video).to_have_js_property('paused', True)
+                    page.close()
                     page = browser.new_page(java_script_enabled=False)
                     page.goto(url)
                     page.get_by_role('link', name='Installation guide').click()

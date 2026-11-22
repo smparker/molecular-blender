@@ -78,7 +78,7 @@ h3 { font-size: clamp(1.4rem, 1rem + 1.4vw, 2rem); font-weight: 650; letter-spac
 .example p { margin: .55rem 0; max-width: 52ch; }
 .sample-plate { display: flex; align-items: center; justify-content: center; aspect-ratio: 2.35; border-radius: .45rem; background: #f7fbfc; border: 1px solid #c4d9e0; }
 .sample-plate img { width: 100%; height: 100%; object-fit: contain; }
-.frames img { width: 48%; }
+video.sample-plate { display: block; width: 100%; height: auto; }
 .instructions h3 { margin-bottom: .85rem; }
 .instructions ol { padding-left: 1.55em; margin: 0; max-width: 55ch; }
 .instructions li { padding-left: .22em; margin-block: .55rem; }

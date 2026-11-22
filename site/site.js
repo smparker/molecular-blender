@@ -33,3 +33,14 @@ for (const element of [header, ...sections, document.querySelector('footer')]) l
 window.addEventListener('resize', measureLayout);
 window.addEventListener('scroll', markSection, { passive: true });
 measureLayout();
+
+const trajectory = document.querySelector('#trajectory');
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+function applyMotionPreference() {
+  if (reducedMotion.matches) trajectory.pause();
+  else trajectory.play().catch(() => {}); // The native play button also works when autoplay is blocked.
+}
+
+reducedMotion.addEventListener('change', applyMotionPreference);
+applyMotionPreference();
